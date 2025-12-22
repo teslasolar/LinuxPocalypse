@@ -6,6 +6,8 @@
     <title>Claude Code Environment - WebContainer Terminal</title>
     <!-- COI Service Worker for Cross-Origin Isolation (enables SharedArrayBuffer) -->
     <script src="coi-serviceworker.js"></script>
+    <!-- xterm.js for proper terminal emulation -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{background:#0d1117;font-family:'Cascadia Code','Fira Code',monospace;color:#c9d1d9;overflow:hidden;height:100vh;display:flex;flex-direction:column}
@@ -55,21 +57,7 @@
         .terminal-actions{margin-left:auto;display:flex;gap:5px}
         .terminal-btn{background:#21262d;border:none;color:#8b949e;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px}
         .terminal-btn:hover{background:#30363d;color:#c9d1d9}
-        #terminal{flex:1;padding:10px;overflow-y:auto;font-size:13px;line-height:1.5}
-        .term-line{white-space:pre-wrap;word-break:break-all}
-        .term-prompt{color:#58a6ff}
-        .term-cmd{color:#e6edf3}
-        .term-output{color:#8b949e}
-        .term-success{color:#3fb950}
-        .term-error{color:#f85149}
-        .term-info{color:#a371f7}
-        .term-warn{color:#d29922}
-
-        /* Input line */
-        .term-input-line{display:flex;align-items:center;margin-top:5px}
-        .term-input{flex:1;background:transparent;border:none;color:#e6edf3;font-family:inherit;font-size:13px;outline:none}
-        .cursor{animation:blink 1s infinite}
-        @keyframes blink{0%,50%{opacity:1}51%,100%{opacity:0}}
+        #terminal{flex:1;padding:5px}
 
         /* Preview iframe */
         .preview{display:none;flex:1;background:#fff}
@@ -90,6 +78,10 @@
         .package{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px}
         .package-name{color:#58a6ff}
         .package-version{color:#6e7681}
+
+        /* xterm overrides */
+        .xterm{height:100%}
+        .xterm-viewport{overflow-y:auto!important}
     </style>
 </head>
 <body>
@@ -158,6 +150,9 @@
 
     <!-- Monaco Editor -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+    <!-- xterm.js -->
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.8.0/lib/addon-fit.min.js"></script>
     <!-- WebContainer -->
     <script type="module">
         import { WebContainer } from 'https://esm.sh/@webcontainer/api';
@@ -165,7 +160,10 @@
         // State
         let webcontainer = null;
         let shellProcess = null;
+        let shellWriter = null;
         let currentFile = 'package.json';
+        let term = null;
+        let fitAddon = null;
 
         // Files to bootstrap
         const files = {
@@ -292,19 +290,10 @@ Note: Full CLI functionality requires authentication with your Anthropic account
             }
         };
 
-        // Terminal output
-        const terminalEl = document.getElementById('terminal');
+        // Loading log
         const loadingLog = document.getElementById('loadingLog');
         const loadingText = document.getElementById('loadingText');
         const statusEl = document.getElementById('status');
-
-        function log(type, text) {
-            const line = document.createElement('div');
-            line.className = 'term-line term-' + type;
-            line.textContent = text;
-            terminalEl.appendChild(line);
-            terminalEl.scrollTop = terminalEl.scrollHeight;
-        }
 
         function logLoading(text) {
             const line = document.createElement('div');
@@ -318,34 +307,107 @@ Note: Full CLI functionality requires authentication with your Anthropic account
             statusEl.className = 'status ' + type;
         }
 
+        // Initialize xterm.js
+        function initTerminal() {
+            term = new Terminal({
+                theme: {
+                    background: '#0d1117',
+                    foreground: '#c9d1d9',
+                    cursor: '#58a6ff',
+                    cursorAccent: '#0d1117',
+                    selectionBackground: '#388bfd44',
+                    black: '#484f58',
+                    red: '#ff7b72',
+                    green: '#3fb950',
+                    yellow: '#d29922',
+                    blue: '#58a6ff',
+                    magenta: '#bc8cff',
+                    cyan: '#39c5cf',
+                    white: '#b1bac4',
+                    brightBlack: '#6e7681',
+                    brightRed: '#ffa198',
+                    brightGreen: '#56d364',
+                    brightYellow: '#e3b341',
+                    brightBlue: '#79c0ff',
+                    brightMagenta: '#d2a8ff',
+                    brightCyan: '#56d4dd',
+                    brightWhite: '#f0f6fc'
+                },
+                fontFamily: '"Cascadia Code", "Fira Code", Menlo, Monaco, monospace',
+                fontSize: 13,
+                cursorBlink: true,
+                cursorStyle: 'bar',
+                allowProposedApi: true
+            });
+
+            fitAddon = new FitAddon.FitAddon();
+            term.loadAddon(fitAddon);
+            term.open(document.getElementById('terminal'));
+            fitAddon.fit();
+
+            // Handle window resize
+            window.addEventListener('resize', () => {
+                fitAddon.fit();
+            });
+
+            return term;
+        }
+
         // Initialize WebContainer
         async function init() {
+            // Init terminal first
+            initTerminal();
+            term.writeln('\x1b[1;36m⚡ Claude Code Environment\x1b[0m');
+            term.writeln('');
+
             try {
                 logLoading('Booting WebContainer kernel...');
                 loadingText.textContent = 'Booting WebContainer...';
+                term.writeln('\x1b[33m› Booting WebContainer kernel...\x1b[0m');
 
                 webcontainer = await WebContainer.boot();
 
                 logLoading('WebContainer booted successfully');
+                term.writeln('\x1b[32m✓ WebContainer booted\x1b[0m');
+
                 logLoading('Mounting file system...');
                 loadingText.textContent = 'Mounting files...';
+                term.writeln('\x1b[33m› Mounting file system...\x1b[0m');
 
                 await webcontainer.mount(files);
 
                 logLoading('File system mounted');
+                term.writeln('\x1b[32m✓ File system mounted\x1b[0m');
+
                 logLoading('Starting shell process...');
                 loadingText.textContent = 'Starting shell...';
+                term.writeln('\x1b[33m› Starting shell...\x1b[0m');
 
-                // Start shell
+                // Start interactive shell
                 shellProcess = await webcontainer.spawn('jsh', {
-                    terminal: { cols: 80, rows: 20 }
+                    terminal: {
+                        cols: term.cols,
+                        rows: term.rows
+                    }
                 });
 
+                // Pipe shell output to xterm
                 shellProcess.output.pipeTo(new WritableStream({
                     write(data) {
-                        log('output', data);
+                        term.write(data);
                     }
                 }));
+
+                // Pipe xterm input to shell
+                shellWriter = shellProcess.input.getWriter();
+                term.onData(data => {
+                    shellWriter.write(data);
+                });
+
+                // Handle resize
+                term.onResize(({ cols, rows }) => {
+                    shellProcess.resize({ cols, rows });
+                });
 
                 logLoading('Shell ready');
                 loadingText.textContent = 'Environment ready!';
@@ -354,20 +416,15 @@ Note: Full CLI functionality requires authentication with your Anthropic account
                 setTimeout(() => {
                     document.getElementById('loadingOverlay').classList.add('hidden');
                     setStatus('Ready', '');
-                    log('success', '🚀 WebContainer environment ready!');
-                    log('info', 'Type commands below or use the buttons above.');
-                    log('output', '');
                     updateFileTree();
+                    term.focus();
                 }, 500);
-
-                // Setup input
-                setupTerminalInput();
 
             } catch (err) {
                 console.error('WebContainer error:', err);
                 loadingText.textContent = 'Error: ' + err.message;
                 setStatus('Error', 'error');
-                log('error', 'Failed to initialize: ' + err.message);
+                term.writeln('\x1b[31m✗ Failed to initialize: ' + err.message + '\x1b[0m');
 
                 // Check for cross-origin isolation
                 if (!crossOriginIsolated) {
@@ -375,71 +432,11 @@ Note: Full CLI functionality requires authentication with your Anthropic account
                     logLoading('WebContainers need specific headers:');
                     logLoading('  Cross-Origin-Embedder-Policy: require-corp');
                     logLoading('  Cross-Origin-Opener-Policy: same-origin');
-                    log('error', '');
-                    log('error', '⚠️ This page needs to be served with Cross-Origin Isolation headers.');
-                    log('warn', 'For GitHub Pages, you may need a service worker or different hosting.');
-                    log('info', '');
-                    log('info', 'Alternative: Run locally with the following server:');
-                    log('output', '  npx serve --cors -p 3000');
+                    term.writeln('');
+                    term.writeln('\x1b[31m⚠️ Cross-Origin Isolation required!\x1b[0m');
+                    term.writeln('\x1b[33mThe service worker should handle this automatically.\x1b[0m');
+                    term.writeln('\x1b[33mTry refreshing the page.\x1b[0m');
                 }
-            }
-        }
-
-        // Terminal input
-        function setupTerminalInput() {
-            const inputLine = document.createElement('div');
-            inputLine.className = 'term-input-line';
-            inputLine.innerHTML = `
-                <span class="term-prompt">❯ </span>
-                <input type="text" class="term-input" id="termInput" placeholder="Type command...">
-            `;
-            terminalEl.appendChild(inputLine);
-
-            const input = document.getElementById('termInput');
-            input.focus();
-
-            input.addEventListener('keydown', async (e) => {
-                if (e.key === 'Enter') {
-                    const cmd = input.value.trim();
-                    if (cmd) {
-                        input.value = '';
-                        await runCommand(cmd);
-                    }
-                }
-            });
-
-            // Keep focus on terminal click
-            terminalEl.addEventListener('click', () => input.focus());
-        }
-
-        // Run command
-        async function runCommand(cmd) {
-            log('cmd', '❯ ' + cmd);
-
-            const parts = cmd.split(' ');
-            const program = parts[0];
-            const args = parts.slice(1);
-
-            try {
-                const process = await webcontainer.spawn(program, args);
-
-                process.output.pipeTo(new WritableStream({
-                    write(data) {
-                        log('output', data);
-                    }
-                }));
-
-                const exitCode = await process.exit;
-
-                if (exitCode !== 0) {
-                    log('error', `Process exited with code ${exitCode}`);
-                }
-
-                updateFileTree();
-                updatePackages();
-
-            } catch (err) {
-                log('error', 'Error: ' + err.message);
             }
         }
 
@@ -507,7 +504,7 @@ Note: Full CLI functionality requires authentication with your Anthropic account
                     `;
                 }
             } catch (e) {
-                log('error', 'Cannot open: ' + e.message);
+                term.writeln('\x1b[31mCannot open: ' + e.message + '\x1b[0m');
             }
         }
 
@@ -537,16 +534,21 @@ Note: Full CLI functionality requires authentication with your Anthropic account
 
         // Button handlers
         window.clearTerminal = () => {
-            terminalEl.innerHTML = '';
-            setupTerminalInput();
+            term.clear();
         };
 
-        window.runNpmInstall = () => runCommand('npm install');
+        window.runNpmInstall = () => {
+            if (shellWriter) {
+                shellWriter.write('npm install\n');
+                setTimeout(updatePackages, 3000);
+            }
+        };
 
-        window.installClaudeCode = async () => {
-            log('info', '📦 Installing Claude Code CLI...');
-            log('warn', 'Note: This installs the npm package. Full functionality requires auth.');
-            await runCommand('npm install @anthropic-ai/sdk');
+        window.installClaudeCode = () => {
+            if (shellWriter) {
+                shellWriter.write('npm install @anthropic-ai/sdk\n');
+                setTimeout(updatePackages, 5000);
+            }
         };
 
         window.showEditor = () => {
@@ -589,7 +591,7 @@ Note: Full CLI functionality requires authentication with your Anthropic account
                 if (webcontainer && currentFile) {
                     const content = window.editor.getValue();
                     await webcontainer.fs.writeFile(currentFile, content);
-                    log('success', '✓ Saved ' + currentFile);
+                    term.writeln('\x1b[32m✓ Saved ' + currentFile + '\x1b[0m');
                 }
             });
         });
