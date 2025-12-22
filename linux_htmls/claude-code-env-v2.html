@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Claude Code Env v2</title>
+<script src="coi-serviceworker.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0d1117;color:#c9d1d9;font-family:system-ui;display:flex;flex-direction:column;height:100vh}
+.bar{height:36px;background:#161b22;border-bottom:1px solid #30363d;display:flex;align-items:center;padding:0 12px;gap:12px}
+.bar h1{font-size:14px;color:#58a6ff;font-weight:500}
+.bar .s{margin-left:auto;font-size:11px;padding:3px 8px;border-radius:10px;background:#238636}
+.bar .s.w{background:#9e6a03}
+.bar .s.e{background:#da3633}
+.wrap{flex:1;display:flex;overflow:hidden}
+.side{width:220px;background:#161b22;border-right:1px solid #30363d;overflow-y:auto;font-size:12px}
+.side-h{padding:8px 12px;color:#8b949e;font-size:10px;text-transform:uppercase;border-bottom:1px solid #30363d}
+.f{padding:5px 12px;cursor:pointer;display:flex;align-items:center;gap:6px}
+.f:hover{background:#21262d}
+.main{flex:1;display:flex;flex-direction:column}
+#ed{flex:1;min-height:200px}
+.term{height:280px;border-top:1px solid #30363d;display:flex;flex-direction:column}
+.term-h{height:28px;background:#161b22;display:flex;align-items:center;padding:0 10px;font-size:11px;color:#8b949e;border-bottom:1px solid #30363d}
+.term-h button{background:#21262d;border:none;color:#8b949e;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:10px;margin-left:8px}
+.term-h button:hover{background:#30363d;color:#fff}
+#term{flex:1}
+.xterm{height:100%}
+.load{position:fixed;inset:0;background:#0d1117ee;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99}
+.load.h{display:none}
+.spin{width:40px;height:40px;border:3px solid #30363d;border-top-color:#58a6ff;border-radius:50%;animation:s 1s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+.load p{margin-top:16px;color:#8b949e;font-size:13px}
+.load .log{margin-top:20px;font-size:10px;color:#6e7681;max-height:120px;overflow-y:auto;width:300px}
+</style>
+</head>
+<body>
+<div class="load" id="ld">
+<div class="spin"></div>
+<p id="lt">Checking environment...</p>
+<div class="log" id="ll"></div>
+</div>
+<div class="bar">
+<h1>⚡ Claude Code Env v2</h1>
+<span class="s w" id="st">Loading</span>
+</div>
+<div class="wrap">
+<div class="side">
+<div class="side-h">Files</div>
+<div id="fs"></div>
+</div>
+<div class="main">
+<div id="ed"></div>
+<div class="term">
+<div class="term-h">Terminal<button onclick="T.clear()">Clear</button><button onclick="T.run('npm i')">npm install</button><button onclick="T.run('node -v')">node -v</button></div>
+<div id="term"></div>
+</div>
+</div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.8.0/lib/addon-fit.min.js"></script>
+<script type="module">
+import{WebContainer}from'https://esm.sh/@webcontainer/api';
+const $=id=>document.getElementById(id);
+const log=t=>{const d=document.createElement('div');d.textContent='› '+t;$('ll').appendChild(d)};
+const status=(t,c)=>{$('st').textContent=t;$('st').className='s'+(c?' '+c:'')};
+
+// Terminal
+const T={
+  t:null,f:null,w:null,
+  init(){
+    this.t=new Terminal({theme:{background:'#0d1117',foreground:'#c9d1d9',cursor:'#58a6ff'},fontSize:12,cursorBlink:true});
+    this.f=new FitAddon.FitAddon();
+    this.t.loadAddon(this.f);
+    this.t.open($('term'));
+    this.f.fit();
+    window.onresize=()=>this.f.fit();
+  },
+  write(d){this.t.write(d)},
+  writeln(d){this.t.writeln(d)},
+  clear(){this.t.clear()},
+  run(cmd){if(this.w)this.w.write(cmd+'\n')}
+};
+window.T=T;
+
+// Files
+const files={
+  'package.json':{file:{contents:JSON.stringify({name:"env",type:"module",scripts:{start:"node index.js"}},null,2)}},
+  'index.js':{file:{contents:`console.log('Node.js',process.version);console.log('Ready!');`}}
+};
+
+// Editor
+let editor,wc,curFile='/package.json';
+require.config({paths:{vs:'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs'}});
+require(['vs/editor/editor.main'],()=>{
+  editor=monaco.editor.create($('ed'),{value:files['package.json'].file.contents,language:'json',theme:'vs-dark',automaticLayout:true,minimap:{enabled:false},fontSize:12});
+  editor.addCommand(monaco.KeyMod.CtrlCmd|monaco.KeyCode.KeyS,async()=>{
+    if(wc){await wc.fs.writeFile(curFile,editor.getValue());T.writeln('\x1b[32m✓ Saved\x1b[0m')}
+  });
+});
+
+async function openFile(p){
+  if(!wc)return;
+  try{
+    const c=await wc.fs.readFile(p,'utf-8');
+    curFile=p;
+    const ext=p.split('.').pop();
+    const lang={js:'javascript',json:'json',md:'markdown',ts:'typescript'}[ext]||'plaintext';
+    monaco.editor.setModelLanguage(editor.getModel(),lang);
+    editor.setValue(c);
+  }catch(e){T.writeln('\x1b[31mError: '+e.message+'\x1b[0m')}
+}
+
+async function updateTree(){
+  if(!wc)return;
+  const el=$('fs');el.innerHTML='';
+  const read=async(p,d=0)=>{
+    try{
+      const e=await wc.fs.readdir(p,{withFileTypes:true});
+      for(const f of e){
+        if(f.name==='node_modules')continue;
+        const fp=p==='/'?'/'+f.name:p+'/'+f.name;
+        const div=document.createElement('div');
+        div.className='f';
+        div.style.paddingLeft=(12+d*12)+'px';
+        div.textContent=(f.isDirectory()?'📁':'📄')+' '+f.name;
+        div.onclick=()=>f.isDirectory()?null:openFile(fp);
+        el.appendChild(div);
+        if(f.isDirectory())await read(fp,d+1);
+      }
+    }catch(e){}
+  };
+  await read('/');
+}
+
+// Boot
+async function boot(){
+  T.init();
+  T.writeln('\x1b[1;36m⚡ Claude Code Env v2\x1b[0m\n');
+
+  // Check COI
+  if(!crossOriginIsolated){
+    log('Waiting for COOP/COEP...');
+    $('lt').textContent='Activating service worker...';
+    T.writeln('\x1b[33m› Service worker activating...\x1b[0m');
+    // SW should reload page, but give it a nudge
+    await new Promise(r=>setTimeout(r,2000));
+    if(!crossOriginIsolated){
+      T.writeln('\x1b[31m✗ Cross-Origin Isolation failed\x1b[0m');
+      T.writeln('\x1b[33mRefresh the page to retry\x1b[0m');
+      $('lt').textContent='Refresh page to activate';
+      status('Refresh needed','e');
+      return;
+    }
+  }
+
+  log('COI active');
+  T.writeln('\x1b[32m✓ Cross-Origin Isolation active\x1b[0m');
+
+  try{
+    log('Booting WebContainer...');
+    $('lt').textContent='Booting WebContainer...';
+    T.writeln('\x1b[33m› Booting WebContainer...\x1b[0m');
+
+    wc=await WebContainer.boot();
+    log('Booted');
+    T.writeln('\x1b[32m✓ WebContainer booted\x1b[0m');
+
+    log('Mounting files...');
+    $('lt').textContent='Mounting files...';
+    await wc.mount(files);
+    T.writeln('\x1b[32m✓ Files mounted\x1b[0m');
+
+    log('Starting shell...');
+    $('lt').textContent='Starting shell...';
+    const sh=await wc.spawn('jsh',{terminal:{cols:T.t.cols,rows:T.t.rows}});
+
+    sh.output.pipeTo(new WritableStream({write(d){T.write(d)}}));
+    T.w=sh.input.getWriter();
+    T.t.onData(d=>T.w.write(d));
+    T.t.onResize(({cols,rows})=>sh.resize({cols,rows}));
+
+    log('Ready!');
+    $('ld').classList.add('h');
+    status('Ready','');
+    updateTree();
+    T.t.focus();
+
+  }catch(e){
+    log('Error: '+e.message);
+    T.writeln('\x1b[31m✗ '+e.message+'\x1b[0m');
+    $('lt').textContent='Error: '+e.message;
+    status('Error','e');
+  }
+}
+
+boot();
+</script>
+</body>
+</html>

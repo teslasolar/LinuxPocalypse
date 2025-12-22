@@ -1,5 +1,13 @@
 [
   {
+    "file": "claude-code-env-v2.html",
+    "title": "Claude Code Env v2",
+    "description": "Minimal WebContainer environment - token-reduced, faster boot, better COI handling, xterm.js terminal",
+    "icon": "⚡",
+    "color": "#58a6ff",
+    "tags": ["WebContainer", "Node.js", "Minimal", "Fast"]
+  },
+  {
     "file": "claude-code-env.html",
     "title": "Claude Code Environment",
     "description": "Real WebContainer-based Node.js environment with working terminal, npm, file system - can install actual packages and run code in-browser (requires COOP/COEP headers)",
