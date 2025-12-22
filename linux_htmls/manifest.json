@@ -150,5 +150,13 @@
     "icon": "🎧",
     "color": "#ff00ff",
     "tags": ["EDM", "Auto-Gen", "Agents", "Presets"]
+  },
+  {
+    "file": "drone-sight-v4.html",
+    "title": "Drone Sight v4",
+    "description": "Agent-assisted flight with auto-hover, auto-level, collision avoidance, speed limiter, target follow, and auto-return - easy mode flying",
+    "icon": "🤖",
+    "color": "#00ffaa",
+    "tags": ["Drones", "AI-Assist", "Easy-Mode", "Agents"]
   }
 ]
