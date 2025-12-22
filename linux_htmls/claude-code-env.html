@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Code Environment - WebContainer Terminal</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{background:#0d1117;font-family:'Cascadia Code','Fira Code',monospace;color:#c9d1d9;overflow:hidden;height:100vh;display:flex;flex-direction:column}
+
+        /* Header */
+        .header{height:40px;background:#161b22;border-bottom:1px solid #30363d;display:flex;align-items:center;padding:0 15px;gap:15px}
+        .logo{display:flex;align-items:center;gap:8px;font-weight:600;color:#58a6ff}
+        .header-tabs{display:flex;gap:2px}
+        .header-tab{padding:8px 16px;background:transparent;color:#8b949e;cursor:pointer;border-radius:6px 6px 0 0;font-size:13px}
+        .header-tab:hover{background:#21262d}
+        .header-tab.active{background:#0d1117;color:#c9d1d9;border:1px solid #30363d;border-bottom:none}
+        .header-right{margin-left:auto;display:flex;gap:10px;align-items:center}
+        .status{font-size:11px;padding:4px 8px;border-radius:12px;background:#238636;color:#fff}
+        .status.loading{background:#9e6a03}
+        .status.error{background:#da3633}
+
+        /* Main */
+        .main{flex:1;display:flex;overflow:hidden}
+
+        /* File Tree */
+        .filetree{width:250px;background:#161b22;border-right:1px solid #30363d;overflow-y:auto;font-size:13px}
+        .filetree-header{padding:10px 15px;color:#8b949e;font-size:11px;text-transform:uppercase;border-bottom:1px solid #30363d}
+        .file-item{padding:6px 15px;cursor:pointer;display:flex;align-items:center;gap:8px}
+        .file-item:hover{background:#21262d}
+        .file-item.active{background:#388bfd22;color:#58a6ff}
+        .file-item.folder{color:#8b949e}
+        .file-indent{width:16px;display:inline-block}
+
+        /* Editor + Terminal Split */
+        .workspace{flex:1;display:flex;flex-direction:column}
+
+        /* Editor */
+        .editor-area{flex:1;display:flex;flex-direction:column;min-height:0}
+        .editor-tabs{height:35px;background:#161b22;display:flex;align-items:center;border-bottom:1px solid #30363d}
+        .editor-tab{padding:8px 16px;background:#0d1117;color:#8b949e;font-size:12px;border-right:1px solid #30363d;cursor:pointer;display:flex;align-items:center;gap:6px}
+        .editor-tab.active{color:#c9d1d9;border-top:2px solid #58a6ff}
+        .editor-tab-close{opacity:0;font-size:14px}
+        .editor-tab:hover .editor-tab-close{opacity:1}
+        #editor{flex:1}
+
+        /* Terminal */
+        .terminal-area{height:300px;background:#0d1117;border-top:1px solid #30363d;display:flex;flex-direction:column}
+        .terminal-header{height:32px;background:#161b22;display:flex;align-items:center;padding:0 10px;gap:10px;border-bottom:1px solid #30363d}
+        .terminal-tabs{display:flex;gap:5px}
+        .terminal-tab{padding:4px 12px;font-size:11px;background:#21262d;border-radius:4px;cursor:pointer;color:#8b949e}
+        .terminal-tab.active{background:#30363d;color:#c9d1d9}
+        .terminal-actions{margin-left:auto;display:flex;gap:5px}
+        .terminal-btn{background:#21262d;border:none;color:#8b949e;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px}
+        .terminal-btn:hover{background:#30363d;color:#c9d1d9}
+        #terminal{flex:1;padding:10px;overflow-y:auto;font-size:13px;line-height:1.5}
+        .term-line{white-space:pre-wrap;word-break:break-all}
+        .term-prompt{color:#58a6ff}
+        .term-cmd{color:#e6edf3}
+        .term-output{color:#8b949e}
+        .term-success{color:#3fb950}
+        .term-error{color:#f85149}
+        .term-info{color:#a371f7}
+        .term-warn{color:#d29922}
+
+        /* Input line */
+        .term-input-line{display:flex;align-items:center;margin-top:5px}
+        .term-input{flex:1;background:transparent;border:none;color:#e6edf3;font-family:inherit;font-size:13px;outline:none}
+        .cursor{animation:blink 1s infinite}
+        @keyframes blink{0%,50%{opacity:1}51%,100%{opacity:0}}
+
+        /* Preview iframe */
+        .preview{display:none;flex:1;background:#fff}
+        .preview.show{display:block}
+
+        /* Loading overlay */
+        .loading-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(13,17,23,0.95);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:1000}
+        .loading-overlay.hidden{display:none}
+        .loader{width:60px;height:60px;border:3px solid #30363d;border-top-color:#58a6ff;border-radius:50%;animation:spin 1s linear infinite}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        .loading-text{margin-top:20px;color:#8b949e;font-size:14px}
+        .loading-log{margin-top:30px;width:400px;max-height:200px;overflow-y:auto;font-size:11px;color:#6e7681}
+        .loading-log div{padding:2px 0}
+
+        /* Package manager */
+        .packages{padding:10px 15px;border-top:1px solid #30363d}
+        .packages-title{font-size:11px;color:#8b949e;margin-bottom:8px}
+        .package{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px}
+        .package-name{color:#58a6ff}
+        .package-version{color:#6e7681}
+    </style>
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loader"></div>
+        <div class="loading-text" id="loadingText">Initializing WebContainer...</div>
+        <div class="loading-log" id="loadingLog"></div>
+    </div>
+
+    <!-- Header -->
+    <div class="header">
+        <div class="logo">
+            <span style="font-size:20px">⚡</span>
+            Claude Code Environment
+        </div>
+        <div class="header-tabs">
+            <div class="header-tab active" onclick="showEditor()">Editor</div>
+            <div class="header-tab" onclick="showPreview()">Preview</div>
+        </div>
+        <div class="header-right">
+            <span class="status loading" id="status">Booting...</span>
+        </div>
+    </div>
+
+    <!-- Main -->
+    <div class="main">
+        <!-- File Tree -->
+        <div class="filetree">
+            <div class="filetree-header">Explorer</div>
+            <div id="fileTree"></div>
+            <div class="packages" id="packages" style="display:none">
+                <div class="packages-title">INSTALLED PACKAGES</div>
+                <div id="packageList"></div>
+            </div>
+        </div>
+
+        <!-- Workspace -->
+        <div class="workspace">
+            <div class="editor-area">
+                <div class="editor-tabs" id="editorTabs">
+                    <div class="editor-tab active">
+                        <span>📄</span> package.json <span class="editor-tab-close">×</span>
+                    </div>
+                </div>
+                <div id="editor"></div>
+                <iframe id="preview" class="preview"></iframe>
+            </div>
+
+            <div class="terminal-area">
+                <div class="terminal-header">
+                    <div class="terminal-tabs">
+                        <div class="terminal-tab active">Terminal</div>
+                        <div class="terminal-tab">Output</div>
+                    </div>
+                    <div class="terminal-actions">
+                        <button class="terminal-btn" onclick="clearTerminal()">Clear</button>
+                        <button class="terminal-btn" onclick="runNpmInstall()">npm install</button>
+                        <button class="terminal-btn" onclick="installClaudeCode()">Install Claude CLI</button>
+                    </div>
+                </div>
+                <div id="terminal"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monaco Editor -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+    <!-- WebContainer -->
+    <script type="module">
+        import { WebContainer } from 'https://esm.sh/@webcontainer/api';
+
+        // State
+        let webcontainer = null;
+        let shellProcess = null;
+        let currentFile = 'package.json';
+
+        // Files to bootstrap
+        const files = {
+            'package.json': {
+                file: {
+                    contents: JSON.stringify({
+                        name: "claude-code-env",
+                        version: "1.0.0",
+                        description: "WebContainer environment for Claude Code",
+                        type: "module",
+                        scripts: {
+                            start: "node index.js",
+                            dev: "node --watch index.js"
+                        },
+                        dependencies: {}
+                    }, null, 2)
+                }
+            },
+            'index.js': {
+                file: {
+                    contents: `// Claude Code Environment
+// This is a real Node.js environment running in your browser!
+
+console.log('🚀 Welcome to Claude Code Environment!');
+console.log('📦 Node.js version:', process.version);
+console.log('');
+console.log('This environment supports:');
+console.log('  - Real npm package installation');
+console.log('  - Node.js execution');
+console.log('  - File system operations');
+console.log('');
+console.log('Try running commands in the terminal below!');
+
+// Example: Simple HTTP server
+import http from 'http';
+
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(\`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Claude Code Environment</title>
+            <style>
+                body {
+                    font-family: system-ui;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    min-height: 100vh;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin: 0;
+                }
+                .card {
+                    background: white;
+                    padding: 40px;
+                    border-radius: 16px;
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                    text-align: center;
+                }
+                h1 { color: #333; margin-bottom: 10px; }
+                p { color: #666; }
+                .badge {
+                    background: #10b981;
+                    color: white;
+                    padding: 4px 12px;
+                    border-radius: 20px;
+                    font-size: 12px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <h1>🤖 Claude Code Environment</h1>
+                <p>Running on Node.js \${process.version}</p>
+                <p><span class="badge">WebContainer Active</span></p>
+            </div>
+        </body>
+        </html>
+    \`);
+});
+
+const PORT = 3000;
+server.listen(PORT, () => {
+    console.log(\`🌐 Server running at http://localhost:\${PORT}\`);
+});
+`
+                }
+            },
+            'README.md': {
+                file: {
+                    contents: `# Claude Code Environment
+
+This is a **real** Node.js environment running entirely in your browser using WebContainers!
+
+## Features
+
+- ✅ Real Node.js runtime
+- ✅ Real npm package manager
+- ✅ Real file system
+- ✅ Real terminal/shell
+
+## Quick Start
+
+\`\`\`bash
+# Install a package
+npm install lodash
+
+# Run the server
+npm start
+\`\`\`
+
+## Installing Claude Code CLI
+
+The Claude Code CLI can be installed via npm:
+
+\`\`\`bash
+npm install -g @anthropic-ai/claude-code
+\`\`\`
+
+Note: Full CLI functionality requires authentication with your Anthropic account.
+`
+                }
+            }
+        };
+
+        // Terminal output
+        const terminalEl = document.getElementById('terminal');
+        const loadingLog = document.getElementById('loadingLog');
+        const loadingText = document.getElementById('loadingText');
+        const statusEl = document.getElementById('status');
+
+        function log(type, text) {
+            const line = document.createElement('div');
+            line.className = 'term-line term-' + type;
+            line.textContent = text;
+            terminalEl.appendChild(line);
+            terminalEl.scrollTop = terminalEl.scrollHeight;
+        }
+
+        function logLoading(text) {
+            const line = document.createElement('div');
+            line.textContent = '› ' + text;
+            loadingLog.appendChild(line);
+            loadingLog.scrollTop = loadingLog.scrollHeight;
+        }
+
+        function setStatus(text, type = 'loading') {
+            statusEl.textContent = text;
+            statusEl.className = 'status ' + type;
+        }
+
+        // Initialize WebContainer
+        async function init() {
+            try {
+                logLoading('Booting WebContainer kernel...');
+                loadingText.textContent = 'Booting WebContainer...';
+
+                webcontainer = await WebContainer.boot();
+
+                logLoading('WebContainer booted successfully');
+                logLoading('Mounting file system...');
+                loadingText.textContent = 'Mounting files...';
+
+                await webcontainer.mount(files);
+
+                logLoading('File system mounted');
+                logLoading('Starting shell process...');
+                loadingText.textContent = 'Starting shell...';
+
+                // Start shell
+                shellProcess = await webcontainer.spawn('jsh', {
+                    terminal: { cols: 80, rows: 20 }
+                });
+
+                shellProcess.output.pipeTo(new WritableStream({
+                    write(data) {
+                        log('output', data);
+                    }
+                }));
+
+                logLoading('Shell ready');
+                loadingText.textContent = 'Environment ready!';
+
+                // Hide loading
+                setTimeout(() => {
+                    document.getElementById('loadingOverlay').classList.add('hidden');
+                    setStatus('Ready', '');
+                    log('success', '🚀 WebContainer environment ready!');
+                    log('info', 'Type commands below or use the buttons above.');
+                    log('output', '');
+                    updateFileTree();
+                }, 500);
+
+                // Setup input
+                setupTerminalInput();
+
+            } catch (err) {
+                console.error('WebContainer error:', err);
+                loadingText.textContent = 'Error: ' + err.message;
+                setStatus('Error', 'error');
+                log('error', 'Failed to initialize: ' + err.message);
+
+                // Check for cross-origin isolation
+                if (!crossOriginIsolated) {
+                    logLoading('⚠️ Cross-Origin Isolation required!');
+                    logLoading('WebContainers need specific headers:');
+                    logLoading('  Cross-Origin-Embedder-Policy: require-corp');
+                    logLoading('  Cross-Origin-Opener-Policy: same-origin');
+                    log('error', '');
+                    log('error', '⚠️ This page needs to be served with Cross-Origin Isolation headers.');
+                    log('warn', 'For GitHub Pages, you may need a service worker or different hosting.');
+                    log('info', '');
+                    log('info', 'Alternative: Run locally with the following server:');
+                    log('output', '  npx serve --cors -p 3000');
+                }
+            }
+        }
+
+        // Terminal input
+        function setupTerminalInput() {
+            const inputLine = document.createElement('div');
+            inputLine.className = 'term-input-line';
+            inputLine.innerHTML = `
+                <span class="term-prompt">❯ </span>
+                <input type="text" class="term-input" id="termInput" placeholder="Type command...">
+            `;
+            terminalEl.appendChild(inputLine);
+
+            const input = document.getElementById('termInput');
+            input.focus();
+
+            input.addEventListener('keydown', async (e) => {
+                if (e.key === 'Enter') {
+                    const cmd = input.value.trim();
+                    if (cmd) {
+                        input.value = '';
+                        await runCommand(cmd);
+                    }
+                }
+            });
+
+            // Keep focus on terminal click
+            terminalEl.addEventListener('click', () => input.focus());
+        }
+
+        // Run command
+        async function runCommand(cmd) {
+            log('cmd', '❯ ' + cmd);
+
+            const parts = cmd.split(' ');
+            const program = parts[0];
+            const args = parts.slice(1);
+
+            try {
+                const process = await webcontainer.spawn(program, args);
+
+                process.output.pipeTo(new WritableStream({
+                    write(data) {
+                        log('output', data);
+                    }
+                }));
+
+                const exitCode = await process.exit;
+
+                if (exitCode !== 0) {
+                    log('error', `Process exited with code ${exitCode}`);
+                }
+
+                updateFileTree();
+                updatePackages();
+
+            } catch (err) {
+                log('error', 'Error: ' + err.message);
+            }
+        }
+
+        // Update file tree
+        async function updateFileTree() {
+            if (!webcontainer) return;
+
+            const fileTree = document.getElementById('fileTree');
+            fileTree.innerHTML = '';
+
+            async function readDir(path, indent = 0) {
+                try {
+                    const entries = await webcontainer.fs.readdir(path, { withFileTypes: true });
+
+                    for (const entry of entries) {
+                        const fullPath = path === '/' ? '/' + entry.name : path + '/' + entry.name;
+                        const item = document.createElement('div');
+                        item.className = 'file-item' + (entry.isDirectory() ? ' folder' : '');
+
+                        const indentSpan = '<span class="file-indent"></span>'.repeat(indent);
+                        const icon = entry.isDirectory() ? '📁' : '📄';
+
+                        item.innerHTML = indentSpan + icon + ' ' + entry.name;
+                        item.onclick = () => openFile(fullPath);
+                        fileTree.appendChild(item);
+
+                        if (entry.isDirectory() && entry.name !== 'node_modules') {
+                            await readDir(fullPath, indent + 1);
+                        }
+                    }
+                } catch (e) {}
+            }
+
+            await readDir('/');
+        }
+
+        // Open file in editor
+        async function openFile(path) {
+            if (!webcontainer) return;
+
+            try {
+                const contents = await webcontainer.fs.readFile(path, 'utf-8');
+                currentFile = path;
+
+                if (window.editor) {
+                    const ext = path.split('.').pop();
+                    const langMap = {
+                        js: 'javascript',
+                        ts: 'typescript',
+                        json: 'json',
+                        md: 'markdown',
+                        html: 'html',
+                        css: 'css'
+                    };
+                    const lang = langMap[ext] || 'plaintext';
+
+                    monaco.editor.setModelLanguage(window.editor.getModel(), lang);
+                    window.editor.setValue(contents);
+
+                    // Update tab
+                    document.getElementById('editorTabs').innerHTML = `
+                        <div class="editor-tab active">
+                            <span>📄</span> ${path.split('/').pop()} <span class="editor-tab-close">×</span>
+                        </div>
+                    `;
+                }
+            } catch (e) {
+                log('error', 'Cannot open: ' + e.message);
+            }
+        }
+
+        // Update packages list
+        async function updatePackages() {
+            if (!webcontainer) return;
+
+            try {
+                const pkg = await webcontainer.fs.readFile('/package.json', 'utf-8');
+                const json = JSON.parse(pkg);
+                const deps = { ...json.dependencies, ...json.devDependencies };
+
+                const list = document.getElementById('packageList');
+                const container = document.getElementById('packages');
+
+                if (Object.keys(deps).length > 0) {
+                    container.style.display = 'block';
+                    list.innerHTML = Object.entries(deps).map(([name, version]) => `
+                        <div class="package">
+                            <span class="package-name">${name}</span>
+                            <span class="package-version">${version}</span>
+                        </div>
+                    `).join('');
+                }
+            } catch (e) {}
+        }
+
+        // Button handlers
+        window.clearTerminal = () => {
+            terminalEl.innerHTML = '';
+            setupTerminalInput();
+        };
+
+        window.runNpmInstall = () => runCommand('npm install');
+
+        window.installClaudeCode = async () => {
+            log('info', '📦 Installing Claude Code CLI...');
+            log('warn', 'Note: This installs the npm package. Full functionality requires auth.');
+            await runCommand('npm install @anthropic-ai/sdk');
+        };
+
+        window.showEditor = () => {
+            document.getElementById('editor').style.display = 'block';
+            document.getElementById('preview').classList.remove('show');
+        };
+
+        window.showPreview = () => {
+            document.getElementById('editor').style.display = 'none';
+            document.getElementById('preview').classList.add('show');
+        };
+
+        // Initialize Monaco
+        require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
+
+        require(['vs/editor/editor.main'], function() {
+            window.editor = monaco.editor.create(document.getElementById('editor'), {
+                value: JSON.stringify({
+                    name: "claude-code-env",
+                    version: "1.0.0",
+                    description: "WebContainer environment for Claude Code",
+                    type: "module",
+                    scripts: {
+                        start: "node index.js",
+                        dev: "node --watch index.js"
+                    },
+                    dependencies: {}
+                }, null, 2),
+                language: 'json',
+                theme: 'vs-dark',
+                automaticLayout: true,
+                minimap: { enabled: false },
+                fontSize: 13,
+                lineNumbers: 'on',
+                scrollBeyondLastLine: false
+            });
+
+            // Save on Ctrl+S
+            window.editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, async () => {
+                if (webcontainer && currentFile) {
+                    const content = window.editor.getValue();
+                    await webcontainer.fs.writeFile(currentFile, content);
+                    log('success', '✓ Saved ' + currentFile);
+                }
+            });
+        });
+
+        // Start
+        init();
+    </script>
+</body>
+</html>

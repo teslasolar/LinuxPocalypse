@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Code Simulator - VS Code Experience</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{background:#1e1e1e;font-family:'Segoe UI',sans-serif;color:#ccc;overflow:hidden;height:100vh}
+
+        /* VS Code Layout */
+        .vscode{display:flex;height:100vh;flex-direction:column}
+        .titlebar{height:30px;background:#3c3c3c;display:flex;align-items:center;padding:0 10px;font-size:12px}
+        .titlebar .title{flex:1;text-align:center;color:#999}
+        .window-controls{display:flex;gap:8px}
+        .window-controls span{width:12px;height:12px;border-radius:50%;cursor:pointer}
+        .ctrl-close{background:#ff5f56}
+        .ctrl-min{background:#ffbd2e}
+        .ctrl-max{background:#27ca40}
+
+        .main{display:flex;flex:1;overflow:hidden}
+
+        /* Activity Bar */
+        .activitybar{width:48px;background:#333;display:flex;flex-direction:column;align-items:center;padding-top:10px}
+        .activity-icon{width:48px;height:48px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#888;font-size:22px}
+        .activity-icon:hover,.activity-icon.active{color:#fff;border-left:2px solid #007acc}
+        .activity-icon.active{background:#1e1e1e}
+
+        /* Sidebar */
+        .sidebar{width:300px;background:#252526;border-right:1px solid #1e1e1e;display:flex;flex-direction:column}
+        .sidebar-header{padding:10px;font-size:11px;text-transform:uppercase;color:#888;border-bottom:1px solid #1e1e1e}
+        .sidebar-content{flex:1;overflow-y:auto;padding:5px}
+
+        /* Extensions Panel */
+        .search-box{background:#3c3c3c;border:none;padding:8px;color:#fff;width:100%;margin-bottom:10px;border-radius:2px}
+        .extension{display:flex;padding:10px;cursor:pointer;border-radius:4px;margin-bottom:5px}
+        .extension:hover{background:#2a2d2e}
+        .extension.installed{border:1px solid #007acc}
+        .ext-icon{width:50px;height:50px;background:#007acc;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:24px;margin-right:10px}
+        .ext-icon.claude{background:linear-gradient(135deg,#d97706,#f59e0b)}
+        .ext-info{flex:1}
+        .ext-name{font-weight:600;color:#fff;margin-bottom:2px}
+        .ext-author{font-size:11px;color:#888}
+        .ext-desc{font-size:12px;color:#aaa;margin-top:4px}
+        .ext-stats{font-size:10px;color:#666;margin-top:5px}
+
+        /* Editor Area */
+        .editor-area{flex:1;display:flex;flex-direction:column}
+        .tabs{height:35px;background:#252526;display:flex;align-items:center}
+        .tab{padding:8px 20px;background:#1e1e1e;color:#888;font-size:13px;border-right:1px solid #252526;cursor:pointer;display:flex;align-items:center;gap:5px}
+        .tab.active{color:#fff;background:#1e1e1e;border-top:1px solid #007acc}
+        .tab-close{font-size:14px;opacity:0}
+        .tab:hover .tab-close{opacity:1}
+
+        #editor{flex:1}
+
+        /* Status Bar */
+        .statusbar{height:22px;background:#007acc;display:flex;align-items:center;padding:0 10px;font-size:11px}
+        .statusbar-left,.statusbar-right{display:flex;gap:15px}
+        .statusbar-left{flex:1}
+        .status-item{cursor:pointer}
+        .status-item:hover{background:rgba(255,255,255,0.1);padding:0 5px}
+
+        /* Modal */
+        .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:none;align-items:center;justify-content:center;z-index:1000}
+        .modal-overlay.show{display:flex}
+        .modal{background:#252526;border:1px solid #007acc;border-radius:8px;width:500px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,0.5)}
+        .modal-header{padding:15px 20px;background:#1e1e1e;border-bottom:1px solid #333;display:flex;align-items:center;gap:10px}
+        .modal-header h2{font-size:16px;font-weight:500;color:#fff}
+        .modal-body{padding:20px}
+        .modal-footer{padding:15px 20px;background:#1e1e1e;border-top:1px solid #333;display:flex;justify-content:flex-end;gap:10px}
+
+        .btn{padding:8px 16px;border:none;border-radius:4px;cursor:pointer;font-size:13px}
+        .btn-primary{background:#007acc;color:#fff}
+        .btn-primary:hover{background:#005a9e}
+        .btn-secondary{background:#3c3c3c;color:#ccc}
+        .btn-secondary:hover{background:#4c4c4c}
+
+        /* Auth Flow */
+        .auth-step{margin:15px 0;padding:15px;background:#1e1e1e;border-radius:4px}
+        .auth-step h3{font-size:14px;color:#fff;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+        .auth-step p{font-size:12px;color:#aaa;line-height:1.6}
+        .auth-link{color:#3794ff;text-decoration:none;word-break:break-all}
+        .auth-link:hover{text-decoration:underline}
+        .step-number{width:24px;height:24px;background:#007acc;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px}
+        .step-check{color:#4ec9b0}
+
+        .loading{display:inline-block;width:16px;height:16px;border:2px solid #333;border-top-color:#007acc;border-radius:50%;animation:spin 1s linear infinite}
+        @keyframes spin{to{transform:rotate(360deg)}}
+
+        /* Terminal */
+        .terminal{background:#1e1e1e;border-top:1px solid #333;height:200px;display:none;flex-direction:column}
+        .terminal.show{display:flex}
+        .terminal-header{padding:5px 10px;background:#252526;font-size:11px;display:flex;align-items:center;gap:10px}
+        .terminal-tabs{display:flex;gap:5px}
+        .terminal-tab{padding:3px 10px;background:#1e1e1e;border-radius:3px 3px 0 0;font-size:11px;cursor:pointer}
+        .terminal-tab.active{background:#333}
+        .terminal-content{flex:1;padding:10px;font-family:'Cascadia Code','Fira Code',monospace;font-size:12px;overflow-y:auto}
+        .terminal-line{margin:2px 0}
+        .terminal-prompt{color:#4ec9b0}
+        .terminal-cmd{color:#dcdcaa}
+        .terminal-output{color:#9cdcfe}
+        .terminal-success{color:#4ec9b0}
+        .terminal-error{color:#f14c4c}
+
+        /* Notification */
+        .notification{position:fixed;bottom:40px;right:20px;background:#252526;border:1px solid #007acc;border-radius:4px;padding:15px;width:350px;display:none;box-shadow:0 5px 20px rgba(0,0,0,0.3);z-index:500}
+        .notification.show{display:block;animation:slideIn 0.3s}
+        @keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+        .notification-title{font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+        .notification-body{font-size:12px;color:#aaa}
+        .notification-actions{margin-top:10px;display:flex;gap:10px}
+    </style>
+</head>
+<body>
+    <div class="vscode">
+        <!-- Title Bar -->
+        <div class="titlebar">
+            <div class="window-controls">
+                <span class="ctrl-close"></span>
+                <span class="ctrl-min"></span>
+                <span class="ctrl-max"></span>
+            </div>
+            <div class="title">Claude Code Simulator - Visual Studio Code</div>
+        </div>
+
+        <div class="main">
+            <!-- Activity Bar -->
+            <div class="activitybar">
+                <div class="activity-icon" title="Explorer">📁</div>
+                <div class="activity-icon" title="Search">🔍</div>
+                <div class="activity-icon" title="Source Control">🔀</div>
+                <div class="activity-icon" title="Run & Debug">▶️</div>
+                <div class="activity-icon active" title="Extensions">🧩</div>
+                <div class="activity-icon" title="Claude" id="claudeActivity" style="display:none">🤖</div>
+            </div>
+
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <div class="sidebar-header">Extensions: Marketplace</div>
+                <div class="sidebar-content">
+                    <input type="text" class="search-box" placeholder="Search Extensions in Marketplace" value="claude">
+
+                    <div class="extension" id="claudeExt" onclick="showInstallModal()">
+                        <div class="ext-icon claude">🤖</div>
+                        <div class="ext-info">
+                            <div class="ext-name">Claude Code</div>
+                            <div class="ext-author">Anthropic</div>
+                            <div class="ext-desc">AI-powered coding assistant by Anthropic</div>
+                            <div class="ext-stats">⭐ 4.9 | 2.1M downloads | Verified Publisher</div>
+                        </div>
+                    </div>
+
+                    <div class="extension">
+                        <div class="ext-icon" style="background:#6b5b95">🐍</div>
+                        <div class="ext-info">
+                            <div class="ext-name">Python</div>
+                            <div class="ext-author">Microsoft</div>
+                            <div class="ext-desc">IntelliSense, linting, debugging...</div>
+                            <div class="ext-stats">⭐ 4.8 | 98M downloads</div>
+                        </div>
+                    </div>
+
+                    <div class="extension">
+                        <div class="ext-icon" style="background:#f7df1e;color:#000">JS</div>
+                        <div class="ext-info">
+                            <div class="ext-name">ESLint</div>
+                            <div class="ext-author">Microsoft</div>
+                            <div class="ext-desc">Integrates ESLint JavaScript...</div>
+                            <div class="ext-stats">⭐ 4.7 | 32M downloads</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Editor Area -->
+            <div class="editor-area">
+                <div class="tabs">
+                    <div class="tab active">
+                        <span>📄</span> welcome.md <span class="tab-close">×</span>
+                    </div>
+                </div>
+                <div id="editor"></div>
+            </div>
+        </div>
+
+        <!-- Terminal -->
+        <div class="terminal" id="terminal">
+            <div class="terminal-header">
+                <div class="terminal-tabs">
+                    <div class="terminal-tab active">TERMINAL</div>
+                    <div class="terminal-tab">OUTPUT</div>
+                    <div class="terminal-tab">PROBLEMS</div>
+                </div>
+            </div>
+            <div class="terminal-content" id="terminalContent"></div>
+        </div>
+
+        <!-- Status Bar -->
+        <div class="statusbar">
+            <div class="statusbar-left">
+                <span class="status-item">🔀 main</span>
+                <span class="status-item">⚡ 0 errors, 0 warnings</span>
+            </div>
+            <div class="statusbar-right">
+                <span class="status-item" id="claudeStatus" style="display:none">🤖 Claude Code Active</span>
+                <span class="status-item">UTF-8</span>
+                <span class="status-item">JavaScript</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Install Modal -->
+    <div class="modal-overlay" id="installModal">
+        <div class="modal">
+            <div class="modal-header">
+                <span style="font-size:28px">🤖</span>
+                <h2>Claude Code</h2>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom:15px">Anthropic's AI-powered coding assistant. Write, debug, and understand code faster with Claude.</p>
+
+                <div style="display:flex;gap:20px;margin-bottom:15px">
+                    <div><strong>Publisher:</strong> Anthropic (Verified)</div>
+                    <div><strong>Version:</strong> 1.0.38</div>
+                </div>
+
+                <div style="background:#1e1e1e;padding:10px;border-radius:4px;font-size:12px">
+                    <div style="color:#4ec9b0;margin-bottom:5px">Features:</div>
+                    <ul style="margin-left:20px;color:#aaa">
+                        <li>Natural language code generation</li>
+                        <li>Intelligent code completion</li>
+                        <li>Code explanation and documentation</li>
+                        <li>Bug detection and fixes</li>
+                        <li>Multi-file context understanding</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="startInstall()">Install</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Auth Modal -->
+    <div class="modal-overlay" id="authModal">
+        <div class="modal">
+            <div class="modal-header">
+                <span style="font-size:28px">🔐</span>
+                <h2>Authorize Claude Code</h2>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom:15px;color:#aaa">To use Claude Code, you need to authorize with your Anthropic account.</p>
+
+                <div class="auth-step" id="step1">
+                    <h3><span class="step-number">1</span> Open Authorization Page</h3>
+                    <p>Click the link below to open the authorization page in your browser:</p>
+                    <p style="margin-top:10px">
+                        <a href="#" class="auth-link" onclick="simulateAuthClick(event)">https://console.anthropic.com/claude-code/authorize?session=sim_xxxx</a>
+                    </p>
+                </div>
+
+                <div class="auth-step" id="step2" style="opacity:0.5">
+                    <h3><span class="step-number">2</span> Sign In to Anthropic</h3>
+                    <p>Sign in with your Anthropic account or create a new one. You'll need an active Claude subscription.</p>
+                </div>
+
+                <div class="auth-step" id="step3" style="opacity:0.5">
+                    <h3><span class="step-number">3</span> Authorize Extension</h3>
+                    <p>Click "Authorize" to grant Claude Code access to your account.</p>
+                </div>
+
+                <div id="authStatus" style="text-align:center;padding:15px;display:none">
+                    <div class="loading"></div>
+                    <p style="margin-top:10px;color:#aaa">Waiting for authorization...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeAuthModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification -->
+    <div class="notification" id="notification">
+        <div class="notification-title">
+            <span>🤖</span> Claude Code
+        </div>
+        <div class="notification-body" id="notificationBody"></div>
+        <div class="notification-actions" id="notificationActions"></div>
+    </div>
+
+    <!-- Monaco Editor -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+    <script>
+        // Initialize Monaco Editor
+        require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
+
+        require(['vs/editor/editor.main'], function() {
+            window.editor = monaco.editor.create(document.getElementById('editor'), {
+                value: `# Welcome to Claude Code Simulator! 🤖
+
+This demo simulates the VS Code extension installation experience for Claude Code.
+
+## Getting Started
+
+1. Click on the **Claude Code** extension in the sidebar
+2. Click **Install** to begin the installation
+3. Follow the authorization flow to connect your account
+
+## Features Demonstrated
+
+- Monaco Editor (the engine behind VS Code)
+- Extension installation flow
+- OAuth-style authorization simulation
+- Terminal output simulation
+- VS Code UI components
+
+## Note
+
+This is a simulation for educational purposes. It demonstrates how
+the Claude Code extension installation and authorization flow works
+in a browser-based VS Code environment.
+
+\`\`\`javascript
+// Example code that Claude could help with
+function fibonacci(n) {
+    if (n <= 1) return n;
+    return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+// Claude could optimize this to:
+function fibonacciOptimized(n) {
+    const memo = [0, 1];
+    for (let i = 2; i <= n; i++) {
+        memo[i] = memo[i - 1] + memo[i - 2];
+    }
+    return memo[n];
+}
+\`\`\`
+
+Happy coding! 🚀
+`,
+                language: 'markdown',
+                theme: 'vs-dark',
+                automaticLayout: true,
+                minimap: { enabled: true },
+                fontSize: 14,
+                lineNumbers: 'on',
+                scrollBeyondLastLine: false,
+                wordWrap: 'on'
+            });
+        });
+
+        // Terminal simulation
+        const terminalContent = document.getElementById('terminalContent');
+        let terminalLines = [];
+
+        function addTerminalLine(type, text) {
+            const line = document.createElement('div');
+            line.className = 'terminal-line';
+
+            if (type === 'prompt') {
+                line.innerHTML = `<span class="terminal-prompt">❯</span> <span class="terminal-cmd">${text}</span>`;
+            } else if (type === 'output') {
+                line.innerHTML = `<span class="terminal-output">${text}</span>`;
+            } else if (type === 'success') {
+                line.innerHTML = `<span class="terminal-success">${text}</span>`;
+            } else if (type === 'error') {
+                line.innerHTML = `<span class="terminal-error">${text}</span>`;
+            }
+
+            terminalContent.appendChild(line);
+            terminalContent.scrollTop = terminalContent.scrollHeight;
+        }
+
+        // Modal functions
+        function showInstallModal() {
+            document.getElementById('installModal').classList.add('show');
+        }
+
+        function closeModal() {
+            document.getElementById('installModal').classList.remove('show');
+        }
+
+        function closeAuthModal() {
+            document.getElementById('authModal').classList.remove('show');
+        }
+
+        // Installation simulation
+        async function startInstall() {
+            closeModal();
+
+            // Show terminal
+            document.getElementById('terminal').classList.add('show');
+
+            // Simulate installation
+            addTerminalLine('prompt', 'Installing extension: claude-code@1.0.38');
+            await delay(500);
+            addTerminalLine('output', 'Downloading Claude Code...');
+            await delay(800);
+            addTerminalLine('output', 'Verifying package integrity...');
+            await delay(600);
+            addTerminalLine('output', 'Installing dependencies...');
+            await delay(700);
+            addTerminalLine('output', '  - @anthropic/sdk@1.0.0');
+            await delay(300);
+            addTerminalLine('output', '  - vscode-languageclient@8.1.0');
+            await delay(300);
+            addTerminalLine('success', '✓ Claude Code installed successfully!');
+            await delay(500);
+
+            // Mark extension as installed
+            document.getElementById('claudeExt').classList.add('installed');
+
+            // Show auth notification
+            showNotification(
+                'Claude Code requires authorization to connect to your Anthropic account.',
+                [
+                    { text: 'Authorize', primary: true, action: showAuthFlow },
+                    { text: 'Later', primary: false, action: hideNotification }
+                ]
+            );
+        }
+
+        function showNotification(body, actions) {
+            document.getElementById('notificationBody').textContent = body;
+            const actionsDiv = document.getElementById('notificationActions');
+            actionsDiv.innerHTML = '';
+
+            actions.forEach(action => {
+                const btn = document.createElement('button');
+                btn.className = action.primary ? 'btn btn-primary' : 'btn btn-secondary';
+                btn.textContent = action.text;
+                btn.onclick = action.action;
+                actionsDiv.appendChild(btn);
+            });
+
+            document.getElementById('notification').classList.add('show');
+        }
+
+        function hideNotification() {
+            document.getElementById('notification').classList.remove('show');
+        }
+
+        async function showAuthFlow() {
+            hideNotification();
+            document.getElementById('authModal').classList.add('show');
+        }
+
+        async function simulateAuthClick(e) {
+            e.preventDefault();
+
+            // Highlight step 1 as complete
+            document.getElementById('step1').querySelector('.step-number').innerHTML = '<span class="step-check">✓</span>';
+            document.getElementById('step2').style.opacity = '1';
+
+            await delay(1500);
+
+            // Simulate step 2 completing
+            document.getElementById('step2').querySelector('.step-number').innerHTML = '<span class="step-check">✓</span>';
+            document.getElementById('step3').style.opacity = '1';
+
+            await delay(1500);
+
+            // Simulate step 3 completing
+            document.getElementById('step3').querySelector('.step-number').innerHTML = '<span class="step-check">✓</span>';
+
+            // Show waiting status
+            document.getElementById('authStatus').style.display = 'block';
+
+            await delay(2000);
+
+            // Complete authorization
+            document.getElementById('authStatus').innerHTML = '<span class="step-check" style="font-size:32px">✓</span><p style="margin-top:10px;color:#4ec9b0">Authorization successful!</p>';
+
+            await delay(1500);
+            closeAuthModal();
+
+            // Activate Claude Code
+            activateClaudeCode();
+        }
+
+        async function activateClaudeCode() {
+            addTerminalLine('prompt', 'claude-code activate');
+            await delay(500);
+            addTerminalLine('output', 'Connecting to Anthropic API...');
+            await delay(800);
+            addTerminalLine('success', '✓ Connected as user@example.com');
+            await delay(400);
+            addTerminalLine('output', 'Loading Claude model: claude-3-opus...');
+            await delay(600);
+            addTerminalLine('success', '✓ Claude Code is ready!');
+
+            // Show Claude in activity bar and status
+            document.getElementById('claudeActivity').style.display = 'flex';
+            document.getElementById('claudeStatus').style.display = 'inline';
+
+            // Show success notification
+            showNotification(
+                'Claude Code is now active! Press Ctrl+Shift+C to open the Claude panel, or highlight code and ask Claude anything.',
+                [
+                    { text: 'Got it!', primary: true, action: hideNotification }
+                ]
+            );
+
+            // Add Claude suggestions to editor
+            await delay(2000);
+            if (window.editor) {
+                const model = window.editor.getModel();
+                const fullText = model.getValue();
+                const newText = fullText + `
+
+---
+
+## 🤖 Claude Code Active
+
+Claude is now watching your code! Try these:
+- Select code and press Ctrl+Shift+C to ask questions
+- Type \`// @claude\` followed by a request
+- Use the Claude panel in the sidebar
+
+*This concludes the Claude Code installation simulation.*
+`;
+                model.setValue(newText);
+            }
+        }
+
+        function delay(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+    </script>
+</body>
+</html>

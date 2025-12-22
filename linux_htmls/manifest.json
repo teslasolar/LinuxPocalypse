@@ -1,5 +1,21 @@
 [
   {
+    "file": "claude-code-env.html",
+    "title": "Claude Code Environment",
+    "description": "Real WebContainer-based Node.js environment with working terminal, npm, file system - can install actual packages and run code in-browser (requires COOP/COEP headers)",
+    "icon": "⚡",
+    "color": "#58a6ff",
+    "tags": ["WebContainer", "Node.js", "Terminal", "Real-Env"]
+  },
+  {
+    "file": "claude-code-sim.html",
+    "title": "Claude Code Simulator",
+    "description": "VS Code UI simulation with Monaco editor showing Claude Code extension installation flow, OAuth authorization demo, and terminal simulation",
+    "icon": "💻",
+    "color": "#007acc",
+    "tags": ["VSCode", "Monaco", "Demo", "Installation"]
+  },
+  {
     "file": "llm-genesis.html",
     "title": "LLM Genesis",
     "description": "3D LLM builder with 8 sub-agents (Tokenizer, Embedder, Attention, Transformer, Spatial, Trainer, Architect, Validator) that autonomously construct a transformer network, feed NLP tokens + 3D spatial data, and continuously train with real-time loss visualization",
