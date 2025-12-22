@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🌀 KONOMI v5 - φ-FDM + Gravity Check</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#080810;--p:#0e0e16;--b:#1a1a28;--g:#ffd700;--c:#0ff;--gr:#0f8;--f:#f63;--r:#f44;--d:#556}
+body{background:var(--bg);color:#aaa;font-family:'JetBrains Mono',monospace;height:100vh;overflow:hidden}
+.app{display:grid;grid-template-columns:240px 1fr;height:100vh}
+.pnl{background:var(--p);padding:12px;overflow-y:auto;border-right:1px solid var(--b);font-size:10px}
+.pt{color:var(--c);text-transform:uppercase;letter-spacing:1px;margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--b)}
+.pt:first-child{margin-top:0}
+.vp{position:relative;background:#030306}
+#cc{width:100%;height:100%}
+.ov{position:absolute;top:8px;left:8px;font-size:9px;color:var(--d);pointer-events:none}
+.ovr{position:absolute;top:8px;right:8px;font-size:9px;color:var(--d);text-align:right}
+.row{display:flex;justify-content:space-between;margin-bottom:4px}
+.lbl{color:var(--d)}.val{color:var(--c);font-weight:700}
+input[type=range]{width:100%;height:3px;background:var(--b);-webkit-appearance:none;margin:4px 0 8px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;background:var(--g);border-radius:50%;cursor:pointer}
+button{width:100%;padding:8px;background:linear-gradient(135deg,var(--g),#a80);border:none;border-radius:4px;color:#000;font-family:inherit;font-weight:700;font-size:10px;cursor:pointer;margin-bottom:5px}
+button:hover{filter:brightness(1.1)}
+button.s{background:var(--b);color:var(--c)}
+button.e{background:linear-gradient(135deg,var(--gr),#0a5)}
+button:disabled{opacity:.4;cursor:not-allowed}
+.sg{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.sb{background:rgba(0,0,0,.3);padding:6px;border-radius:3px;text-align:center}
+.sv{font-size:12px;font-weight:700;color:var(--g)}
+.sl{font-size:7px;color:var(--d);margin-top:2px}
+.warn{background:rgba(255,68,68,.1);border:1px solid var(--r);border-radius:4px;padding:6px;margin:8px 0;font-size:9px;color:var(--r)}
+.warn.ok{background:rgba(0,255,136,.1);border-color:var(--gr);color:var(--gr)}
+.log{background:#000;border-radius:3px;padding:4px;font-size:8px;max-height:80px;overflow-y:auto}
+.lg{margin-bottom:1px;opacity:.8}
+.lg.p{color:var(--g)}.lg.g{color:var(--gr)}.lg.w{color:var(--f)}.lg.e{color:var(--r)}
+.agents{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:8px}
+.ag{padding:3px 6px;background:var(--b);border-radius:3px;font-size:8px;border-left:2px solid var(--d)}
+.ag.a{border-color:var(--gr)}.ag.w{border-color:var(--f);animation:pulse .5s infinite}
+@keyframes pulse{50%{opacity:.5}}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="pnl">
+<!--═══ COMPRESSED DB ═══-->
+<script id="φDB" type="text/φ-compressed">
+C:φ=1.618033988749895,φ⁻¹=.618033988749895,√5=2.236067977,√2=1.414213562,√3=1.732050808
+M:σ=2.414,β=3.303,Cu=4.236,Ni=5.193
+A:walk|spiral|tower|blob|crystal|maze|wave|tree
+P:maxOH=45,maxBridge=10,minSupport=.3,gravity=9.8
+L:nozzle=.4,layer=.2,layers=30,scale=1
+</script>
+
+<div class="pt">🤖 Agents</div>
+<div class="agents" id="agents"></div>
+
+<div class="pt">⚠️ Print Check</div>
+<div class="warn" id="warn">Checking...</div>
+
+<div class="pt">🖨️ Settings</div>
+<div class="row"><span class="lbl">Layers</span><span class="val" id="vL">30</span></div>
+<input type="range" id="sL" min="10" max="80" value="30">
+<div class="row"><span class="lbl">Layer H</span><span class="val" id="vH">.2mm</span></div>
+<input type="range" id="sH" min=".1" max=".4" step=".05" value=".2">
+<div class="row"><span class="lbl">Overhang°</span><span class="val" id="vO">45°</span></div>
+<input type="range" id="sO" min="20" max="70" step="5" value="45">
+
+<div class="pt">▶ Generate</div>
+<button onclick="gen()">NEW RANDOM PRINT</button>
+<button class="s" onclick="regen()">↻ REGENERATE</button>
+
+<div class="pt">📊 Stats</div>
+<div class="sg">
+<div class="sb"><div class="sv" id="stV">0</div><div class="sl">Verts</div></div>
+<div class="sb"><div class="sv" id="stT">0</div><div class="sl">Tris</div></div>
+<div class="sb"><div class="sv" id="stH">0</div><div class="sl">Height</div></div>
+<div class="sb"><div class="sv" id="stO">0</div><div class="sl">Overhangs</div></div>
+</div>
+
+<div class="pt">💾 Export</div>
+<button class="e" id="bE" onclick="exp()" disabled>📥 STL</button>
+
+<div class="pt">📜 Log</div>
+<div class="log" id="log"></div>
+</div>
+
+<div class="vp">
+<div id="cc"></div>
+<div class="ov">
+<div>Verts: <span id="oV">0</span> | Tris: <span id="oT">0</span></div>
+<div>Overhangs: <span id="oO">0</span> | Max: <span id="oM">0</span>°</div>
+</div>
+<div class="ovr">
+<div>Seed: <span id="oS">φ</span></div>
+<div>Algo: <span id="oA">-</span></div>
+</div>
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+//═══════════════════════════════════════════════════════════════════
+// 🌀 KONOMI v5 - COMPRESSED φ-FDM WITH GRAVITY CHECK
+//═══════════════════════════════════════════════════════════════════
+
+// ─── AGENT: α (Decompress DB) ───
+const α={
+  db:{},
+  parse(s){
+    s.split('\n').forEach(l=>{
+      if(!l.trim())return;
+      const[k,v]=l.split(':');
+      if(k==='C'||k==='M')v.split(',').forEach(p=>{const[n,val]=p.split('=');this.db[n]=parseFloat(val)});
+      else if(k==='A')this.db.algos=v.split('|');
+      else if(k==='P'||k==='L')v.split(',').forEach(p=>{const[n,val]=p.split('=');this.db[n]=parseFloat(val)});
+    });
+    return this.db;
+  }
+};
+
+// ─── AGENT: β (Random) ───
+const β={
+  s:1.618,
+  init(seed){this.s=seed},
+  n(){this.s=(this.s*1.618033988749895*1e3)%1||.618;return this.s},
+  r(a,b){return a+this.n()*(b-a)},
+  i(a,b){return Math.floor(this.r(a,b+1))},
+  a(){return this.n()*Math.PI*2},
+  pick(arr){return arr[this.i(0,arr.length-1)]}
+};
+
+// ─── AGENT: γ (Path Gen) ───
+const γ={
+  gen(algo,L,lH,sc,db){
+    const layers=[];
+    for(let i=0;i<L;i++){
+      const y=i*lH,t=i/L;
+      layers.push({y,pts:this[algo](i,L,t,sc,db)});
+    }
+    return layers;
+  },
+  walk(i,L,t,sc){
+    const pts=[];let x=0,z=0,a=β.a();
+    for(let j=0;j<30+β.i(0,20);j++){
+      a+=(β.n()-.5)*Math.PI*.618;
+      const st=(1+β.n()*1.5)*sc;
+      x+=Math.cos(a)*st;z+=Math.sin(a)*st;
+      const r=Math.sqrt(x*x+z*z),mx=25*sc*(1-t*.4);
+      if(r>mx){x*=mx/r;z*=mx/r;a+=Math.PI}
+      pts.push({x,z});
+    }
+    return pts;
+  },
+  spiral(i,L,t,sc){
+    const pts=[],turns=2.5-t,mx=20*sc*(1-t*.5);
+    for(let a=0;a<Math.PI*2*turns;a+=.15)pts.push({x:Math.cos(a)*a/(Math.PI*2*turns)*mx,z:Math.sin(a)*a/(Math.PI*2*turns)*mx});
+    return pts;
+  },
+  tower(i,L,t,sc){
+    const pts=[],fibs=[3,5,8,13],sides=fibs[i%4],r=18*sc*(1-t*.5),rot=i*.618*.5;
+    for(let j=0;j<=sides;j++){const a=j/sides*Math.PI*2+rot;pts.push({x:Math.cos(a)*r,z:Math.sin(a)*r})}
+    return pts;
+  },
+  blob(i,L,t,sc){
+    const pts=[],br=18*sc;
+    for(let j=0;j<=40;j++){
+      const a=j/40*Math.PI*2;
+      const r=br*(1-t*.5)*(1+.25*Math.sin(a*1.618*3+i*.3)+.15*Math.sin(a*1.414*5+i*.2));
+      pts.push({x:Math.cos(a)*r,z:Math.sin(a)*r});
+    }
+    return pts;
+  },
+  crystal(i,L,t,sc){
+    const pts=[],r=15*sc*(1+t*.2),rot=i*.1;
+    for(let j=0;j<=6;j++){const a=j/6*Math.PI*2+rot;pts.push({x:Math.cos(a)*r,z:Math.sin(a)*r})}
+    const ir=r*.618;
+    for(let j=0;j<6;j++){const a=j/6*Math.PI*2+rot+Math.PI/6;pts.push({x:Math.cos(a)*ir,z:Math.sin(a)*ir});pts.push({x:0,z:0})}
+    return pts;
+  },
+  maze(i,L,t,sc){
+    const pts=[];let cx=0,cz=0;const cs=3.5*sc;
+    pts.push({x:0,z:0});
+    for(let s=0;s<35;s++){
+      const dirs=[[1,0],[-1,0],[0,1],[0,-1]],[dx,dz]=dirs[β.i(0,3)];
+      cx=Math.max(-6,Math.min(6,cx+dx));cz=Math.max(-6,Math.min(6,cz+dz));
+      pts.push({x:cx*cs,z:cz*cs});
+    }
+    return pts;
+  },
+  wave(i,L,t,sc){
+    const pts=[],m=[1.618,2.414,3.303][i%3];
+    for(let x=-20;x<=20;x+=1.5)pts.push({x:x*sc,z:12*Math.sin(x/(m*3))*(1-t*.3)*sc});
+    for(let x=20;x>=-20;x-=1.5)pts.push({x:x*sc,z:12*Math.sin(x/(m*3)+Math.PI)*(1-t*.3)*sc});
+    return pts;
+  },
+  tree(i,L,t,sc){
+    const pts=[],br=[{x:0,z:0,a:β.a(),l:12*sc}];
+    for(let b=0;b<br.length&&b<15;b++){
+      const B=br[b];
+      for(let s=0;s<B.l;s+=2)pts.push({x:B.x+Math.cos(B.a)*s,z:B.z+Math.sin(B.a)*s});
+      if(β.n()<.5-t*.2){
+        const ex=B.x+Math.cos(B.a)*B.l,ez=B.z+Math.sin(B.a)*B.l;
+        br.push({x:ex,z:ez,a:B.a+Math.PI/5,l:B.l*.618});
+        br.push({x:ex,z:ez,a:B.a-Math.PI/5,l:B.l*.618});
+      }
+    }
+    return pts;
+  }
+};
+
+// ─── AGENT: δ (Mesh Builder) ───
+const δ={
+  build(layers,nW,lH){
+    const v=[],idx=[];let vc=0;const prof=6;
+    for(const L of layers){
+      const y=L.y,pts=L.pts;if(pts.length<2)continue;
+      for(let i=0;i<pts.length;i++){
+        const p=pts[i],pp=pts[Math.max(0,i-1)],pn=pts[Math.min(pts.length-1,i+1)];
+        let dx=pn.x-pp.x,dz=pn.z-pp.z;const ln=Math.sqrt(dx*dx+dz*dz)||1;dx/=ln;dz/=ln;
+        const px=-dz,pz=dx,hw=nW/2;
+        for(let j=0;j<prof;j++){
+          const t=j/(prof-1);
+          let ox,oy;
+          if(t<.25){ox=-hw;oy=0}
+          else if(t<.5){ox=-hw;oy=(t-.25)/.25*lH}
+          else if(t<.75){const a=Math.PI*(1-(t-.5)/.25);ox=Math.cos(a)*hw;oy=lH+Math.sin(a)*lH*.2}
+          else{ox=hw;oy=lH*(1-(t-.75)/.25)}
+          v.push(p.x+px*ox,y+oy,p.z+pz*ox);
+        }
+        if(i>0){
+          const c=vc,pr=vc-prof;
+          for(let j=0;j<prof-1;j++){idx.push(pr+j,c+j,pr+j+1,pr+j+1,c+j,c+j+1)}
+          idx.push(pr+prof-1,c+prof-1,pr,pr,c+prof-1,c);
+        }
+        vc+=prof;
+      }
+    }
+    return{v,idx};
+  }
+};
+
+// ─── AGENT: ε (Gravity Check) ───
+const ε={
+  maxOH:45,
+  check(layers,lH){
+    let warnings=0,maxAngle=0;const issues=[];
+    for(let i=1;i<layers.length;i++){
+      const curr=layers[i].pts,prev=layers[i-1].pts;
+      for(const p of curr){
+        let minD=Infinity;
+        for(const pp of prev){
+          const d=Math.sqrt((p.x-pp.x)**2+(p.z-pp.z)**2);
+          if(d<minD)minD=d;
+        }
+        // Overhang angle: atan(horizontal_dist / layer_height)
+        const angle=Math.atan(minD/lH)*180/Math.PI;
+        if(angle>maxAngle)maxAngle=angle;
+        if(angle>this.maxOH){
+          warnings++;
+          if(issues.length<5)issues.push({layer:i,angle:angle.toFixed(1),x:p.x.toFixed(1),z:p.z.toFixed(1)});
+        }
+      }
+    }
+    return{ok:warnings===0,warnings,maxAngle:maxAngle.toFixed(1),issues};
+  }
+};
+
+// ─── AGENT: ζ (UI) ───
+const ζ={
+  log(m,t='g'){
+    const l=document.getElementById('log'),d=document.createElement('div');
+    d.className=`lg ${t}`;d.textContent=m;l.appendChild(d);l.scrollTop=l.scrollHeight;
+  },
+  warn(r){
+    const w=document.getElementById('warn');
+    if(r.ok){w.className='warn ok';w.innerHTML=`✓ Printable! Max overhang: ${r.maxAngle}°`}
+    else{w.className='warn';w.innerHTML=`⚠ ${r.warnings} overhangs exceed ${ε.maxOH}°<br>Max: ${r.maxAngle}° - May need supports!`}
+  },
+  stats(v,t,h,o){
+    document.getElementById('stV').textContent=v;document.getElementById('stT').textContent=t;
+    document.getElementById('stH').textContent=h+'mm';document.getElementById('stO').textContent=o;
+    document.getElementById('oV').textContent=v;document.getElementById('oT').textContent=t;
+    document.getElementById('oO').textContent=o;document.getElementById('oM').textContent=ε.maxOH;
+  },
+  agents(list){
+    const c=document.getElementById('agents');c.innerHTML='';
+    list.forEach(a=>{const d=document.createElement('div');d.className=`ag ${a.s}`;d.textContent=a.n;c.appendChild(d)});
+  }
+};
+
+//═══════════════════════════════════════════════════════════════════
+// THREE.JS
+//═══════════════════════════════════════════════════════════════════
+let scene,cam,ren,mesh;
+
+function initGL(){
+  const c=document.getElementById('cc');
+  scene=new THREE.Scene();scene.background=new THREE.Color(0x030306);
+  cam=new THREE.PerspectiveCamera(45,c.clientWidth/c.clientHeight,.1,500);
+  cam.position.set(50,35,50);cam.lookAt(0,8,0);
+  ren=new THREE.WebGLRenderer({antialias:true});
+  ren.setSize(c.clientWidth,c.clientHeight);ren.setPixelRatio(Math.min(devicePixelRatio,2));
+  c.appendChild(ren.domElement);
+  scene.add(new THREE.AmbientLight(0x404050,.6));
+  const sun=new THREE.DirectionalLight(0xffffff,.8);sun.position.set(30,50,30);scene.add(sun);
+  // Plate
+  const plate=new THREE.Mesh(new THREE.BoxGeometry(60,1,60),new THREE.MeshStandardMaterial({color:0x151520}));
+  plate.position.y=-.5;scene.add(plate);
+  scene.add(new THREE.GridHelper(60,12,0x333,0x222));
+  // Controls
+  let drag=false,px=0,py=0,sp={t:Math.PI/4,p:Math.PI/3,r:80};
+  const el=ren.domElement;
+  el.onmousedown=e=>{drag=true;px=e.clientX;py=e.clientY};
+  el.onmouseup=el.onmouseleave=()=>drag=false;
+  el.onmousemove=e=>{if(!drag)return;sp.t-=(e.clientX-px)*.01;sp.p=Math.max(.2,Math.min(2.9,sp.p+(e.clientY-py)*.01));px=e.clientX;py=e.clientY;upCam()};
+  el.onwheel=e=>{sp.r=Math.max(20,Math.min(150,sp.r+e.deltaY*.08));upCam();e.preventDefault()};
+  function upCam(){cam.position.set(sp.r*Math.sin(sp.p)*Math.cos(sp.t),sp.r*Math.cos(sp.p),sp.r*Math.sin(sp.p)*Math.sin(sp.t));cam.lookAt(0,8,0)}
+  upCam();
+  window.onresize=()=>{cam.aspect=c.clientWidth/c.clientHeight;cam.updateProjectionMatrix();ren.setSize(c.clientWidth,c.clientHeight)};
+  (function anim(){requestAnimationFrame(anim);ren.render(scene,cam)})();
+}
+
+function setMesh(v,idx,issues){
+  if(mesh){scene.remove(mesh);mesh.geometry.dispose();mesh.material.dispose()}
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(v,3));
+  g.setIndex(idx);g.computeVertexNormals();
+  // Color overhangs red
+  const colors=new Float32Array(v.length);
+  for(let i=0;i<v.length;i+=3){colors[i]=1;colors[i+1]=.42;colors[i+2]=.21}// Orange base
+  g.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+  const m=new THREE.MeshStandardMaterial({color:0xff6b35,metalness:.1,roughness:.5,side:THREE.DoubleSide,vertexColors:false});
+  mesh=new THREE.Mesh(g,m);scene.add(mesh);
+
+  // Add warning markers for bad overhangs
+  issues.forEach(is=>{
+    const marker=new THREE.Mesh(
+      new THREE.SphereGeometry(.5,8,8),
+      new THREE.MeshBasicMaterial({color:0xff0000})
+    );
+    marker.position.set(parseFloat(is.x),is.layer*.2+.3,parseFloat(is.z));
+    scene.add(marker);
+  });
+}
+
+//═══════════════════════════════════════════════════════════════════
+// MAIN
+//═══════════════════════════════════════════════════════════════════
+let DB,curSeed,curAlgo;
+
+function init(){
+  // Decompress DB
+  const raw=document.getElementById('φDB').textContent;
+  DB=α.parse(raw);
+  ζ.log('α: DB decompressed','p');
+  ζ.agents([{n:'α:DB',s:'a'},{n:'β:RNG',s:''},{n:'γ:Path',s:''},{n:'δ:Mesh',s:''},{n:'ε:Gravity',s:''}]);
+
+  // Bind sliders
+  document.getElementById('sL').oninput=function(){document.getElementById('vL').textContent=this.value};
+  document.getElementById('sH').oninput=function(){document.getElementById('vH').textContent=this.value+'mm'};
+  document.getElementById('sO').oninput=function(){document.getElementById('vO').textContent=this.value+'°';ε.maxOH=parseInt(this.value)};
+
+  initGL();
+  gen(); // Auto-generate on load
+}
+
+function gen(){
+  curSeed=Math.pow(1.618,1+Math.random()*5);
+  curAlgo=β.pick(DB.algos);
+  document.getElementById('oS').textContent=curSeed.toFixed(4);
+  document.getElementById('oA').textContent=curAlgo;
+  runGen();
+}
+
+function regen(){runGen()}
+
+function runGen(){
+  const L=parseInt(document.getElementById('sL').value);
+  const lH=parseFloat(document.getElementById('sH').value);
+  const sc=1;
+
+  ζ.agents([{n:'α:DB',s:'a'},{n:'β:RNG',s:'w'},{n:'γ:Path',s:''},{n:'δ:Mesh',s:''},{n:'ε:Gravity',s:''}]);
+  β.init(curSeed);
+  ζ.log(`β: Seed=${curSeed.toFixed(4)}`,'p');
+
+  setTimeout(()=>{
+    ζ.agents([{n:'α:DB',s:'a'},{n:'β:RNG',s:'a'},{n:'γ:Path',s:'w'},{n:'δ:Mesh',s:''},{n:'ε:Gravity',s:''}]);
+    ζ.log(`γ: Generating ${curAlgo}...`,'g');
+
+    const layers=γ.gen(curAlgo,L,lH,sc,DB);
+
+    setTimeout(()=>{
+      ζ.agents([{n:'α:DB',s:'a'},{n:'β:RNG',s:'a'},{n:'γ:Path',s:'a'},{n:'δ:Mesh',s:'w'},{n:'ε:Gravity',s:''}]);
+      ζ.log('δ: Building mesh...','g');
+
+      const{v,idx}=δ.build(layers,DB.nozzle||.4,lH);
+
+      setTimeout(()=>{
+        ζ.agents([{n:'α:DB',s:'a'},{n:'β:RNG',s:'a'},{n:'γ:Path',s:'a'},{n:'δ:Mesh',s:'a'},{n:'ε:Gravity',s:'w'}]);
+        ζ.log('ε: Checking overhangs...','g');
+
+        const check=ε.check(layers,lH);
+
+        setMesh(v,idx,check.issues||[]);
+        ζ.warn(check);
+        ζ.stats((v.length/3).toLocaleString(),(idx.length/3).toLocaleString(),(L*lH).toFixed(1),check.warnings);
+
+        if(check.ok)ζ.log('✓ Print OK!','g');
+        else ζ.log(`⚠ ${check.warnings} overhangs need support`,'w');
+
+        ζ.agents([{n:'α:DB',s:'a'},{n:'β:RNG',s:'a'},{n:'γ:Path',s:'a'},{n:'δ:Mesh',s:'a'},{n:'ε:Gravity',s:'a'}]);
+        document.getElementById('bE').disabled=false;
+      },50);
+    },50);
+  },50);
+}
+
+function exp(){
+  if(!mesh)return;
+  ζ.log('Exporting STL...','g');
+  const g=mesh.geometry,pos=g.getAttribute('position'),idx=g.getIndex();
+  const tc=idx?idx.count/3:pos.count/9;
+  const buf=new ArrayBuffer(84+tc*50),dv=new DataView(buf);
+  const hdr='KONOMI v5 PHI-FDM';
+  for(let i=0;i<80;i++)dv.setUint8(i,i<hdr.length?hdr.charCodeAt(i):0);
+  dv.setUint32(80,tc,true);
+  let o=84;
+  for(let i=0;i<tc;i++){
+    const i0=idx?idx.getX(i*3):i*3,i1=idx?idx.getX(i*3+1):i*3+1,i2=idx?idx.getX(i*3+2):i*3+2;
+    const v0=[pos.getX(i0),pos.getY(i0),pos.getZ(i0)];
+    const v1=[pos.getX(i1),pos.getY(i1),pos.getZ(i1)];
+    const v2=[pos.getX(i2),pos.getY(i2),pos.getZ(i2)];
+    const ax=v1[0]-v0[0],ay=v1[1]-v0[1],az=v1[2]-v0[2];
+    const bx=v2[0]-v0[0],by=v2[1]-v0[1],bz=v2[2]-v0[2];
+    let nx=ay*bz-az*by,ny=az*bx-ax*bz,nz=ax*by-ay*bx;
+    const nl=Math.sqrt(nx*nx+ny*ny+nz*nz)||1;nx/=nl;ny/=nl;nz/=nl;
+    dv.setFloat32(o,nx,true);o+=4;dv.setFloat32(o,ny,true);o+=4;dv.setFloat32(o,nz,true);o+=4;
+    for(const vx of[v0,v1,v2]){dv.setFloat32(o,vx[0],true);o+=4;dv.setFloat32(o,vx[1],true);o+=4;dv.setFloat32(o,vx[2],true);o+=4}
+    dv.setUint16(o,0,true);o+=2;
+  }
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([buf],{type:'application/octet-stream'}));
+  a.download=`konomi-v5-${Date.now()}.stl`;a.click();
+  ζ.log(`Exported ${tc} tris`,'p');
+}
+
+window.onload=init;
+</script>
+</body>
+</html>
