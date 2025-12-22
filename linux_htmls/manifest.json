@@ -168,6 +168,14 @@
     "tags": ["Vocals", "Formant", "Choir", "Lyrics"]
   },
   {
+    "file": "synth-wave-v4.html",
+    "title": "Synth Wave v4",
+    "description": "Organic theory engine with 7 modes, chord progressions (I-V-vi-IV, ii-V-I), sampled instruments (piano/guitar/strings/brass), humanized timing and swing",
+    "icon": "🎼",
+    "color": "#ff6600",
+    "tags": ["Theory", "Modes", "Organic", "Chords"]
+  },
+  {
     "file": "drone-sight-v5.html",
     "title": "Drone Sight v5",
     "description": "Swarm control with intuitive controls - left stick flies any direction, right stick/mouse for camera, triggers for up/down, swarm formation",

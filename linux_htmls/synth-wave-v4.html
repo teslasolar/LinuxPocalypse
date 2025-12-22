@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Synth Wave v4 - Organic Theory</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0510;overflow:hidden;font:11px monospace;color:#f90}
+#c{position:fixed;inset:0}
+.p{position:absolute;background:rgba(15,5,10,.95);border:1px solid #f60;border-radius:6px;padding:10px;z-index:10}
+button{background:linear-gradient(135deg,#c60,#840);color:#fff;border:1px solid #f60;padding:5px 10px;margin:2px;border-radius:4px;cursor:pointer;font-size:10px;transition:all .1s}
+button:hover{background:#f80;color:#000;transform:scale(1.05)}
+button.active{background:#0f8;color:#000;border-color:#0f8;box-shadow:0 0 10px #0f8}
+.row{display:flex;gap:5px;margin:4px 0;flex-wrap:wrap;align-items:center}
+.stat{background:#1a0808;border:1px solid #640;border-radius:4px;padding:5px 8px;text-align:center;min-width:50px}
+.val{font-size:13px;font-weight:bold}
+.lbl{font-size:8px;opacity:.7}
+input[type=range]{width:70px;accent-color:#f60}
+select{background:#1a0808;color:#f90;border:1px solid #640;padding:4px;border-radius:4px;font-size:10px}
+.agent{background:#200808;border:2px solid #630;border-radius:8px;padding:8px;margin:4px 0}
+.agent.active{border-color:#0c0;box-shadow:0 0 10px #0c04}
+.agent-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}
+.agent-name{font-weight:bold}
+.agent-status{font-size:9px;padding:2px 6px;border-radius:10px}
+.mode-btn{padding:4px 8px;font-size:10px;min-width:60px}
+.chord-prog{background:#100505;border:1px solid #420;border-radius:4px;padding:6px;margin:3px 0;font-size:11px;text-align:center}
+.chord{display:inline-block;padding:4px 8px;margin:2px;background:#300;border:1px solid #640;border-radius:4px}
+.chord.current{background:#f60;color:#000}
+.circle-fifth{display:grid;grid-template-columns:repeat(4,1fr);gap:3px}
+.key-btn{padding:6px;font-size:11px;text-align:center}
+.instrument{display:flex;align-items:center;gap:8px;padding:4px;background:#150505;border-radius:4px;margin:2px 0}
+.inst-icon{font-size:18px}
+.inst-vol{width:50px}
+#theory-display{background:#100505;border:1px solid #630;border-radius:4px;padding:8px;margin:5px 0;font-size:12px;color:#fc0}
+#visualizer{width:100%;height:50px;background:#0a0510;border-radius:4px;margin-top:5px}
+.scale-notes{display:flex;gap:2px;margin:5px 0}
+.scale-note{width:24px;height:24px;display:flex;align-items:center;justify-content:center;background:#200;border:1px solid #640;border-radius:3px;font-size:10px}
+.scale-note.root{background:#f60;color:#000}
+.scale-note.third{background:#c40}
+.scale-note.fifth{background:#a20}
+</style></head><body><canvas id="c"></canvas>
+
+<div class="p" style="top:8px;left:8px;width:230px">
+<div style="color:#f60;text-align:center;font-size:14px;margin-bottom:8px">🎸 SYNTH WAVE <span style="color:#0f8">v4</span></div>
+<div style="color:#fc0;text-align:center;font-size:10px;margin-bottom:8px">🎼 Organic Theory Engine</div>
+<div class="row">
+<div class="stat"><div class="val" id="bpm">110</div><div class="lbl">BPM</div></div>
+<div class="stat"><div class="val" id="bar">1</div><div class="lbl">Bar</div></div>
+<div class="stat"><div class="val" id="key-display">C</div><div class="lbl">Key</div></div>
+<div class="stat"><div class="val" id="mode-display">Ion</div><div class="lbl">Mode</div></div>
+</div>
+<div class="row">
+<button id="play-btn" onclick="S.togglePlay()">▶ PLAY</button>
+<button onclick="S.stop()">⏹ STOP</button>
+<button onclick="S.humanize=!S.humanize" id="human-btn">🎭 Human</button>
+</div>
+<div class="row">
+<span style="font-size:9px">BPM:</span>
+<input type="range" min="60" max="160" value="110" oninput="S.setBPM(this.value)">
+<span style="font-size:9px">Swing:</span>
+<input type="range" min="0" max="100" value="20" oninput="S.setSwing(this.value)">
+</div>
+<div id="theory-display">Scale: C D E F G A B</div>
+<div class="scale-notes" id="scale-notes"></div>
+<canvas id="visualizer"></canvas>
+</div>
+
+<div class="p" style="top:8px;left:250px;width:180px">
+<div style="color:#fc0;text-align:center;font-size:11px;margin-bottom:5px">🎹 KEY & MODE</div>
+<div class="circle-fifth">
+<button class="key-btn" onclick="S.setKey('C')">C</button>
+<button class="key-btn" onclick="S.setKey('G')">G</button>
+<button class="key-btn" onclick="S.setKey('D')">D</button>
+<button class="key-btn" onclick="S.setKey('A')">A</button>
+<button class="key-btn" onclick="S.setKey('E')">E</button>
+<button class="key-btn" onclick="S.setKey('B')">B</button>
+<button class="key-btn" onclick="S.setKey('F#')">F#</button>
+<button class="key-btn" onclick="S.setKey('Db')">Db</button>
+<button class="key-btn" onclick="S.setKey('Ab')">Ab</button>
+<button class="key-btn" onclick="S.setKey('Eb')">Eb</button>
+<button class="key-btn" onclick="S.setKey('Bb')">Bb</button>
+<button class="key-btn" onclick="S.setKey('F')">F</button>
+</div>
+<div style="margin-top:8px;font-size:10px;color:#f90;text-align:center">Modes:</div>
+<div class="row" style="justify-content:center">
+<button class="mode-btn" onclick="S.setMode('ionian')">Ionian</button>
+<button class="mode-btn" onclick="S.setMode('dorian')">Dorian</button>
+</div>
+<div class="row" style="justify-content:center">
+<button class="mode-btn" onclick="S.setMode('phrygian')">Phrygian</button>
+<button class="mode-btn" onclick="S.setMode('lydian')">Lydian</button>
+</div>
+<div class="row" style="justify-content:center">
+<button class="mode-btn" onclick="S.setMode('mixolydian')">Mixolyd</button>
+<button class="mode-btn" onclick="S.setMode('aeolian')">Aeolian</button>
+</div>
+<div class="row" style="justify-content:center">
+<button class="mode-btn" onclick="S.setMode('locrian')">Locrian</button>
+</div>
+</div>
+
+<div class="p" style="top:8px;right:8px;width:280px">
+<div style="color:#0f8;text-align:center;font-size:11px;margin-bottom:5px">🎵 CHORD PROGRESSIONS</div>
+
+<div class="chord-prog" id="prog-display">
+<span class="chord current">I</span>
+<span class="chord">IV</span>
+<span class="chord">V</span>
+<span class="chord">I</span>
+</div>
+
+<div class="row" style="justify-content:center">
+<button onclick="S.setProgression('pop')">Pop I-V-vi-IV</button>
+<button onclick="S.setProgression('jazz')">Jazz ii-V-I</button>
+</div>
+<div class="row" style="justify-content:center">
+<button onclick="S.setProgression('blues')">Blues I-IV-I-V</button>
+<button onclick="S.setProgression('sad')">Sad vi-IV-I-V</button>
+</div>
+<div class="row" style="justify-content:center">
+<button onclick="S.setProgression('epic')">Epic I-V-vi-iii-IV</button>
+<button onclick="S.setProgression('modal')">Modal i-VII-VI-VII</button>
+</div>
+
+<div style="margin-top:10px;color:#f90;font-size:11px;text-align:center">🎸 Sampled Instruments</div>
+
+<div class="instrument">
+<span class="inst-icon">🎹</span>
+<span>Piano</span>
+<input type="range" class="inst-vol" value="70" oninput="S.setVol('piano',this.value)">
+<button onclick="S.toggleInst('piano')" id="piano-btn" class="active">On</button>
+</div>
+<div class="instrument">
+<span class="inst-icon">🎸</span>
+<span>Guitar</span>
+<input type="range" class="inst-vol" value="60" oninput="S.setVol('guitar',this.value)">
+<button onclick="S.toggleInst('guitar')" id="guitar-btn">On</button>
+</div>
+<div class="instrument">
+<span class="inst-icon">🎻</span>
+<span>Strings</span>
+<input type="range" class="inst-vol" value="50" oninput="S.setVol('strings',this.value)">
+<button onclick="S.toggleInst('strings')" id="strings-btn">On</button>
+</div>
+<div class="instrument">
+<span class="inst-icon">🎺</span>
+<span>Brass</span>
+<input type="range" class="inst-vol" value="40" oninput="S.setVol('brass',this.value)">
+<button onclick="S.toggleInst('brass')" id="brass-btn">On</button>
+</div>
+<div class="instrument">
+<span class="inst-icon">🥁</span>
+<span>Drums</span>
+<input type="range" class="inst-vol" value="80" oninput="S.setVol('drums',this.value)">
+<button onclick="S.toggleInst('drums')" id="drums-btn" class="active">On</button>
+</div>
+</div>
+
+<div class="p" style="bottom:8px;left:8px;width:280px">
+<div style="color:#0ff;text-align:center;font-size:11px;margin-bottom:5px">🤖 THEORY AGENTS</div>
+
+<div class="agent active" id="agent-chord">
+<div class="agent-header">
+<span class="agent-name">🎹 Chord Agent</span>
+<span class="agent-status" style="background:#0a0;color:#0f0">ACTIVE</span>
+</div>
+<div class="row">
+<button onclick="S.agents.chord.toggle()">Toggle</button>
+<select onchange="S.agents.chord.setVoicing(this.value)">
+<option value="triad">Triads</option>
+<option value="seventh">7ths</option>
+<option value="extended">9ths/11ths</option>
+<option value="power">Power 5ths</option>
+</select>
+<select onchange="S.agents.chord.setInversion(this.value)">
+<option value="root">Root</option>
+<option value="first">1st Inv</option>
+<option value="second">2nd Inv</option>
+<option value="spread">Spread</option>
+</select>
+</div>
+</div>
+
+<div class="agent" id="agent-melody">
+<div class="agent-header">
+<span class="agent-name">🎵 Melody Agent</span>
+<span class="agent-status" style="background:#600;color:#f66">OFF</span>
+</div>
+<div class="row">
+<button onclick="S.agents.melody.toggle()">Toggle</button>
+<select onchange="S.agents.melody.setStyle(this.value)">
+<option value="stepwise">Stepwise</option>
+<option value="arpeggiate">Arpeggiate</option>
+<option value="leaps">Leaps</option>
+<option value="mixed">Mixed</option>
+</select>
+<span style="font-size:9px">Density:</span>
+<input type="range" min="1" max="8" value="4" style="width:40px" oninput="S.agents.melody.setDensity(this.value)">
+</div>
+</div>
+
+<div class="agent" id="agent-bass">
+<div class="agent-header">
+<span class="agent-name">🎸 Bass Agent</span>
+<span class="agent-status" style="background:#600;color:#f66">OFF</span>
+</div>
+<div class="row">
+<button onclick="S.agents.bass.toggle()">Toggle</button>
+<select onchange="S.agents.bass.setPattern(this.value)">
+<option value="root">Root Notes</option>
+<option value="walking">Walking</option>
+<option value="octave">Octave Jump</option>
+<option value="fifths">Root-Fifth</option>
+</select>
+</div>
+</div>
+
+<div class="agent" id="agent-arp">
+<div class="agent-header">
+<span class="agent-name">🔄 Arpeggio Agent</span>
+<span class="agent-status" style="background:#600;color:#f66">OFF</span>
+</div>
+<div class="row">
+<button onclick="S.agents.arp.toggle()">Toggle</button>
+<select onchange="S.agents.arp.setPattern(this.value)">
+<option value="up">Up</option>
+<option value="down">Down</option>
+<option value="updown">Up-Down</option>
+<option value="random">Random</option>
+</select>
+<select onchange="S.agents.arp.setRate(this.value)">
+<option value="8n">8th</option>
+<option value="16n">16th</option>
+<option value="8t">Triplet</option>
+</select>
+</div>
+</div>
+</div>
+
+<script>
+// Music Theory Constants
+const NOTES=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const NOTE_MAP={'C':0,'C#':1,'Db':1,'D':2,'D#':3,'Eb':3,'E':4,'F':5,'F#':6,'Gb':6,'G':7,'G#':8,'Ab':8,'A':9,'A#':10,'Bb':10,'B':11};
+
+// Mode intervals (semitones from root)
+const MODES={
+  ionian:[0,2,4,5,7,9,11],     // Major
+  dorian:[0,2,3,5,7,9,10],     // Minor with raised 6th
+  phrygian:[0,1,3,5,7,8,10],   // Minor with flat 2nd
+  lydian:[0,2,4,6,7,9,11],     // Major with raised 4th
+  mixolydian:[0,2,4,5,7,9,10], // Major with flat 7th
+  aeolian:[0,2,3,5,7,8,10],    // Natural minor
+  locrian:[0,1,3,5,6,8,10]     // Diminished
+};
+
+// Chord qualities for each scale degree (in major/ionian)
+const CHORD_QUALITIES={
+  ionian:['maj','min','min','maj','maj','min','dim'],
+  dorian:['min','min','maj','maj','min','dim','maj'],
+  phrygian:['min','maj','maj','min','dim','maj','min'],
+  lydian:['maj','maj','min','dim','maj','min','min'],
+  mixolydian:['maj','min','dim','maj','min','min','maj'],
+  aeolian:['min','dim','maj','min','min','maj','maj'],
+  locrian:['dim','maj','min','min','maj','maj','min']
+};
+
+// Common progressions (as scale degrees, 1-indexed)
+const PROGRESSIONS={
+  pop:[1,5,6,4],         // I-V-vi-IV (most popular)
+  jazz:[2,5,1],          // ii-V-I
+  blues:[1,4,1,5],       // I-IV-I-V
+  sad:[6,4,1,5],         // vi-IV-I-V
+  epic:[1,5,6,3,4],      // I-V-vi-iii-IV
+  modal:[1,7,6,7]        // i-VII-VI-VII (for minor modes)
+};
+
+const S={
+  ctx:null,
+  playing:false,
+  bpm:110,
+  swing:0.2,
+  bar:0,
+  beat:0,
+  step:0,
+  key:'C',
+  mode:'ionian',
+  progression:'pop',
+  progIndex:0,
+  humanize:true,
+
+  instruments:{
+    piano:{on:true,vol:0.7,synth:null},
+    guitar:{on:false,vol:0.6,synth:null},
+    strings:{on:false,vol:0.5,synth:null},
+    brass:{on:false,vol:0.4,synth:null},
+    drums:{on:true,vol:0.8,synth:null}
+  },
+
+  agents:{
+    chord:{active:true,voicing:'triad',inversion:'root'},
+    melody:{active:false,style:'stepwise',density:4,lastNote:null},
+    bass:{active:false,pattern:'root'},
+    arp:{active:false,pattern:'up',rate:'8n',index:0}
+  },
+
+  init(){
+    // Three.js scene
+    this.sc=new THREE.Scene();
+    this.ca=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.1,1000);
+    this.rn=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true});
+    this.rn.setSize(innerWidth,innerHeight);
+    this.rn.setClearColor(0x0a0510);
+    this.ca.position.set(0,5,20);
+    this.ca.lookAt(0,0,0);
+
+    // Lighting
+    this.sc.add(new THREE.AmbientLight(0x331100,.3));
+    const sun=new THREE.PointLight(0xff6600,.8,50);
+    sun.position.set(5,10,5);
+    this.sc.add(sun);
+
+    // Visualizer orbs
+    this.orbs=[];
+    for(let i=0;i<12;i++){
+      const orb=new THREE.Mesh(
+        new THREE.SphereGeometry(.5,16,16),
+        new THREE.MeshPhongMaterial({color:0xff6600,emissive:0x330000})
+      );
+      orb.position.set((i-5.5)*2,0,-5);
+      orb.userData={baseY:0,note:NOTES[i]};
+      this.sc.add(orb);
+      this.orbs.push(orb);
+    }
+
+    // Chord rings
+    this.chordRings=[];
+    for(let i=0;i<4;i++){
+      const ring=new THREE.Mesh(
+        new THREE.TorusGeometry(3+i*.5,.1,8,32),
+        new THREE.MeshBasicMaterial({color:0x440000,transparent:true,opacity:.3})
+      );
+      ring.position.set(0,0,-10);
+      ring.rotation.x=Math.PI/2;
+      this.sc.add(ring);
+      this.chordRings.push(ring);
+    }
+
+    this.initAudio();
+    this.updateTheoryDisplay();
+    this.animate();
+  },
+
+  initAudio(){
+    // Create organic synths using Tone.js
+    const reverb=new Tone.Reverb({decay:2,wet:.3}).toDestination();
+    const delay=new Tone.FeedbackDelay({delayTime:'8n',feedback:.2,wet:.15}).connect(reverb);
+
+    // Piano - warm, organic sound
+    this.instruments.piano.synth=new Tone.PolySynth(Tone.Synth,{
+      oscillator:{type:'sine'},
+      envelope:{attack:.02,decay:.3,sustain:.4,release:.8}
+    }).connect(delay);
+
+    // Guitar - plucky
+    this.instruments.guitar.synth=new Tone.PolySynth(Tone.Synth,{
+      oscillator:{type:'triangle'},
+      envelope:{attack:.005,decay:.2,sustain:.1,release:.5}
+    }).connect(delay);
+
+    // Strings - lush pads
+    this.instruments.strings.synth=new Tone.PolySynth(Tone.Synth,{
+      oscillator:{type:'sawtooth'},
+      envelope:{attack:.5,decay:.2,sustain:.8,release:1.5}
+    }).connect(reverb);
+    this.instruments.strings.synth.volume.value=-10;
+
+    // Brass - bold
+    this.instruments.brass.synth=new Tone.PolySynth(Tone.Synth,{
+      oscillator:{type:'square'},
+      envelope:{attack:.1,decay:.3,sustain:.6,release:.4}
+    }).connect(delay);
+
+    // Drums using membrane and noise
+    this.instruments.drums.synth={
+      kick:new Tone.MembraneSynth({
+        pitchDecay:.05,octaves:6,envelope:{attack:.001,decay:.3,sustain:0,release:.1}
+      }).toDestination(),
+      snare:new Tone.NoiseSynth({
+        noise:{type:'white'},envelope:{attack:.001,decay:.15,sustain:0,release:.1}
+      }).toDestination(),
+      hihat:new Tone.MetalSynth({
+        frequency:400,envelope:{attack:.001,decay:.05,release:.01},harmonicity:5.1,modulationIndex:32,resonance:4000,octaves:1.5
+      }).toDestination()
+    };
+    this.instruments.drums.synth.kick.volume.value=-5;
+    this.instruments.drums.synth.snare.volume.value=-10;
+    this.instruments.drums.synth.hihat.volume.value=-15;
+
+    // Melody synth
+    this.melodySynth=new Tone.Synth({
+      oscillator:{type:'sine'},
+      envelope:{attack:.05,decay:.2,sustain:.5,release:.3}
+    }).connect(delay);
+
+    // Bass synth
+    this.bassSynth=new Tone.MonoSynth({
+      oscillator:{type:'triangle'},
+      envelope:{attack:.02,decay:.1,sustain:.8,release:.2},
+      filterEnvelope:{attack:.02,decay:.2,sustain:.5,release:.3,baseFrequency:200,octaves:2}
+    }).toDestination();
+    this.bassSynth.volume.value=-5;
+
+    // Arp synth
+    this.arpSynth=new Tone.Synth({
+      oscillator:{type:'triangle'},
+      envelope:{attack:.01,decay:.1,sustain:.3,release:.2}
+    }).connect(delay);
+    this.arpSynth.volume.value=-8;
+  },
+
+  getScaleNotes(root,mode,octave=4){
+    const rootIndex=NOTE_MAP[root];
+    const intervals=MODES[mode];
+    return intervals.map(i=>{
+      const noteIndex=(rootIndex+i)%12;
+      return NOTES[noteIndex]+octave;
+    });
+  },
+
+  getChordNotes(root,quality,octave=4){
+    const rootIndex=NOTE_MAP[root];
+    let intervals;
+    switch(quality){
+      case'maj':intervals=[0,4,7];break;
+      case'min':intervals=[0,3,7];break;
+      case'dim':intervals=[0,3,6];break;
+      case'aug':intervals=[0,4,8];break;
+      case'maj7':intervals=[0,4,7,11];break;
+      case'min7':intervals=[0,3,7,10];break;
+      case'dom7':intervals=[0,4,7,10];break;
+      case'5':intervals=[0,7];break;// Power chord
+      default:intervals=[0,4,7];
+    }
+    return intervals.map(i=>{
+      const noteIndex=(rootIndex+i)%12;
+      const oct=octave+Math.floor((rootIndex+i)/12);
+      return NOTES[noteIndex]+oct;
+    });
+  },
+
+  getCurrentChord(){
+    const prog=PROGRESSIONS[this.progression];
+    const degree=prog[this.progIndex%prog.length]-1;// 0-indexed
+    const scaleNotes=this.getScaleNotes(this.key,this.mode);
+    const rootNote=scaleNotes[degree].replace(/\d/,'');
+    const qualities=CHORD_QUALITIES[this.mode];
+    let quality=qualities[degree];
+
+    // Upgrade to 7ths if needed
+    if(this.agents.chord.voicing==='seventh'){
+      if(quality==='maj')quality='maj7';
+      else if(quality==='min')quality='min7';
+      else if(quality==='dim')quality='min7';// simplified
+    }else if(this.agents.chord.voicing==='power'){
+      quality='5';
+    }
+
+    return{root:rootNote,quality,degree};
+  },
+
+  playChord(chordInfo,duration='2n'){
+    let notes=this.getChordNotes(chordInfo.root,chordInfo.quality,4);
+
+    // Apply inversion
+    if(this.agents.chord.inversion==='first'&&notes.length>=3){
+      notes=[notes[1],notes[2],notes[0].replace(/\d/,m=>parseInt(m)+1)];
+    }else if(this.agents.chord.inversion==='second'&&notes.length>=3){
+      notes=[notes[2],notes[0].replace(/\d/,m=>parseInt(m)+1),notes[1].replace(/\d/,m=>parseInt(m)+1)];
+    }else if(this.agents.chord.inversion==='spread'){
+      notes=notes.map((n,i)=>i%2===0?n:n.replace(/\d/,m=>parseInt(m)+1));
+    }
+
+    // Humanize timing
+    const time=this.humanize?Tone.now()+Math.random()*.02:Tone.now();
+    const vel=this.humanize?.6+Math.random()*.3:.7;
+
+    // Play on active instruments
+    if(this.instruments.piano.on){
+      this.instruments.piano.synth.triggerAttackRelease(notes,duration,time,vel*this.instruments.piano.vol);
+    }
+    if(this.instruments.guitar.on){
+      // Strum effect
+      notes.forEach((n,i)=>{
+        this.instruments.guitar.synth.triggerAttackRelease(n,'4n',time+i*.03,vel*this.instruments.guitar.vol);
+      });
+    }
+    if(this.instruments.strings.on){
+      this.instruments.strings.synth.triggerAttackRelease(notes.map(n=>n.replace(/\d/,m=>parseInt(m)+1)),'1n',time,vel*this.instruments.strings.vol*.5);
+    }
+
+    // Update visualization
+    notes.forEach(n=>{
+      const noteName=n.replace(/\d/,'');
+      const orb=this.orbs.find(o=>o.userData.note===noteName);
+      if(orb)orb.userData.active=1;
+    });
+  },
+
+  playMelody(){
+    if(!this.agents.melody.active)return;
+
+    const scale=this.getScaleNotes(this.key,this.mode,5);
+    let noteIndex;
+
+    if(this.agents.melody.style==='stepwise'){
+      // Move by step
+      const lastIdx=this.agents.melody.lastNote||Math.floor(scale.length/2);
+      const step=Math.random()>.5?1:-1;
+      noteIndex=(lastIdx+step+scale.length)%scale.length;
+    }else if(this.agents.melody.style==='arpeggiate'){
+      // Use chord tones
+      const chord=this.getCurrentChord();
+      const chordNotes=this.getChordNotes(chord.root,chord.quality,5);
+      noteIndex=scale.findIndex(n=>chordNotes.some(c=>c.replace(/\d/,'')===n.replace(/\d/,'')));
+      if(noteIndex<0)noteIndex=0;
+    }else if(this.agents.melody.style==='leaps'){
+      // Random jumps
+      noteIndex=Math.floor(Math.random()*scale.length);
+    }else{
+      noteIndex=Math.floor(Math.random()*scale.length);
+    }
+
+    this.agents.melody.lastNote=noteIndex;
+    const note=scale[noteIndex];
+    const time=this.humanize?Tone.now()+Math.random()*.01:Tone.now();
+    const vel=this.humanize?.5+Math.random()*.4:.7;
+
+    this.melodySynth.triggerAttackRelease(note,'8n',time,vel);
+  },
+
+  playBass(chordInfo){
+    if(!this.agents.bass.active)return;
+
+    const root=chordInfo.root+'2';
+    const fifth=this.getChordNotes(chordInfo.root,'maj',2)[2];// 5th
+    const time=Tone.now();
+
+    if(this.agents.bass.pattern==='root'){
+      this.bassSynth.triggerAttackRelease(root,'4n',time);
+    }else if(this.agents.bass.pattern==='walking'){
+      const scale=this.getScaleNotes(this.key,this.mode,2);
+      const walkNote=scale[Math.floor(Math.random()*scale.length)];
+      this.bassSynth.triggerAttackRelease(this.step%2===0?root:walkNote,'8n',time);
+    }else if(this.agents.bass.pattern==='octave'){
+      const oct=this.step%2===0?root:chordInfo.root+'3';
+      this.bassSynth.triggerAttackRelease(oct,'8n',time);
+    }else if(this.agents.bass.pattern==='fifths'){
+      const note=this.step%2===0?root:fifth;
+      this.bassSynth.triggerAttackRelease(note,'8n',time);
+    }
+  },
+
+  playArp(){
+    if(!this.agents.arp.active)return;
+
+    const chord=this.getCurrentChord();
+    const notes=this.getChordNotes(chord.root,chord.quality,4);
+    let idx;
+
+    if(this.agents.arp.pattern==='up'){
+      idx=this.agents.arp.index%notes.length;
+      this.agents.arp.index++;
+    }else if(this.agents.arp.pattern==='down'){
+      idx=(notes.length-1)-(this.agents.arp.index%notes.length);
+      this.agents.arp.index++;
+    }else if(this.agents.arp.pattern==='updown'){
+      const cycle=notes.length*2-2;
+      const pos=this.agents.arp.index%cycle;
+      idx=pos<notes.length?pos:cycle-pos;
+      this.agents.arp.index++;
+    }else{
+      idx=Math.floor(Math.random()*notes.length);
+    }
+
+    const time=this.humanize?Tone.now()+Math.random()*.005:Tone.now();
+    this.arpSynth.triggerAttackRelease(notes[idx],'16n',time,.6);
+  },
+
+  playDrums(){
+    if(!this.instruments.drums.on)return;
+    const d=this.instruments.drums.synth;
+    const vol=this.instruments.drums.vol;
+    const time=Tone.now();
+
+    // Basic beat pattern
+    if(this.step%4===0){
+      d.kick.triggerAttackRelease('C1','8n',time,vol);
+    }
+    if(this.step%4===2){
+      d.snare.triggerAttackRelease('8n',time,vol*.7);
+    }
+    if(this.step%2===0){
+      d.hihat.triggerAttackRelease('C6','32n',time+.001,vol*.3);
+    }
+    // Add ghost notes with swing
+    if(this.step%2===1&&Math.random()>.6){
+      d.hihat.triggerAttackRelease('C6','32n',time,vol*.15);
+    }
+  },
+
+  tick(){
+    if(!this.playing)return;
+
+    // Calculate swing offset
+    const swingOffset=this.step%2===1?this.swing*.1:0;
+
+    // Play drums every step
+    this.playDrums();
+
+    // Chord changes on beat 0
+    if(this.step%8===0&&this.agents.chord.active){
+      const chord=this.getCurrentChord();
+      this.playChord(chord);
+      this.playBass(chord);
+
+      // Update UI
+      this.updateChordDisplay();
+    }
+
+    // Bass on quarter notes
+    if(this.step%4===0&&this.agents.bass.active){
+      const chord=this.getCurrentChord();
+      this.playBass(chord);
+    }
+
+    // Melody based on density
+    if(this.agents.melody.active&&Math.random()<this.agents.melody.density/8){
+      this.playMelody();
+    }
+
+    // Arpeggio
+    if(this.agents.arp.active){
+      this.playArp();
+    }
+
+    // Advance
+    this.step++;
+    if(this.step%8===0){
+      this.progIndex++;
+      this.beat=0;
+    }
+    this.beat=this.step%8;
+    if(this.step%32===0){
+      this.bar++;
+      document.getElementById('bar').textContent=this.bar;
+    }
+
+    // Schedule next tick with swing
+    const interval=(60/this.bpm)/2*1000;// 8th note
+    setTimeout(()=>this.tick(),interval*(1+swingOffset));
+  },
+
+  togglePlay(){
+    if(!this.ctx){
+      Tone.start();
+      this.ctx=true;
+    }
+    this.playing=!this.playing;
+    document.getElementById('play-btn').textContent=this.playing?'⏸ PAUSE':'▶ PLAY';
+    if(this.playing){
+      this.tick();
+    }
+  },
+
+  stop(){
+    this.playing=false;
+    this.step=0;
+    this.beat=0;
+    this.bar=0;
+    this.progIndex=0;
+    document.getElementById('play-btn').textContent='▶ PLAY';
+    document.getElementById('bar').textContent='1';
+  },
+
+  setBPM(v){
+    this.bpm=parseInt(v);
+    document.getElementById('bpm').textContent=v;
+  },
+
+  setSwing(v){
+    this.swing=v/100;
+  },
+
+  setKey(k){
+    this.key=k;
+    document.getElementById('key-display').textContent=k;
+    this.updateTheoryDisplay();
+  },
+
+  setMode(m){
+    this.mode=m;
+    document.getElementById('mode-display').textContent=m.slice(0,3).charAt(0).toUpperCase()+m.slice(1,3);
+    this.updateTheoryDisplay();
+  },
+
+  setProgression(p){
+    this.progression=p;
+    this.progIndex=0;
+    this.updateChordDisplay();
+  },
+
+  updateTheoryDisplay(){
+    const scale=this.getScaleNotes(this.key,this.mode,4);
+    const noteNames=scale.map(n=>n.replace(/\d/,''));
+    document.getElementById('theory-display').textContent='Scale: '+noteNames.join(' ');
+
+    // Update scale visualization
+    const container=document.getElementById('scale-notes');
+    container.innerHTML='';
+    noteNames.forEach((n,i)=>{
+      const div=document.createElement('div');
+      div.className='scale-note';
+      if(i===0)div.classList.add('root');
+      if(i===2)div.classList.add('third');
+      if(i===4)div.classList.add('fifth');
+      div.textContent=n;
+      container.appendChild(div);
+    });
+
+    // Update orbs
+    this.orbs?.forEach((orb,i)=>{
+      const inScale=noteNames.includes(NOTES[i]);
+      orb.material.color.setHex(inScale?0xff6600:0x331100);
+      orb.material.emissive.setHex(inScale?0x330000:0x110000);
+    });
+  },
+
+  updateChordDisplay(){
+    const prog=PROGRESSIONS[this.progression];
+    const roman=['I','ii','iii','IV','V','vi','vii°'];
+    const container=document.getElementById('prog-display');
+    container.innerHTML='';
+    prog.forEach((d,i)=>{
+      const span=document.createElement('span');
+      span.className='chord';
+      if(i===this.progIndex%prog.length)span.classList.add('current');
+
+      const qualities=CHORD_QUALITIES[this.mode];
+      const q=qualities[d-1];
+      let numeral=roman[d-1];
+      if(q==='min'||q==='dim')numeral=numeral.toLowerCase();
+      span.textContent=numeral;
+      container.appendChild(span);
+    });
+  },
+
+  toggleInst(name){
+    this.instruments[name].on=!this.instruments[name].on;
+    const btn=document.getElementById(name+'-btn');
+    btn.classList.toggle('active');
+  },
+
+  setVol(name,v){
+    this.instruments[name].vol=v/100;
+  },
+
+  agents:{
+    chord:{
+      active:true,
+      voicing:'triad',
+      inversion:'root',
+      toggle(){this.active=!this.active;S.updateAgentUI('chord',this.active);},
+      setVoicing(v){this.voicing=v;},
+      setInversion(v){this.inversion=v;}
+    },
+    melody:{
+      active:false,
+      style:'stepwise',
+      density:4,
+      lastNote:null,
+      toggle(){this.active=!this.active;S.updateAgentUI('melody',this.active);},
+      setStyle(v){this.style=v;},
+      setDensity(v){this.density=parseInt(v);}
+    },
+    bass:{
+      active:false,
+      pattern:'root',
+      toggle(){this.active=!this.active;S.updateAgentUI('bass',this.active);},
+      setPattern(v){this.pattern=v;}
+    },
+    arp:{
+      active:false,
+      pattern:'up',
+      rate:'8n',
+      index:0,
+      toggle(){this.active=!this.active;S.updateAgentUI('arp',this.active);},
+      setPattern(v){this.pattern=v;this.index=0;},
+      setRate(v){this.rate=v;}
+    }
+  },
+
+  updateAgentUI(name,active){
+    const el=document.getElementById('agent-'+name);
+    const status=el.querySelector('.agent-status');
+    if(active){
+      el.classList.add('active');
+      status.style.background='#0a0';
+      status.style.color='#0f0';
+      status.textContent='ACTIVE';
+    }else{
+      el.classList.remove('active');
+      status.style.background='#600';
+      status.style.color='#f66';
+      status.textContent='OFF';
+    }
+  },
+
+  animate(){
+    requestAnimationFrame(()=>this.animate());
+
+    // Animate orbs
+    this.orbs.forEach((orb,i)=>{
+      if(orb.userData.active>0){
+        orb.scale.setScalar(1+orb.userData.active*.5);
+        orb.userData.active-=.05;
+      }else{
+        orb.scale.setScalar(1);
+      }
+      orb.position.y=Math.sin(Date.now()*.001+i*.5)*.3;
+    });
+
+    // Animate chord rings
+    this.chordRings.forEach((ring,i)=>{
+      ring.rotation.z+=.005*(i+1);
+      const scale=1+Math.sin(Date.now()*.002+i)*.1;
+      ring.scale.setScalar(scale);
+      if(this.playing){
+        ring.material.opacity=.3+Math.sin(Date.now()*.005)*.2;
+        ring.material.color.setHex(i===this.progIndex%4?0xff6600:0x440000);
+      }
+    });
+
+    // Camera orbit
+    this.ca.position.x=Math.sin(Date.now()*.0003)*15;
+    this.ca.position.z=15+Math.cos(Date.now()*.0003)*5;
+    this.ca.lookAt(0,0,-5);
+
+    this.rn.render(this.sc,this.ca);
+  }
+};
+
+onload=()=>S.init();
+onresize=()=>{S.rn.setSize(innerWidth,innerHeight);S.ca.aspect=innerWidth/innerHeight;S.ca.updateProjectionMatrix()};
+</script></body></html>
