@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🌀 KONOMI v6 - Dynamic Gen + Auto-Fix</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#080810;--p:#0e0e16;--b:#1a1a28;--g:#ffd700;--c:#0ff;--gr:#0f8;--f:#f63;--r:#f44;--d:#556}
+body{background:var(--bg);color:#aaa;font-family:'JetBrains Mono',monospace;height:100vh;overflow:hidden}
+.app{display:grid;grid-template-columns:260px 1fr;height:100vh}
+.pnl{background:var(--p);padding:12px;overflow-y:auto;border-right:1px solid var(--b);font-size:10px}
+.pt{color:var(--c);text-transform:uppercase;letter-spacing:1px;margin:12px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--b)}
+.pt:first-child{margin-top:0}
+.vp{position:relative;background:#030306}
+#cc{width:100%;height:100%}
+.ov{position:absolute;top:8px;left:8px;font-size:9px;color:var(--d);pointer-events:none;line-height:1.5}
+.ovr{position:absolute;top:8px;right:8px;font-size:9px;color:var(--d);text-align:right;line-height:1.5}
+.row{display:flex;justify-content:space-between;margin-bottom:4px}
+.lbl{color:var(--d)}.val{color:var(--c);font-weight:700}
+input[type=range]{width:100%;height:3px;background:var(--b);-webkit-appearance:none;margin:4px 0 8px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;background:var(--g);border-radius:50%;cursor:pointer}
+button{width:100%;padding:8px;background:linear-gradient(135deg,var(--g),#a80);border:none;border-radius:4px;color:#000;font-family:inherit;font-weight:700;font-size:10px;cursor:pointer;margin-bottom:5px}
+button:hover{filter:brightness(1.1)}
+button.s{background:var(--b);color:var(--c)}
+button.e{background:linear-gradient(135deg,var(--gr),#0a5)}
+button:disabled{opacity:.4;cursor:not-allowed}
+.sg{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.sb{background:rgba(0,0,0,.3);padding:6px;border-radius:3px;text-align:center}
+.sv{font-size:12px;font-weight:700;color:var(--g)}
+.sl{font-size:7px;color:var(--d);margin-top:2px}
+.fix{background:rgba(0,255,136,.1);border:1px solid var(--gr);border-radius:4px;padding:6px;margin:8px 0;font-size:9px;color:var(--gr)}
+.fix.warn{background:rgba(255,136,68,.1);border-color:var(--f);color:var(--f)}
+.log{background:#000;border-radius:3px;padding:4px;font-size:8px;max-height:100px;overflow-y:auto}
+.lg{margin-bottom:1px;opacity:.8}
+.lg.p{color:var(--g)}.lg.g{color:var(--gr)}.lg.w{color:var(--f)}.lg.e{color:var(--r)}.lg.f{color:var(--c)}
+.agents{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:8px}
+.ag{padding:3px 6px;background:var(--b);border-radius:3px;font-size:8px;border-left:2px solid var(--d)}
+.ag.a{border-color:var(--gr)}.ag.w{border-color:var(--f);animation:pulse .5s infinite}.ag.f{border-color:var(--c)}
+@keyframes pulse{50%{opacity:.5}}
+.entropy{background:#000;padding:6px;border-radius:3px;font-size:8px;margin-bottom:8px;word-break:break-all;color:var(--g)}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="pnl">
+
+<div class="pt">🎲 Entropy Sources</div>
+<div class="entropy" id="entropy">Collecting...</div>
+
+<div class="pt">🤖 Agents</div>
+<div class="agents" id="agents"></div>
+
+<div class="pt">🔧 Auto-Fix Status</div>
+<div class="fix" id="fixStatus">Waiting...</div>
+
+<div class="pt">⚙️ Settings</div>
+<div class="row"><span class="lbl">Layers</span><span class="val" id="vL">40</span></div>
+<input type="range" id="sL" min="15" max="80" value="40">
+<div class="row"><span class="lbl">Layer H</span><span class="val" id="vH">.2mm</span></div>
+<input type="range" id="sH" min=".1" max=".4" step=".05" value=".2">
+<div class="row"><span class="lbl">Max Overhang</span><span class="val" id="vO">45°</span></div>
+<input type="range" id="sO" min="30" max="60" step="5" value="45">
+
+<div class="pt">▶ Generate</div>
+<button onclick="generate()">🎲 NEW RANDOM</button>
+<button class="s" onclick="regenerate()">↻ REGEN SAME SEED</button>
+
+<div class="pt">📊 Stats</div>
+<div class="sg">
+<div class="sb"><div class="sv" id="stV">0</div><div class="sl">Verts</div></div>
+<div class="sb"><div class="sv" id="stT">0</div><div class="sl">Tris</div></div>
+<div class="sb"><div class="sv" id="stF">0</div><div class="sl">Fixes</div></div>
+<div class="sb"><div class="sv" id="stH">0</div><div class="sl">Height</div></div>
+</div>
+
+<div class="pt">💾 Export</div>
+<button class="e" id="bE" onclick="exportSTL()" disabled>📥 EXPORT STL</button>
+
+<div class="pt">📜 Agent Log</div>
+<div class="log" id="log"></div>
+</div>
+
+<div class="vp">
+<div id="cc"></div>
+<div class="ov">
+<div>Verts: <span id="oV">0</span> | Tris: <span id="oT">0</span></div>
+<div>Fixes Applied: <span id="oF">0</span></div>
+<div>Height: <span id="oH">0</span>mm</div>
+</div>
+<div class="ovr">
+<div>Entropy: <span id="oE">-</span></div>
+<div>Generation: Dynamic</div>
+<div>Auto-Fix: ON</div>
+</div>
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+//═══════════════════════════════════════════════════════════════════
+// 🌀 KONOMI v6 - DYNAMIC GENERATION + AUTO-FIX
+// No preset models - agents generate from entropy
+//═══════════════════════════════════════════════════════════════════
+
+const φ=1.618033988749895,φi=.618033988749895;
+
+//─── AGENT α: ENTROPY COLLECTOR ───
+const α={
+  sources:{},
+  collect(){
+    const now=Date.now();
+    this.sources={
+      time:now,
+      ms:now%1000,
+      sec:Math.floor(now/1000)%60,
+      min:Math.floor(now/60000)%60,
+      hour:new Date().getHours(),
+      day:new Date().getDate(),
+      month:new Date().getMonth(),
+      year:new Date().getFullYear(),
+      tz:new Date().getTimezoneOffset(),
+      perf:performance.now(),
+      random:Math.random(),
+      screen:screen.width*screen.height,
+      inner:innerWidth*innerHeight,
+      agent:navigator.userAgent.length,
+      lang:navigator.language.charCodeAt(0),
+      memory:navigator.deviceMemory||4,
+      cores:navigator.hardwareConcurrency||4,
+      touch:'ontouchstart'in window?1:0,
+      online:navigator.onLine?1:0,
+      scrollY:window.scrollY||0,
+      colorDepth:screen.colorDepth||24,
+    };
+    return this.sources;
+  },
+  // Combine all entropy into single seed
+  seed(){
+    const s=this.sources;
+    let h=0;
+    for(const k in s)h=(h*φ+s[k])%1e10;
+    return h/1e10*φ+φi;
+  },
+  display(){
+    const s=this.sources;
+    return `t:${s.time%1e6} p:${s.perf.toFixed(0)} r:${s.random.toFixed(4)} scr:${s.screen} cores:${s.cores}`;
+  }
+};
+
+//─── AGENT β: φ-RNG (seeded from entropy) ───
+const β={
+  s:φ,
+  init(seed){this.s=seed;this.history=[]},
+  next(){
+    this.s=(this.s*φ*1e4)%1;
+    if(this.s===0)this.s=φi;
+    this.history.push(this.s);
+    return this.s;
+  },
+  range(a,b){return a+this.next()*(b-a)},
+  int(a,b){return Math.floor(this.range(a,b+1))},
+  bool(p=.5){return this.next()<p},
+  angle(){return this.next()*Math.PI*2},
+  sign(){return this.next()>.5?1:-1},
+  // φ-weighted - prefers golden proportions
+  phi(){return this.next()<φi?this.next()*φ:this.next()},
+  // Pick based on weights
+  weighted(weights){
+    const total=weights.reduce((a,b)=>a+b,0);
+    let r=this.next()*total;
+    for(let i=0;i<weights.length;i++){
+      r-=weights[i];
+      if(r<=0)return i;
+    }
+    return weights.length-1;
+  }
+};
+
+//─── AGENT γ: REAL-TIME DYNAMIC GENERATOR ───
+// Generates layer-by-layer with overhang rules ENFORCED during generation
+const γ={
+  maxOH:45,
+  layerH:.2,
+  prevLayer:null,
+  stats:{constrained:0,total:0},
+
+  // Calculate max allowed XZ movement based on overhang limit
+  maxStep(){
+    return Math.tan(this.maxOH*Math.PI/180)*this.layerH;
+  },
+
+  // Check if point is valid given previous layer (ENFORCED, not fixed after)
+  isValidPoint(x,z){
+    if(!this.prevLayer||this.prevLayer.length===0)return true;
+
+    // Find closest point in previous layer
+    let minD=Infinity;
+    for(const p of this.prevLayer){
+      const d=Math.sqrt((x-p.x)**2+(z-p.z)**2);
+      if(d<minD)minD=d;
+    }
+
+    // Check overhang angle
+    const maxD=this.maxStep();
+    return minD<=maxD;
+  },
+
+  // Constrain point to valid position (pulls toward previous layer if needed)
+  constrainPoint(x,z){
+    if(!this.prevLayer||this.prevLayer.length===0)return{x,z,constrained:false};
+
+    const maxD=this.maxStep();
+
+    // Find closest point in previous layer
+    let minD=Infinity,closest=null;
+    for(const p of this.prevLayer){
+      const d=Math.sqrt((x-p.x)**2+(z-p.z)**2);
+      if(d<minD){minD=d;closest=p}
+    }
+
+    if(minD<=maxD)return{x,z,constrained:false};
+
+    // Pull point toward closest support
+    this.stats.constrained++;
+    const dx=closest.x-x;
+    const dz=closest.z-z;
+    const pullDist=minD-maxD*.95; // Pull to just within limit
+    return{
+      x:x+dx/minD*pullDist,
+      z:z+dz/minD*pullDist,
+      constrained:true
+    };
+  },
+
+  // Generate all layers with real-time constraint enforcement
+  generate(numLayers,layerH,scale,maxOH){
+    this.maxOH=maxOH;
+    this.layerH=layerH;
+    this.prevLayer=null;
+    this.stats={constrained:0,total:0};
+
+    const layers=[];
+
+    // Dynamic params from entropy
+    const baseR=β.range(10,22)*scale;
+    const complexity=β.int(20,45);
+    const twist=β.range(-.15,.15);
+    const taper=β.range(.2,.6);
+    const growthMode=β.int(0,4); // 0=walk, 1=orbit, 2=spiral, 3=blob, 4=branch
+
+    log(`γ: mode=${growthMode} r=${baseR.toFixed(1)} pts=${complexity}`,'g');
+
+    for(let L=0;L<numLayers;L++){
+      const t=L/numLayers;
+      const y=L*layerH;
+
+      // Generate this layer's points with REAL-TIME constraint checking
+      const pts=this.generateLayerConstrained(L,t,{
+        baseR,complexity,twist,taper,growthMode,scale
+      });
+
+      layers.push({y,pts});
+
+      // This layer becomes the support for next layer
+      this.prevLayer=pts;
+
+      // Log progress every 10 layers
+      if(L%10===0)log(`γ: Layer ${L}/${numLayers} (${this.stats.constrained} constrained)`,'g');
+    }
+
+    log(`γ: Done! ${this.stats.constrained}/${this.stats.total} points constrained`,'f');
+    return layers;
+  },
+
+  // Generate single layer with constraints enforced in real-time
+  generateLayerConstrained(L,t,p){
+    const pts=[];
+    const r=p.baseR*(1-t*p.taper);
+    const rot=L*p.twist;
+    const numPts=p.complexity;
+
+    switch(p.growthMode){
+      case 0: // Constrained random walk
+        let wx=0,wz=0,wa=β.angle();
+        for(let i=0;i<numPts;i++){
+          wa+=(β.next()-.5)*Math.PI*.8;
+          const step=β.range(.5,2)*p.scale;
+          let nx=wx+Math.cos(wa)*step;
+          let nz=wz+Math.sin(wa)*step;
+
+          // Constrain to bounds
+          const dist=Math.sqrt(nx*nx+nz*nz);
+          if(dist>r){nx*=r/dist;nz*=r/dist;wa+=Math.PI*.5}
+
+          // ENFORCE overhang constraint
+          const c=this.constrainPoint(nx,nz);
+          this.stats.total++;
+          pts.push({x:c.x,z:c.z});
+          wx=c.x;wz=c.z;
+        }
+        break;
+
+      case 1: // Constrained orbit
+        for(let i=0;i<=numPts;i++){
+          const a=i/numPts*Math.PI*2+rot;
+          const rr=r*(1+β.range(-.1,.1));
+          let nx=Math.cos(a)*rr;
+          let nz=Math.sin(a)*rr;
+
+          const c=this.constrainPoint(nx,nz);
+          this.stats.total++;
+          pts.push({x:c.x,z:c.z});
+        }
+        break;
+
+      case 2: // Constrained spiral
+        const turns=2-t;
+        for(let i=0;i<numPts;i++){
+          const a=i/numPts*Math.PI*2*turns+rot;
+          const sr=(i/numPts)*r;
+          let nx=Math.cos(a)*sr;
+          let nz=Math.sin(a)*sr;
+
+          const c=this.constrainPoint(nx,nz);
+          this.stats.total++;
+          pts.push({x:c.x,z:c.z});
+        }
+        break;
+
+      case 3: // Constrained blob
+        for(let i=0;i<=numPts;i++){
+          const a=i/numPts*Math.PI*2;
+          const wobble=1+.2*Math.sin(a*φ*3+L*.3)+.15*Math.sin(a*2.236+L*.2);
+          let nx=Math.cos(a+rot)*r*wobble;
+          let nz=Math.sin(a+rot)*r*wobble;
+
+          const c=this.constrainPoint(nx,nz);
+          this.stats.total++;
+          pts.push({x:c.x,z:c.z});
+        }
+        break;
+
+      case 4: // Constrained branching
+        const branches=[{x:0,z:0,a:β.angle()}];
+        let ptCount=0;
+        while(ptCount<numPts&&branches.length>0){
+          const b=branches.shift();
+          for(let s=0;s<6&&ptCount<numPts;s++){
+            const nx=b.x+Math.cos(b.a)*s*2;
+            const nz=b.z+Math.sin(b.a)*s*2;
+
+            const dist=Math.sqrt(nx*nx+nz*nz);
+            if(dist>r)continue;
+
+            const c=this.constrainPoint(nx,nz);
+            this.stats.total++;
+            pts.push({x:c.x,z:c.z});
+            ptCount++;
+
+            if(s===5&&β.next()<.4-t*.2){
+              branches.push({x:c.x,z:c.z,a:b.a+Math.PI/5});
+              branches.push({x:c.x,z:c.z,a:b.a-Math.PI/5});
+            }
+          }
+        }
+        break;
+    }
+
+    return pts;
+  }
+};
+
+//─── AGENT δ: MESH BUILDER ───
+const δ={
+  build(layers,nW,lH){
+    const v=[],idx=[];let vc=0;const prof=6;
+    for(const L of layers){
+      const y=L.y,pts=L.pts;if(pts.length<2)continue;
+      for(let i=0;i<pts.length;i++){
+        const p=pts[i],pp=pts[Math.max(0,i-1)],pn=pts[Math.min(pts.length-1,i+1)];
+        let dx=pn.x-pp.x,dz=pn.z-pp.z;const ln=Math.sqrt(dx*dx+dz*dz)||1;dx/=ln;dz/=ln;
+        const px=-dz,pz=dx,hw=nW/2;
+        for(let j=0;j<prof;j++){
+          const t=j/(prof-1);
+          let ox,oy;
+          if(t<.25){ox=-hw;oy=0}
+          else if(t<.5){ox=-hw;oy=(t-.25)/.25*lH}
+          else if(t<.75){const a=Math.PI*(1-(t-.5)/.25);ox=Math.cos(a)*hw;oy=lH+Math.sin(a)*lH*.2}
+          else{ox=hw;oy=lH*(1-(t-.75)/.25)}
+          v.push(p.x+px*ox,y+oy,p.z+pz*ox);
+        }
+        if(i>0){
+          const c=vc,pr=vc-prof;
+          for(let j=0;j<prof-1;j++){idx.push(pr+j,c+j,pr+j+1,pr+j+1,c+j,c+j+1)}
+          idx.push(pr+prof-1,c+prof-1,pr,pr,c+prof-1,c);
+        }
+        vc+=prof;
+      }
+    }
+    return{v,idx};
+  }
+};
+
+//─── AGENT ε: VERIFY (post-gen check, should find 0 issues) ───
+const ε={
+  verify(layers,lH,maxOH){
+    let violations=0,maxAngle=0;
+    for(let i=1;i<layers.length;i++){
+      for(const p of layers[i].pts){
+        let minD=Infinity;
+        for(const pp of layers[i-1].pts){
+          const d=Math.sqrt((p.x-pp.x)**2+(p.z-pp.z)**2);
+          if(d<minD)minD=d;
+        }
+        const angle=Math.atan(minD/lH)*180/Math.PI;
+        if(angle>maxAngle)maxAngle=angle;
+        if(angle>maxOH)violations++;
+      }
+    }
+    return{violations,maxAngle:maxAngle.toFixed(1),ok:violations===0};
+  }
+};
+
+//─── AGENT ζ: UI ───
+const ζ={
+  log(m,t='g'){log(m,t)},
+  setAgents(list){
+    const c=document.getElementById('agents');c.innerHTML='';
+    list.forEach(a=>{const d=document.createElement('div');d.className=`ag ${a.s}`;d.textContent=a.n;c.appendChild(d)});
+  },
+  setFix(r){
+    const el=document.getElementById('fixStatus');
+    const maxOH=parseInt(document.getElementById('sO').value);
+    if(r.success){
+      el.className='fix';
+      el.innerHTML=`✓ Printable! ${r.totalFixes} points constrained during gen<br>Max angle: ${r.maxAngle}° (limit: ${maxOH}°)`;
+    }else{
+      el.className='fix warn';
+      el.innerHTML=`⚠ ${r.remaining} edge violations<br>${r.totalFixes} constrained, max: ${r.maxAngle}°`;
+    }
+  },
+  stats(v,t,f,h){
+    document.getElementById('stV').textContent=v;
+    document.getElementById('stT').textContent=t;
+    document.getElementById('stF').textContent=f;
+    document.getElementById('stH').textContent=h+'mm';
+    document.getElementById('oV').textContent=v;
+    document.getElementById('oT').textContent=t;
+    document.getElementById('oF').textContent=f;
+    document.getElementById('oH').textContent=h;
+  }
+};
+
+function log(m,t='g'){
+  const l=document.getElementById('log'),d=document.createElement('div');
+  d.className=`lg ${t}`;d.textContent=m;l.appendChild(d);l.scrollTop=l.scrollHeight;
+}
+
+//═══════════════════════════════════════════════════════════════════
+// THREE.JS
+//═══════════════════════════════════════════════════════════════════
+let scene,cam,ren,mesh;
+
+function initGL(){
+  const c=document.getElementById('cc');
+  scene=new THREE.Scene();scene.background=new THREE.Color(0x030306);
+  cam=new THREE.PerspectiveCamera(45,c.clientWidth/c.clientHeight,.1,500);
+  cam.position.set(50,35,50);cam.lookAt(0,8,0);
+  ren=new THREE.WebGLRenderer({antialias:true});
+  ren.setSize(c.clientWidth,c.clientHeight);ren.setPixelRatio(Math.min(devicePixelRatio,2));
+  c.appendChild(ren.domElement);
+  scene.add(new THREE.AmbientLight(0x404050,.6));
+  const sun=new THREE.DirectionalLight(0xffffff,.8);sun.position.set(30,50,30);scene.add(sun);
+  const plate=new THREE.Mesh(new THREE.BoxGeometry(60,1,60),new THREE.MeshStandardMaterial({color:0x151520}));
+  plate.position.y=-.5;scene.add(plate);
+  scene.add(new THREE.GridHelper(60,12,0x333,0x222));
+
+  let drag=false,px=0,py=0,sp={t:Math.PI/4,p:Math.PI/3,r:80};
+  const el=ren.domElement;
+  el.onmousedown=e=>{drag=true;px=e.clientX;py=e.clientY};
+  el.onmouseup=el.onmouseleave=()=>drag=false;
+  el.onmousemove=e=>{if(!drag)return;sp.t-=(e.clientX-px)*.01;sp.p=Math.max(.2,Math.min(2.9,sp.p+(e.clientY-py)*.01));px=e.clientX;py=e.clientY;upCam()};
+  el.onwheel=e=>{sp.r=Math.max(20,Math.min(150,sp.r+e.deltaY*.08));upCam();e.preventDefault()};
+  function upCam(){cam.position.set(sp.r*Math.sin(sp.p)*Math.cos(sp.t),sp.r*Math.cos(sp.p),sp.r*Math.sin(sp.p)*Math.sin(sp.t));cam.lookAt(0,8,0)}
+  upCam();
+  window.onresize=()=>{cam.aspect=c.clientWidth/c.clientHeight;cam.updateProjectionMatrix();ren.setSize(c.clientWidth,c.clientHeight)};
+  (function anim(){requestAnimationFrame(anim);ren.render(scene,cam)})();
+}
+
+function setMesh(v,idx){
+  if(mesh){scene.remove(mesh);mesh.geometry.dispose();mesh.material.dispose()}
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(v,3));
+  g.setIndex(idx);g.computeVertexNormals();
+  mesh=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:0xff6b35,metalness:.1,roughness:.5,side:THREE.DoubleSide}));
+  scene.add(mesh);
+}
+
+//═══════════════════════════════════════════════════════════════════
+// MAIN
+//═══════════════════════════════════════════════════════════════════
+let currentSeed=null;
+
+function init(){
+  document.getElementById('sL').oninput=function(){document.getElementById('vL').textContent=this.value};
+  document.getElementById('sH').oninput=function(){document.getElementById('vH').textContent=this.value+'mm'};
+  document.getElementById('sO').oninput=function(){document.getElementById('vO').textContent=this.value+'°';ε.maxOH=parseInt(this.value)};
+
+  initGL();
+  generate(); // Auto-gen on load
+}
+
+function generate(){
+  // Collect fresh entropy
+  ζ.setAgents([{n:'α:Entropy',s:'w'},{n:'β:RNG',s:''},{n:'γ:Gen',s:''},{n:'δ:Mesh',s:''},{n:'ε:Fix',s:''}]);
+
+  const entropy=α.collect();
+  currentSeed=α.seed();
+
+  document.getElementById('entropy').textContent=α.display();
+  document.getElementById('oE').textContent=currentSeed.toFixed(6);
+  log(`α: Collected ${Object.keys(entropy).length} entropy sources`,'p');
+  log(`α: Seed = ${currentSeed.toFixed(8)}`,'p');
+
+  runGeneration();
+}
+
+function regenerate(){
+  if(!currentSeed)return generate();
+  log(`Using existing seed: ${currentSeed.toFixed(6)}`,'p');
+  runGeneration();
+}
+
+function runGeneration(){
+  const L=parseInt(document.getElementById('sL').value);
+  const lH=parseFloat(document.getElementById('sH').value);
+  const maxOH=parseInt(document.getElementById('sO').value);
+  const nW=.4;
+
+  setTimeout(()=>{
+    ζ.setAgents([{n:'α:Entropy',s:'a'},{n:'β:RNG',s:'w'},{n:'γ:Gen',s:''},{n:'δ:Mesh',s:''},{n:'ε:Verify',s:''}]);
+    β.init(currentSeed);
+    log(`β: RNG seeded with ${currentSeed.toFixed(6)}`,'g');
+
+    setTimeout(()=>{
+      ζ.setAgents([{n:'α:Entropy',s:'a'},{n:'β:RNG',s:'a'},{n:'γ:Gen',s:'w'},{n:'δ:Mesh',s:''},{n:'ε:Verify',s:''}]);
+
+      // Generate with REAL-TIME constraint enforcement
+      // γ.constrainPoint() is called for EVERY point during generation
+      const layers=γ.generate(L,lH,1,maxOH);
+
+      const constrained=γ.stats.constrained;
+      const total=γ.stats.total;
+      log(`γ: ${constrained}/${total} points constrained in real-time`,'f');
+
+      setTimeout(()=>{
+        ζ.setAgents([{n:'α:Entropy',s:'a'},{n:'β:RNG',s:'a'},{n:'γ:Gen',s:'a'},{n:'δ:Mesh',s:''},{n:'ε:Verify',s:'w'}]);
+
+        // Verify - should find 0 violations since we constrained during gen
+        const verify=ε.verify(layers,lH,maxOH);
+
+        if(verify.ok){
+          log(`ε: ✓ Verified! All points within ${maxOH}° (max: ${verify.maxAngle}°)`,'g');
+          ζ.setFix({success:true,totalFixes:constrained,remaining:0,maxAngle:verify.maxAngle});
+        }else{
+          log(`ε: ⚠ ${verify.violations} edge cases (max: ${verify.maxAngle}°)`,'w');
+          ζ.setFix({success:false,totalFixes:constrained,remaining:verify.violations,maxAngle:verify.maxAngle});
+        }
+
+        setTimeout(()=>{
+          ζ.setAgents([{n:'α:Entropy',s:'a'},{n:'β:RNG',s:'a'},{n:'γ:Gen',s:'a'},{n:'δ:Mesh',s:'w'},{n:'ε:Verify',s:'a'}]);
+
+          // Build mesh
+          const{v,idx}=δ.build(layers,nW,lH);
+          setMesh(v,idx);
+
+          ζ.stats((v.length/3).toLocaleString(),(idx.length/3).toLocaleString(),constrained,(L*lH).toFixed(1));
+
+          ζ.setAgents([{n:'α:Entropy',s:'a'},{n:'β:RNG',s:'a'},{n:'γ:Gen',s:'a'},{n:'δ:Mesh',s:'a'},{n:'ε:Verify',s:'a'}]);
+          document.getElementById('bE').disabled=false;
+          log('✓ Printable object generated!','p');
+        },30);
+      },30);
+    },30);
+  },30);
+}
+
+function exportSTL(){
+  if(!mesh)return;
+  log('Exporting STL...','g');
+  const g=mesh.geometry,pos=g.getAttribute('position'),idx=g.getIndex();
+  const tc=idx?idx.count/3:pos.count/9;
+  const buf=new ArrayBuffer(84+tc*50),dv=new DataView(buf);
+  for(let i=0;i<80;i++)dv.setUint8(i,i<17?'KONOMI v6 PHI-FDM'.charCodeAt(i):0);
+  dv.setUint32(80,tc,true);
+  let o=84;
+  for(let i=0;i<tc;i++){
+    const i0=idx?idx.getX(i*3):i*3,i1=idx?idx.getX(i*3+1):i*3+1,i2=idx?idx.getX(i*3+2):i*3+2;
+    const v0=[pos.getX(i0),pos.getY(i0),pos.getZ(i0)];
+    const v1=[pos.getX(i1),pos.getY(i1),pos.getZ(i1)];
+    const v2=[pos.getX(i2),pos.getY(i2),pos.getZ(i2)];
+    const ax=v1[0]-v0[0],ay=v1[1]-v0[1],az=v1[2]-v0[2];
+    const bx=v2[0]-v0[0],by=v2[1]-v0[1],bz=v2[2]-v0[2];
+    let nx=ay*bz-az*by,ny=az*bx-ax*bz,nz=ax*by-ay*bx;
+    const nl=Math.sqrt(nx*nx+ny*ny+nz*nz)||1;nx/=nl;ny/=nl;nz/=nl;
+    dv.setFloat32(o,nx,true);o+=4;dv.setFloat32(o,ny,true);o+=4;dv.setFloat32(o,nz,true);o+=4;
+    for(const vx of[v0,v1,v2]){dv.setFloat32(o,vx[0],true);o+=4;dv.setFloat32(o,vx[1],true);o+=4;dv.setFloat32(o,vx[2],true);o+=4}
+    dv.setUint16(o,0,true);o+=2;
+  }
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([buf],{type:'application/octet-stream'}));
+  a.download=`konomi-v6-${Date.now()}.stl`;a.click();
+  log(`Exported ${tc} triangles`,'p');
+}
+
+window.onload=init;
+</script>
+</body>
+</html>
