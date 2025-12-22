@@ -283,30 +283,32 @@ const F={
       const len=Math.sqrt(dx*dx+dz*dz);
       if(len<.01)return null;
 
-      const beadHeight=F.settings.layerHeight*4;
-      const beadWidth=nozzleWidth*1.2;
+      const beadHeight=F.settings.layerHeight*3;
+      const beadWidth=nozzleWidth*.8;
 
-      // Create cylinder for the bead (works in r128)
-      const geo=new THREE.CylinderGeometry(beadWidth/2,beadWidth/2,len,8,1);
+      // Cylinder axis is Y by default - we want it along XZ plane
+      // Use a flattened cylinder (elliptical cross-section)
+      const geo=new THREE.CylinderGeometry(beadWidth/2,beadWidth/2,len,6,1);
       const mat=new THREE.MeshPhongMaterial({
         color,
         emissive:color,
-        emissiveIntensity:.2,
-        shininess:40
+        emissiveIntensity:.25,
+        shininess:50
       });
 
       const mesh=new THREE.Mesh(geo,mat);
 
-      // Position at midpoint
+      // Flatten the cylinder to layer height (squish vertically)
+      // Scale X (which becomes height after rotation) to layer height
+      mesh.scale.set(beadHeight/beadWidth,1,1);
+
+      // Rotate to lay horizontal: first tip over (X rotation), then aim direction (Y rotation)
+      mesh.rotation.order='YXZ';
+      mesh.rotation.x=π/2; // Tip cylinder to lay flat
+      mesh.rotation.y=Math.atan2(dx,dz); // Point toward move direction
+
+      // Position at midpoint, sitting on the layer
       mesh.position.set((x1+x2)/2,y+beadHeight/2,(z1+z2)/2);
-
-      // Rotate cylinder to lay flat and align with direction
-      mesh.rotation.z=π/2;
-      mesh.rotation.y=-Math.atan2(dz,dx)+π/2;
-
-      // Flatten to layer height (squish the cylinder)
-      mesh.scale.y=1;
-      mesh.scale.x=beadHeight/beadWidth;
 
       mesh.castShadow=true;
       this.scene.add(mesh);

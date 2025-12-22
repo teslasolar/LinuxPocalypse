@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Genesis Core</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#080812;overflow:hidden;font:9px monospace;color:#0ff}
+#c{position:fixed;inset:0}.p{position:absolute;background:rgba(8,8,20,.95);border:1px solid;border-radius:8px;padding:10px;z-index:10;backdrop-filter:blur(5px)}
+.t{background:#040408;color:#0f0;padding:6px;height:70px;overflow-y:auto;font-size:8px;border:1px solid #0f02;border-radius:3px}
+button{background:linear-gradient(135deg,var(--c1,#0ff),var(--c2,#08f));color:#000;border:0;padding:5px 8px;margin:2px;font-size:8px;border-radius:3px;cursor:pointer;font-weight:bold}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(50px,1fr));gap:3px;margin:5px 0}
+.s{padding:4px;text-align:center;border:1px solid;border-radius:3px;background:#0001;font-size:8px}
+.bar{height:5px;background:#111;border-radius:2px;margin:3px 0}.fill{height:100%;border-radius:2px}
+</style></head><body><canvas id="c"></canvas>
+
+<div class="p" style="top:8px;left:8px;border-color:#f0f;width:260px">
+<div style="color:#f0f;text-align:center;font-size:11px">⚛ GENESIS CORE</div>
+<div id="core"></div><div id="agents"></div>
+</div>
+
+<div class="p" style="top:8px;right:8px;border-color:#0ff;width:280px">
+<div style="color:#0ff;font-size:10px">🔧 FABRICATOR</div>
+<div class="g" id="fab"></div>
+<div id="log" class="t"></div>
+</div>
+
+<div class="p" style="bottom:8px;left:8px;border-color:#0f8;width:260px">
+<div style="color:#0f8;font-size:10px">📊 METRICS</div>
+<div id="metrics"></div>
+</div>
+
+<div class="p" style="bottom:8px;right:8px;border-color:#ff0;width:260px">
+<div style="color:#ff0;font-size:10px">🤖 AGENT POOL</div>
+<div id="pool"></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// TOKEN LIBRARY - Reusable micro-functions
+// ═══════════════════════════════════════════════════════════════
+const T={
+  // Math tokens
+  φ:(1+Math.sqrt(5))/2,
+  τ:Math.PI*2,
+  lerp:(a,b,t)=>a+(b-a)*t,
+  clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),
+  rng:(min=0,max=1)=>T.lerp(min,max,Math.random()),
+  rngInt:(min,max)=>Math.floor(T.rng(min,max+1)),
+  hash:s=>[...s].reduce((h,c)=>(h*31+c.charCodeAt(0))>>>0,0),
+  noise:(x,y=0)=>Math.sin(x*12.9898+y*78.233)*43758.5453%1,
+
+  // Vector tokens
+  v3:(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z),
+  dist:(a,b)=>a.distanceTo(b),
+  polar:(r,θ,y=0)=>T.v3(Math.cos(θ)*r,y,Math.sin(θ)*r),
+
+  // Color tokens
+  hsl:(h,s=.8,l=.5)=>new THREE.Color().setHSL(h,s,l),
+  rgb:(r,g,b)=>new THREE.Color(r,g,b),
+  hex:c=>new THREE.Color(c),
+
+  // Geometry tokens
+  geo:{
+    box:(s=1)=>new THREE.BoxGeometry(s,s,s),
+    sphere:(r=1,d=16)=>new THREE.SphereGeometry(r,d,d),
+    cyl:(r=1,h=2,s=8)=>new THREE.CylinderGeometry(r,r,h,s),
+    cone:(r=1,h=2,s=8)=>new THREE.ConeGeometry(r,h,s),
+    torus:(r=1,t=.3,s=16)=>new THREE.TorusGeometry(r,t,8,s),
+    ico:(r=1,d=0)=>new THREE.IcosahedronGeometry(r,d),
+    octa:(r=1)=>new THREE.OctahedronGeometry(r),
+    dodeca:(r=1)=>new THREE.DodecahedronGeometry(r),
+    tetra:(r=1)=>new THREE.TetrahedronGeometry(r),
+    knot:(r=1,t=.3)=>new THREE.TorusKnotGeometry(r,t,64,8)
+  },
+
+  // Material tokens
+  mat:{
+    basic:(c,o=1)=>new THREE.MeshBasicMaterial({color:c,transparent:o<1,opacity:o}),
+    phong:(c,e=0)=>new THREE.MeshPhongMaterial({color:c,emissive:c,emissiveIntensity:e,shininess:60}),
+    wire:(c)=>new THREE.MeshBasicMaterial({color:c,wireframe:true}),
+    glass:(c)=>new THREE.MeshPhongMaterial({color:c,transparent:true,opacity:.3,shininess:100})
+  },
+
+  // DOM tokens
+  $:id=>document.getElementById(id),
+  html:(id,h)=>T.$(id).innerHTML=h,
+  log:(id,m)=>{const e=T.$(id);e.textContent+=m+'\n';e.scrollTop=e.scrollHeight}
+};
+
+// ═══════════════════════════════════════════════════════════════
+// AGENT SYSTEM - Autonomous behaviors
+// ═══════════════════════════════════════════════════════════════
+const Agents={
+  pool:[],
+  types:{
+    builder:{
+      icon:'🔨',color:0x00ff88,
+      tick(a,G){
+        if(G.energy>50&&G.nodes.size<60&&Math.random()<.3){
+          const type=['node','link','core','data'][T.rngInt(0,3)];
+          G.spawn(type);
+          a.built++;
+        }
+      }
+    },
+    optimizer:{
+      icon:'⚡',color:0xffff00,
+      tick(a,G){
+        if(Math.random()<.2){
+          G.nodes.forEach(n=>{
+            n.energy=T.clamp(n.energy+5,0,200);
+          });
+          G.energy+=10;
+          a.optimized++;
+        }
+      }
+    },
+    connector:{
+      icon:'🔗',color:0x00ffff,
+      tick(a,G){
+        if(G.nodes.size>2&&Math.random()<.25){
+          const arr=[...G.nodes.values()];
+          const n1=arr[T.rngInt(0,arr.length-1)];
+          const n2=arr[T.rngInt(0,arr.length-1)];
+          if(n1!==n2&&!n1.links.has(n2.id)){
+            G.link(n1,n2);
+            a.linked++;
+          }
+        }
+      }
+    },
+    evolver:{
+      icon:'🧬',color:0xff00ff,
+      tick(a,G){
+        if(Math.random()<.1){
+          G.generation++;
+          G.nodes.forEach(n=>{
+            n.dna=(n.dna||0)+T.rng(-.1,.1);
+            n.mesh.material.emissiveIntensity=T.clamp(.2+n.dna,.1,.8);
+          });
+          a.evolved++;
+        }
+      }
+    },
+    recycler:{
+      icon:'♻️',color:0xff8800,
+      tick(a,G){
+        if(G.nodes.size>20&&Math.random()<.15){
+          const weak=[...G.nodes.values()].filter(n=>n.energy<20);
+          if(weak.length){
+            const n=weak[0];
+            G.energy+=n.energy*2;
+            G.remove(n);
+            a.recycled++;
+          }
+        }
+      }
+    },
+    explorer:{
+      icon:'🔭',color:0x8888ff,
+      tick(a,G){
+        if(Math.random()<.2){
+          G.nodes.forEach(n=>{
+            n.mesh.position.x+=T.rng(-1,1);
+            n.mesh.position.z+=T.rng(-1,1);
+          });
+          a.explored++;
+        }
+      }
+    }
+  },
+
+  spawn(type){
+    const def=this.types[type];
+    const agent={
+      id:Date.now()+Math.random(),
+      type,
+      ...def,
+      active:true,
+      built:0,optimized:0,linked:0,evolved:0,recycled:0,explored:0
+    };
+    this.pool.push(agent);
+    return agent;
+  },
+
+  tick(G){
+    this.pool.filter(a=>a.active).forEach(a=>{
+      try{a.tick(a,G)}catch(e){}
+    });
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════
+// GENESIS ENGINE - Main simulation
+// ═══════════════════════════════════════════════════════════════
+const G={
+  nodes:new Map(),
+  connections:[],
+  energy:500,
+  generation:1,
+  nodeId:0,
+  auto:true,
+
+  // Node type definitions using tokens
+  types:{
+    node:{geo:'ico',size:1,color:()=>T.hsl(T.rng()),energy:50,icon:'⚛'},
+    link:{geo:'octa',size:.7,color:()=>T.hex(0x00ffff),energy:30,icon:'🔗'},
+    core:{geo:'dodeca',size:1.5,color:()=>T.hex(0xff00ff),energy:100,icon:'💠'},
+    data:{geo:'box',size:.8,color:()=>T.hex(0x00ff88),energy:40,icon:'📦'},
+    hub:{geo:'sphere',size:1.2,color:()=>T.hex(0xffff00),energy:80,icon:'🌐'},
+    gate:{geo:'torus',size:1,color:()=>T.hex(0xff8800),energy:60,icon:'🚀'}
+  },
+
+  W:{
+    scene:null,camera:null,renderer:null,
+
+    init(){
+      this.scene=new THREE.Scene();
+      this.camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.1,1000);
+      this.renderer=new THREE.WebGLRenderer({canvas:T.$('c'),antialias:true});
+      this.renderer.setSize(innerWidth,innerHeight);
+      this.renderer.setClearColor(0x080812);
+      this.camera.position.set(40,30,40);
+
+      // Lighting
+      this.scene.add(new THREE.AmbientLight(0x404060,.5));
+      [0xff00ff,0x00ffff,0xffff00].forEach((c,i)=>{
+        const l=new THREE.PointLight(c,.6,80);
+        l.position.set(Math.cos(i*T.τ/3)*30,20,Math.sin(i*T.τ/3)*30);
+        this.scene.add(l);
+      });
+
+      // Grid
+      this.scene.add(new THREE.GridHelper(100,20,0x1a1a30,0x0a0a18));
+
+      // Central core
+      const core=new THREE.Mesh(T.geo.ico(3,1),T.mat.wire(0xffffff));
+      core.position.y=10;
+      this.scene.add(core);
+      this.core=core;
+
+      // Particles
+      const pGeo=new THREE.BufferGeometry();
+      const pPos=new Float32Array(300*3);
+      const pCol=new Float32Array(300*3);
+      for(let i=0;i<300;i++){
+        pPos[i*3]=(Math.random()-.5)*100;
+        pPos[i*3+1]=Math.random()*50;
+        pPos[i*3+2]=(Math.random()-.5)*100;
+        const c=T.hsl(Math.random());
+        pCol[i*3]=c.r;pCol[i*3+1]=c.g;pCol[i*3+2]=c.b;
+      }
+      pGeo.setAttribute('position',new THREE.BufferAttribute(pPos,3));
+      pGeo.setAttribute('color',new THREE.BufferAttribute(pCol,3));
+      this.particles=new THREE.Points(pGeo,new THREE.PointsMaterial({size:1,vertexColors:true,transparent:true,opacity:.5}));
+      this.scene.add(this.particles);
+
+      this.scene.fog=new THREE.FogExp2(0x080812,.008);
+      this.animate();
+    },
+
+    createNode(type,pos){
+      const def=G.types[type];
+      const geo=T.geo[def.geo](def.size);
+      const color=def.color();
+      const mat=T.mat.phong(color,.3);
+      const mesh=new THREE.Mesh(geo,mat);
+      mesh.position.copy(pos);
+
+      // Glow ring
+      const ring=new THREE.Mesh(T.geo.torus(def.size*1.5,.1),T.mat.basic(color,.2));
+      ring.rotation.x=Math.PI/2;
+      mesh.add(ring);
+      mesh.ring=ring;
+
+      this.scene.add(mesh);
+      return mesh;
+    },
+
+    createLink(n1,n2){
+      const pts=new THREE.BufferGeometry().setFromPoints([n1.mesh.position,n2.mesh.position]);
+      const line=new THREE.Line(pts,T.mat.basic(0x00ffff,.4));
+      this.scene.add(line);
+      return line;
+    },
+
+    animate(){
+      requestAnimationFrame(()=>this.animate());
+      const t=Date.now()*.001;
+
+      // Camera orbit
+      const r=50+Math.sin(t*.2)*10;
+      this.camera.position.x=Math.cos(t*.1)*r;
+      this.camera.position.z=Math.sin(t*.1)*r;
+      this.camera.position.y=30+Math.sin(t*.15)*10;
+      this.camera.lookAt(0,10,0);
+
+      // Core rotation
+      if(this.core){
+        this.core.rotation.x=t*.3;
+        this.core.rotation.y=t*.5;
+      }
+
+      // Node animations
+      G.nodes.forEach(n=>{
+        n.mesh.rotation.y=t+n.phase;
+        if(n.mesh.ring)n.mesh.ring.rotation.z=t*2;
+        n.mesh.position.y+=Math.sin(t*2+n.phase)*.01;
+      });
+
+      // Update connection lines
+      G.connections.forEach(c=>{
+        if(c.line&&c.n1.mesh&&c.n2.mesh){
+          const pts=c.line.geometry.attributes.position.array;
+          pts[0]=c.n1.mesh.position.x;pts[1]=c.n1.mesh.position.y;pts[2]=c.n1.mesh.position.z;
+          pts[3]=c.n2.mesh.position.x;pts[4]=c.n2.mesh.position.y;pts[5]=c.n2.mesh.position.z;
+          c.line.geometry.attributes.position.needsUpdate=true;
+        }
+      });
+
+      // Particles
+      if(this.particles){
+        const pos=this.particles.geometry.attributes.position.array;
+        for(let i=0;i<pos.length;i+=3){
+          pos[i+1]-=.05;
+          if(pos[i+1]<0){pos[i+1]=50;pos[i]=(Math.random()-.5)*100;}
+        }
+        this.particles.geometry.attributes.position.needsUpdate=true;
+      }
+
+      this.renderer.render(this.scene,this.camera);
+    }
+  },
+
+  spawn(type){
+    const def=this.types[type];
+    if(!def||this.energy<def.energy)return null;
+
+    const θ=T.rng(0,T.τ);
+    const r=10+this.nodes.size*.5+T.rng(0,10);
+    const pos=T.polar(r,θ,T.rng(5,20));
+
+    const id=++this.nodeId;
+    const mesh=this.W.createNode(type,pos);
+    const node={id,type,mesh,energy:def.energy,links:new Map(),phase:T.rng(0,T.τ),dna:0};
+
+    this.nodes.set(id,node);
+    this.energy-=def.energy;
+    T.log('log',`+${def.icon}${type}#${id} -${def.energy}⚡`);
+    this.updateUI();
+    return node;
+  },
+
+  link(n1,n2){
+    if(n1.links.has(n2.id))return;
+    const line=this.W.createLink(n1,n2);
+    n1.links.set(n2.id,line);
+    n2.links.set(n1.id,line);
+    this.connections.push({n1,n2,line});
+    this.energy+=5;
+  },
+
+  remove(node){
+    node.links.forEach((line,id)=>{
+      this.W.scene.remove(line);
+      const other=this.nodes.get(id);
+      if(other)other.links.delete(node.id);
+    });
+    this.W.scene.remove(node.mesh);
+    this.nodes.delete(node.id);
+    this.connections=this.connections.filter(c=>c.n1!==node&&c.n2!==node);
+  },
+
+  tick(){
+    // Passive energy
+    this.energy+=5+this.nodes.size;
+
+    // Node decay
+    this.nodes.forEach(n=>{
+      n.energy-=1;
+      if(n.energy<=0)n.energy=1;
+    });
+
+    // Run agents
+    Agents.tick(this);
+    this.updateUI();
+  },
+
+  updateUI(){
+    T.html('core',`
+      <div class="g">
+        <div class="s" style="border-color:#f0f">⚡${this.energy}</div>
+        <div class="s" style="border-color:#0ff">⚛${this.nodes.size}</div>
+        <div class="s" style="border-color:#0f8">🔗${this.connections.length}</div>
+        <div class="s" style="border-color:#ff0">🧬${this.generation}</div>
+      </div>
+      <div class="bar"><div class="fill" style="width:${T.clamp(this.energy/10,0,100)}%;background:linear-gradient(90deg,#f0f,#0ff)"></div></div>
+    `);
+
+    T.html('agents',`<div style="font-size:8px;color:#888">Active: ${Agents.pool.filter(a=>a.active).length}/${Agents.pool.length}</div>`);
+
+    T.html('fab',Object.entries(this.types).map(([k,v])=>
+      `<button style="--c1:#${v.color().getHexString()};--c2:#${v.color().clone().offsetHSL(0,0,-.2).getHexString()}" onclick="G.spawn('${k}')">${v.icon}${k}</button>`
+    ).join(''));
+
+    // Metrics
+    const avgEnergy=this.nodes.size?Math.round([...this.nodes.values()].reduce((a,n)=>a+n.energy,0)/this.nodes.size):0;
+    T.html('metrics',`
+      <div class="g">
+        <div class="s" style="border-color:#0f8">μE:${avgEnergy}</div>
+        <div class="s" style="border-color:#0ff">Agents:${Agents.pool.length}</div>
+      </div>
+      <div style="font-size:8px">${[...this.nodes.values()].slice(-6).map(n=>`<span style="color:#${this.types[n.type].color().getHexString()}">${this.types[n.type].icon}</span>`).join(' ')}</div>
+    `);
+
+    // Agent pool
+    T.html('pool',`
+      <div class="g">${Object.entries(Agents.types).map(([k,v])=>
+        `<button style="--c1:#${v.color.toString(16).padStart(6,'0')}" onclick="Agents.spawn('${k}')">${v.icon}</button>`
+      ).join('')}</div>
+      <div style="font-size:7px;max-height:50px;overflow-y:auto">${Agents.pool.map(a=>
+        `<span style="color:#${a.color.toString(16).padStart(6,'0')}">${a.icon}${a.built||a.optimized||a.linked||a.evolved||a.recycled||a.explored||0}</span>`
+      ).join(' ')}</div>
+    `);
+  },
+
+  init(){
+    this.W.init();
+    T.log('log','⚛ Genesis Core initialized');
+    T.log('log','Spawning initial agents...');
+
+    // Spawn initial agents
+    ['builder','connector','optimizer'].forEach(t=>Agents.spawn(t));
+
+    // Initial nodes
+    setTimeout(()=>this.spawn('core'),500);
+    setTimeout(()=>this.spawn('hub'),1000);
+
+    setInterval(()=>this.tick(),800);
+    this.updateUI();
+  }
+};
+
+onload=()=>setTimeout(()=>G.init(),100);
+onresize=()=>{G.W.renderer.setSize(innerWidth,innerHeight);G.W.camera.aspect=innerWidth/innerHeight;G.W.camera.updateProjectionMatrix()};
+</script></body></html>

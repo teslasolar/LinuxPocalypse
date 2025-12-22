@@ -30,5 +30,13 @@
     "icon": "🔥",
     "color": "#ff6600",
     "tags": ["3D", "FDM", "Realistic", "Slicer"]
+  },
+  {
+    "file": "genesis-core.html",
+    "title": "Genesis Core",
+    "description": "Agent-based autonomous simulation with tokenized functions, 6 agent types, self-evolving network topology",
+    "icon": "⚛",
+    "color": "#ff00ff",
+    "tags": ["Agents", "Autonomous", "Token-System", "Evolution"]
   }
 ]
