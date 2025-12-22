@@ -53,7 +53,6 @@ body{background:#0d1117;color:#c9d1d9;font-family:system-ui;display:flex;flex-di
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.8.0/lib/addon-fit.min.js"></script>
 <script>
 // Virtual File System
 const FS={
@@ -94,18 +93,17 @@ A simulated Node.js environment in your browser.
 
 // Shell
 const SH={
-  t:null,f:null,buf:'',cwd:'/',
+  t:null,buf:'',cwd:'/',
   init(){
+    const termEl=document.getElementById('term');
+    const cols=Math.floor(termEl.offsetWidth/7.5)||80;
+    const rows=Math.floor(termEl.offsetHeight/17)||20;
     this.t=new Terminal({
       theme:{background:'#0d1117',foreground:'#c9d1d9',cursor:'#58a6ff',
         green:'#3fb950',yellow:'#d29922',blue:'#58a6ff',magenta:'#bc8cff',cyan:'#39c5cf',red:'#ff7b72'},
-      fontSize:13,cursorBlink:true,cursorStyle:'bar'
+      fontSize:13,cursorBlink:true,cursorStyle:'bar',cols,rows
     });
-    this.f=new FitAddon.FitAddon();
-    this.t.loadAddon(this.f);
-    this.t.open(document.getElementById('term'));
-    this.f.fit();
-    window.onresize=()=>this.f.fit();
+    this.t.open(termEl);
     this.t.onData(d=>this.input(d));
     this.welcome();
     this.prompt();
@@ -329,11 +327,7 @@ function openFile(p){
 // Init - wait for everything to load
 window.addEventListener('load', function() {
   if (typeof Terminal === 'undefined') {
-    document.getElementById('term').innerHTML = '<div style="padding:20px;color:#ff7b72">Error: xterm.js failed to load. Check console.</div>';
-    return;
-  }
-  if (typeof FitAddon === 'undefined') {
-    document.getElementById('term').innerHTML = '<div style="padding:20px;color:#ff7b72">Error: FitAddon failed to load.</div>';
+    document.getElementById('term').innerHTML = '<div style="padding:20px;color:#ff7b72">Error: xterm.js failed to load.</div>';
     return;
   }
   SH.init();
