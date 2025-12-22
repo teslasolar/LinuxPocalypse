@@ -8,36 +8,33 @@
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#000;color:#0f0;font-family:'Courier New',monospace;height:100vh;display:flex;flex-direction:column}
 #term{flex:1}
-.xterm{height:100%}
+.xterm{height:100%!important}
 .xterm-viewport{background:#000!important}
+.xterm-screen{height:100%!important}
 </style>
 </head>
 <body>
 <div id="term"></div>
 <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.8.0/lib/addon-fit.min.js"></script>
 <script>
 window.addEventListener('load',()=>{
-// Check if scripts loaded
 if(typeof Terminal==='undefined'){
   document.getElementById('term').innerHTML='<pre style="color:#f55;padding:20px">Error: xterm.js failed to load</pre>';
   return;
 }
-if(typeof FitAddon==='undefined'){
-  document.getElementById('term').innerHTML='<pre style="color:#f55;padding:20px">Error: FitAddon failed to load</pre>';
-  return;
-}
 
+const termEl=document.getElementById('term');
 const t=new Terminal({
   theme:{background:'#000',foreground:'#0f0',cursor:'#0f0',cursorAccent:'#000',
     green:'#0f0',yellow:'#ff0',blue:'#0af',magenta:'#f0f',cyan:'#0ff',red:'#f55',white:'#fff'},
-  fontSize:14,cursorBlink:true,cursorStyle:'block',fontFamily:'Courier New,monospace'
+  fontSize:14,cursorBlink:true,cursorStyle:'block',fontFamily:'Courier New,monospace',
+  rows:Math.floor(window.innerHeight/18),
+  cols:Math.floor(window.innerWidth/8.4)
 });
-const fit=new FitAddon.FitAddon();
-t.loadAddon(fit);
-t.open(document.getElementById('term'));
-fit.fit();
-window.onresize=()=>fit.fit();
+t.open(termEl);
+window.onresize=()=>{
+  t.resize(Math.floor(window.innerWidth/8.4),Math.floor(window.innerHeight/18));
+};
 
 // Virtual FS
 const fs={
