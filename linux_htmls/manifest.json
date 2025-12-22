@@ -1,5 +1,13 @@
 [
   {
+    "file": "megazord.html",
+    "title": "MEGAZORD",
+    "description": "Unified mega-system combining ALL simulations: Synth, Drone, Swarm, Neural, Shooter, Circuit, Voxel - with shared audio engine, gamepad support, and mode switching",
+    "icon": "🤖",
+    "color": "#00ffff",
+    "tags": ["Unified", "All-Modes", "Mega", "Hub"]
+  },
+  {
     "file": "kappa-cubelinux-v8.html",
     "title": "κ.CubeLinux v8",
     "description": "3D HMI Worlds with immersive modal environments for each SCADA component - databases, APIs, PLCs, and AI neural cores",

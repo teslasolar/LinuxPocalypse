@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MEGAZORD - LinuxPocalypse Unified System</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#050510;overflow:hidden;font:11px monospace;color:#0ff}
+#c{position:fixed;inset:0}
+
+/* HUD Panels */
+.panel{position:fixed;background:rgba(0,10,20,.92);border:1px solid #0ff;border-radius:6px;padding:10px;z-index:100}
+.panel-title{text-align:center;font-size:12px;font-weight:bold;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid #066}
+
+/* Mode Selector */
+#mode-hub{top:10px;left:50%;transform:translateX(-50%);display:flex;gap:5px;padding:8px 15px}
+.mode-btn{background:linear-gradient(135deg,#033,#011);color:#0ff;border:1px solid #066;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:10px;transition:all .15s}
+.mode-btn:hover{background:#066;border-color:#0ff;transform:scale(1.05)}
+.mode-btn.active{background:#0ff;color:#000;border-color:#fff;box-shadow:0 0 15px #0ff}
+
+/* Stats */
+#stats{top:60px;left:10px;width:180px}
+.stat-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #022}
+.stat-val{color:#0f0;font-weight:bold}
+
+/* Controls */
+#controls{bottom:10px;left:10px;width:200px}
+button{background:linear-gradient(135deg,#044,#022);color:#0ff;border:1px solid #066;padding:5px 10px;margin:2px;border-radius:4px;cursor:pointer;font-size:10px}
+button:hover{background:#088}
+button.on{background:#0a0;color:#fff;border-color:#0f0}
+input[type=range]{width:80px;accent-color:#0ff}
+select{background:#011;color:#0ff;border:1px solid #066;padding:4px;border-radius:4px;font-size:10px}
+
+/* Agent Panel */
+#agents{top:60px;right:10px;width:200px}
+.agent{background:#011;border:1px solid #033;border-radius:4px;padding:6px;margin:4px 0}
+.agent.active{border-color:#0f0;box-shadow:0 0 8px #0f04}
+.agent-head{display:flex;justify-content:space-between}
+.agent-name{font-weight:bold}
+.agent-status{font-size:9px;padding:2px 5px;border-radius:8px}
+
+/* Audio Panel */
+#audio{bottom:10px;right:10px;width:220px}
+.waveform{height:40px;background:#011;border:1px solid #033;border-radius:4px;margin:5px 0}
+.key-row{display:flex;gap:2px;flex-wrap:wrap;justify-content:center}
+.key-btn{width:22px;height:22px;font-size:9px;padding:0;display:flex;align-items:center;justify-content:center}
+
+/* Theory Display */
+#theory{top:60px;left:200px;width:160px}
+.scale-notes{display:flex;gap:2px;margin:5px 0}
+.scale-note{width:18px;height:18px;display:flex;align-items:center;justify-content:center;background:#022;border:1px solid #044;border-radius:3px;font-size:9px}
+.scale-note.root{background:#f60;color:#000}
+.scale-note.active{background:#0ff;color:#000}
+
+/* Visualizer */
+#viz{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);width:400px;height:60px;background:rgba(0,10,20,.8);border:1px solid #044;border-radius:4px}
+
+/* Messages */
+#msg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-size:24px;color:#0ff;text-shadow:0 0 20px #0ff;opacity:0;transition:opacity .5s;pointer-events:none}
+
+/* Crosshair */
+#crosshair{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:40px;height:40px;pointer-events:none;opacity:.5}
+
+/* Entity Info */
+#entity-info{bottom:80px;left:10px;width:180px;display:none}
+</style></head><body>
+<canvas id="c"></canvas>
+
+<!-- Mode Hub -->
+<div class="panel" id="mode-hub">
+<div class="mode-btn active" onclick="M.setMode('hub')">🏠 Hub</div>
+<div class="mode-btn" onclick="M.setMode('synth')">🎵 Synth</div>
+<div class="mode-btn" onclick="M.setMode('drone')">🚁 Drone</div>
+<div class="mode-btn" onclick="M.setMode('swarm')">🐜 Swarm</div>
+<div class="mode-btn" onclick="M.setMode('neural')">🧠 Neural</div>
+<div class="mode-btn" onclick="M.setMode('shooter')">🦊 Shooter</div>
+<div class="mode-btn" onclick="M.setMode('circuit')">⚡ Circuit</div>
+<div class="mode-btn" onclick="M.setMode('voxel')">🧱 Voxel</div>
+</div>
+
+<!-- Stats Panel -->
+<div class="panel" id="stats">
+<div class="panel-title">📊 SYSTEM STATS</div>
+<div class="stat-row"><span>Mode:</span><span class="stat-val" id="s-mode">Hub</span></div>
+<div class="stat-row"><span>Entities:</span><span class="stat-val" id="s-entities">0</span></div>
+<div class="stat-row"><span>FPS:</span><span class="stat-val" id="s-fps">60</span></div>
+<div class="stat-row"><span>Energy:</span><span class="stat-val" id="s-energy">100</span></div>
+<div class="stat-row"><span>Score:</span><span class="stat-val" id="s-score">0</span></div>
+</div>
+
+<!-- Controls Panel -->
+<div class="panel" id="controls">
+<div class="panel-title">🎮 CONTROLS</div>
+<div style="margin:5px 0">
+<button onclick="M.togglePlay()" id="play-btn">▶ Play</button>
+<button onclick="M.reset()">🔄 Reset</button>
+</div>
+<div style="margin:5px 0">
+<span>Speed:</span>
+<input type="range" min="1" max="100" value="50" oninput="M.setSpeed(this.value)">
+</div>
+<div style="margin:5px 0">
+<span>Spawn:</span>
+<button onclick="M.spawn('a')">Agent</button>
+<button onclick="M.spawn('e')">Entity</button>
+</div>
+<div style="font-size:9px;color:#088;margin-top:8px">
+WASD: Move | Mouse: Look<br>
+Space: Action | Shift: Boost<br>
+1-8: Switch Mode | Q: Spawn
+</div>
+</div>
+
+<!-- Agents Panel -->
+<div class="panel" id="agents">
+<div class="panel-title">🤖 AGENTS</div>
+<div class="agent active" id="ag-master">
+<div class="agent-head"><span class="agent-name">👑 Master</span><span class="agent-status" style="background:#0a0;color:#0f0">ON</span></div>
+</div>
+<div class="agent" id="ag-audio">
+<div class="agent-head"><span class="agent-name">🎵 Audio</span><span class="agent-status" style="background:#600;color:#f66">OFF</span></div>
+</div>
+<div class="agent" id="ag-physics">
+<div class="agent-head"><span class="agent-name">⚛️ Physics</span><span class="agent-status" style="background:#0a0;color:#0f0">ON</span></div>
+</div>
+<div class="agent" id="ag-swarm">
+<div class="agent-head"><span class="agent-name">🐜 Swarm AI</span><span class="agent-status" style="background:#600;color:#f66">OFF</span></div>
+</div>
+<div class="agent" id="ag-neural">
+<div class="agent-head"><span class="agent-name">🧠 Neural</span><span class="agent-status" style="background:#600;color:#f66">OFF</span></div>
+</div>
+<div style="margin-top:8px">
+<button onclick="M.toggleAgent('audio')">Toggle Audio</button>
+<button onclick="M.toggleAgent('swarm')">Toggle Swarm</button>
+</div>
+</div>
+
+<!-- Audio Panel -->
+<div class="panel" id="audio">
+<div class="panel-title">🎹 AUDIO ENGINE</div>
+<div style="display:flex;gap:10px;align-items:center">
+<span>BPM:</span>
+<input type="range" min="60" max="180" value="120" style="width:60px" oninput="M.audio.setBPM(this.value)">
+<span id="bpm-val">120</span>
+</div>
+<div style="margin:5px 0">
+<span>Key:</span>
+<select onchange="M.audio.setKey(this.value)">
+<option>C</option><option>D</option><option>E</option><option>F</option>
+<option>G</option><option>A</option><option>B</option>
+</select>
+<span>Mode:</span>
+<select onchange="M.audio.setMode(this.value)">
+<option value="ionian">Major</option>
+<option value="aeolian">Minor</option>
+<option value="dorian">Dorian</option>
+<option value="mixolydian">Mixo</option>
+</select>
+</div>
+<canvas class="waveform" id="waveform" width="200" height="40"></canvas>
+<div class="key-row">
+<button class="key-btn" onclick="M.audio.playNote('C4')">C</button>
+<button class="key-btn" onclick="M.audio.playNote('D4')">D</button>
+<button class="key-btn" onclick="M.audio.playNote('E4')">E</button>
+<button class="key-btn" onclick="M.audio.playNote('F4')">F</button>
+<button class="key-btn" onclick="M.audio.playNote('G4')">G</button>
+<button class="key-btn" onclick="M.audio.playNote('A4')">A</button>
+<button class="key-btn" onclick="M.audio.playNote('B4')">B</button>
+</div>
+</div>
+
+<!-- Theory Panel -->
+<div class="panel" id="theory">
+<div class="panel-title">🎼 THEORY</div>
+<div id="theory-scale">Scale: C Major</div>
+<div class="scale-notes" id="scale-viz"></div>
+<div id="theory-chord" style="margin-top:5px">Chord: C</div>
+<div style="margin-top:8px">
+<button onclick="M.audio.playChord()">Play Chord</button>
+<button onclick="M.audio.nextChord()">Next</button>
+</div>
+</div>
+
+<!-- Crosshair -->
+<svg id="crosshair" viewBox="0 0 40 40">
+<circle cx="20" cy="20" r="15" stroke="#0ff" stroke-width="1" fill="none"/>
+<line x1="20" y1="5" x2="20" y2="12" stroke="#0ff" stroke-width="1"/>
+<line x1="20" y1="28" x2="20" y2="35" stroke="#0ff" stroke-width="1"/>
+<line x1="5" y1="20" x2="12" y2="20" stroke="#0ff" stroke-width="1"/>
+<line x1="28" y1="20" x2="35" y2="20" stroke="#0ff" stroke-width="1"/>
+</svg>
+
+<!-- Message -->
+<div id="msg"></div>
+
+<!-- Visualizer -->
+<canvas id="viz"></canvas>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// MEGAZORD - UNIFIED LINUXPOCALYPSE SYSTEM
+// ═══════════════════════════════════════════════════════════════
+
+const T={
+  v3:(x,y,z)=>new THREE.Vector3(x,y,z),
+  rnd:(a,b)=>a+Math.random()*(b-a),
+  clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),
+  lerp:(a,b,t)=>a+(b-a)*t,
+  dist:(a,b)=>a.distanceTo(b),
+  hsl:(h,s,l)=>new THREE.Color().setHSL(h,s,l)
+};
+
+// ═══════════════════════════════════════════════════════════════
+// MUSIC THEORY ENGINE
+// ═══════════════════════════════════════════════════════════════
+const NOTES=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const NOTE_MAP={'C':0,'C#':1,'Db':1,'D':2,'D#':3,'Eb':3,'E':4,'F':5,'F#':6,'Gb':6,'G':7,'G#':8,'Ab':8,'A':9,'A#':10,'Bb':10,'B':11};
+const MODES={
+  ionian:[0,2,4,5,7,9,11],dorian:[0,2,3,5,7,9,10],phrygian:[0,1,3,5,7,8,10],
+  lydian:[0,2,4,6,7,9,11],mixolydian:[0,2,4,5,7,9,10],aeolian:[0,2,3,5,7,8,10],locrian:[0,1,3,5,6,8,10]
+};
+const PROGRESSIONS={pop:[0,4,5,3],jazz:[1,4,0],blues:[0,3,0,4],sad:[5,3,0,4]};
+
+// ═══════════════════════════════════════════════════════════════
+// MAIN MEGAZORD CONTROLLER
+// ═══════════════════════════════════════════════════════════════
+const M={
+  mode:'hub',
+  playing:false,
+  speed:1,
+  energy:100,
+  score:0,
+  time:0,
+  entities:[],
+  agents:{master:true,audio:false,physics:true,swarm:false,neural:false},
+
+  // Input state
+  input:{keys:{},mouse:{x:0,y:0,dx:0,dy:0,locked:false},gamepad:null,
+    lx:0,ly:0,rx:0,ry:0,buttons:{}},
+
+  // ─────────────────────────────────────────────────────────────
+  // INITIALIZATION
+  // ─────────────────────────────────────────────────────────────
+  init(){
+    // THREE.js Setup
+    this.scene=new THREE.Scene();
+    this.camera=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,.1,2000);
+    this.renderer=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true});
+    this.renderer.setSize(innerWidth,innerHeight);
+    this.renderer.setClearColor(0x050510);
+
+    // Lighting
+    this.scene.add(new THREE.AmbientLight(0x224466,.4));
+    this.sunLight=new THREE.DirectionalLight(0xffffff,.6);
+    this.sunLight.position.set(50,100,50);
+    this.scene.add(this.sunLight);
+    this.pointLight=new THREE.PointLight(0x00ffff,.5,100);
+    this.scene.add(this.pointLight);
+
+    // Camera position
+    this.camera.position.set(0,20,50);
+    this.camera.lookAt(0,0,0);
+    this.cameraTarget=T.v3(0,0,0);
+
+    // Initialize systems
+    this.initAudio();
+    this.initInput();
+    this.initHub();
+
+    // Start loop
+    this.lastTime=performance.now();
+    this.animate();
+  },
+
+  // ─────────────────────────────────────────────────────────────
+  // AUDIO ENGINE (Tone.js)
+  // ─────────────────────────────────────────────────────────────
+  audio:{
+    ctx:null,bpm:120,key:'C',mode:'ionian',progIdx:0,
+
+    init(){
+      const reverb=new Tone.Reverb({decay:2,wet:.25}).toDestination();
+      const delay=new Tone.FeedbackDelay({delayTime:'8n',feedback:.15,wet:.1}).connect(reverb);
+
+      this.synth=new Tone.PolySynth(Tone.Synth,{
+        oscillator:{type:'sine'},
+        envelope:{attack:.02,decay:.2,sustain:.5,release:.5}
+      }).connect(delay);
+
+      this.bass=new Tone.MonoSynth({
+        oscillator:{type:'triangle'},
+        envelope:{attack:.01,decay:.1,sustain:.7,release:.2}
+      }).toDestination();
+      this.bass.volume.value=-8;
+
+      this.drums={
+        kick:new Tone.MembraneSynth({pitchDecay:.05,octaves:6}).toDestination(),
+        snare:new Tone.NoiseSynth({envelope:{attack:.001,decay:.12,sustain:0}}).toDestination(),
+        hat:new Tone.MetalSynth({frequency:300,envelope:{attack:.001,decay:.04}}).toDestination()
+      };
+      this.drums.kick.volume.value=-5;
+      this.drums.snare.volume.value=-12;
+      this.drums.hat.volume.value=-18;
+
+      this.analyser=new Tone.Analyser('waveform',128);
+      this.synth.connect(this.analyser);
+    },
+
+    start(){if(!this.ctx){Tone.start();this.ctx=true;}},
+
+    getScale(root,mode,oct=4){
+      const ri=NOTE_MAP[root];
+      return MODES[mode].map(i=>NOTES[(ri+i)%12]+oct);
+    },
+
+    playNote(note,dur='8n'){
+      this.start();
+      this.synth.triggerAttackRelease(note,dur,Tone.now(),.7);
+    },
+
+    playChord(){
+      this.start();
+      const scale=this.getScale(this.key,this.mode,4);
+      const prog=PROGRESSIONS.pop;
+      const deg=prog[this.progIdx%prog.length];
+      const chord=[scale[deg],scale[(deg+2)%7],scale[(deg+4)%7]];
+      this.synth.triggerAttackRelease(chord,'2n');
+      this.bass.triggerAttackRelease(this.key+'2','2n');
+      document.getElementById('theory-chord').textContent='Chord: '+chord[0].replace(/\d/,'');
+    },
+
+    nextChord(){
+      this.progIdx++;
+      this.playChord();
+    },
+
+    setBPM(v){this.bpm=parseInt(v);document.getElementById('bpm-val').textContent=v;},
+    setKey(k){this.key=k;this.updateViz();},
+    setMode(m){this.mode=m;this.updateViz();},
+
+    updateViz(){
+      const scale=this.getScale(this.key,this.mode,4);
+      const names=scale.map(n=>n.replace(/\d/,''));
+      document.getElementById('theory-scale').textContent='Scale: '+this.key+' '+(this.mode==='ionian'?'Major':this.mode);
+      const container=document.getElementById('scale-viz');
+      container.innerHTML='';
+      names.forEach((n,i)=>{
+        const div=document.createElement('div');
+        div.className='scale-note'+(i===0?' root':'');
+        div.textContent=n;
+        container.appendChild(div);
+      });
+    },
+
+    drawWaveform(){
+      if(!this.analyser)return;
+      const cv=document.getElementById('waveform');
+      const ctx=cv.getContext('2d');
+      const data=this.analyser.getValue();
+      ctx.fillStyle='#011';
+      ctx.fillRect(0,0,cv.width,cv.height);
+      ctx.strokeStyle='#0ff';
+      ctx.lineWidth=1;
+      ctx.beginPath();
+      data.forEach((v,i)=>{
+        const x=i/data.length*cv.width;
+        const y=(v+1)/2*cv.height;
+        i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+      });
+      ctx.stroke();
+    }
+  },
+
+  initAudio(){this.audio.init();this.audio.updateViz();},
+
+  // ─────────────────────────────────────────────────────────────
+  // INPUT SYSTEM
+  // ─────────────────────────────────────────────────────────────
+  initInput(){
+    window.addEventListener('keydown',e=>{
+      this.input.keys[e.code]=true;
+      // Mode shortcuts
+      if(e.code==='Digit1')this.setMode('hub');
+      if(e.code==='Digit2')this.setMode('synth');
+      if(e.code==='Digit3')this.setMode('drone');
+      if(e.code==='Digit4')this.setMode('swarm');
+      if(e.code==='Digit5')this.setMode('neural');
+      if(e.code==='Digit6')this.setMode('shooter');
+      if(e.code==='Digit7')this.setMode('circuit');
+      if(e.code==='Digit8')this.setMode('voxel');
+      if(e.code==='KeyQ')this.spawn('a');
+      if(e.code==='Space')this.action();
+    });
+    window.addEventListener('keyup',e=>this.input.keys[e.code]=false);
+
+    document.addEventListener('click',()=>{
+      if(!this.input.mouse.locked)document.body.requestPointerLock();
+    });
+    document.addEventListener('pointerlockchange',()=>{
+      this.input.mouse.locked=!!document.pointerLockElement;
+    });
+    document.addEventListener('mousemove',e=>{
+      if(this.input.mouse.locked){
+        this.input.mouse.dx=e.movementX;
+        this.input.mouse.dy=e.movementY;
+      }
+    });
+
+    window.addEventListener('gamepadconnected',e=>this.input.gamepad=e.gamepad);
+    window.addEventListener('gamepaddisconnected',()=>this.input.gamepad=null);
+  },
+
+  pollGamepad(){
+    const gps=navigator.getGamepads();
+    if(gps[0])this.input.gamepad=gps[0];
+    if(!this.input.gamepad)return;
+    const gp=this.input.gamepad;
+    const dz=.15;
+    this.input.lx=Math.abs(gp.axes[0])<dz?0:gp.axes[0];
+    this.input.ly=Math.abs(gp.axes[1])<dz?0:gp.axes[1];
+    this.input.rx=Math.abs(gp.axes[2])<dz?0:gp.axes[2];
+    this.input.ry=Math.abs(gp.axes[3])<dz?0:gp.axes[3];
+    for(let i=0;i<gp.buttons.length;i++){
+      this.input.buttons[i]=gp.buttons[i]?.pressed;
+    }
+  },
+
+  // ─────────────────────────────────────────────────────────────
+  // MODE MANAGEMENT
+  // ─────────────────────────────────────────────────────────────
+  setMode(mode){
+    this.mode=mode;
+    document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelector(`.mode-btn[onclick*="${mode}"]`)?.classList.add('active');
+    document.getElementById('s-mode').textContent=mode.charAt(0).toUpperCase()+mode.slice(1);
+    this.showMsg(mode.toUpperCase()+' MODE');
+
+    // Clear entities
+    this.entities.forEach(e=>this.scene.remove(e.mesh));
+    this.entities=[];
+
+    // Setup mode
+    switch(mode){
+      case'hub':this.initHub();break;
+      case'synth':this.initSynth();break;
+      case'drone':this.initDrone();break;
+      case'swarm':this.initSwarm();break;
+      case'neural':this.initNeural();break;
+      case'shooter':this.initShooter();break;
+      case'circuit':this.initCircuit();break;
+      case'voxel':this.initVoxel();break;
+    }
+  },
+
+  // ─────────────────────────────────────────────────────────────
+  // HUB MODE - Central nexus
+  // ─────────────────────────────────────────────────────────────
+  initHub(){
+    this.clearScene();
+    this.renderer.setClearColor(0x050510);
+
+    // Central orb
+    const hub=new THREE.Mesh(
+      new THREE.IcosahedronGeometry(5,2),
+      new THREE.MeshPhongMaterial({color:0x00ffff,emissive:0x003344,wireframe:true})
+    );
+    hub.userData={type:'hub',spin:true};
+    this.scene.add(hub);
+    this.entities.push({mesh:hub,type:'hub'});
+
+    // Orbiting mode spheres
+    const modes=['synth','drone','swarm','neural','shooter','circuit','voxel'];
+    const colors=[0xff00ff,0x00ff00,0xffff00,0xff6600,0xff0000,0x00ffff,0x88ff00];
+    modes.forEach((m,i)=>{
+      const angle=i/modes.length*Math.PI*2;
+      const orb=new THREE.Mesh(
+        new THREE.SphereGeometry(1.5,16,16),
+        new THREE.MeshPhongMaterial({color:colors[i],emissive:colors[i],emissiveIntensity:.3})
+      );
+      orb.position.set(Math.cos(angle)*20,Math.sin(i*2)*5,Math.sin(angle)*20);
+      orb.userData={type:'mode-orb',mode:m,angle:angle};
+      this.scene.add(orb);
+      this.entities.push({mesh:orb,type:'mode-orb',mode:m,angle:angle,speed:.5+Math.random()*.5});
+    });
+
+    // Particle field
+    const particles=new THREE.BufferGeometry();
+    const positions=[];
+    for(let i=0;i<500;i++){
+      positions.push(T.rnd(-100,100),T.rnd(-50,50),T.rnd(-100,100));
+    }
+    particles.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+    const particleMesh=new THREE.Points(particles,new THREE.PointsMaterial({color:0x00ffff,size:.5}));
+    this.scene.add(particleMesh);
+    this.hubParticles=particleMesh;
+
+    this.camera.position.set(0,30,60);
+  },
+
+  updateHub(dt){
+    this.entities.forEach(e=>{
+      if(e.type==='hub'){
+        e.mesh.rotation.x+=dt*.2;
+        e.mesh.rotation.y+=dt*.3;
+      }
+      if(e.type==='mode-orb'){
+        e.angle+=dt*e.speed*.1;
+        e.mesh.position.x=Math.cos(e.angle)*20;
+        e.mesh.position.z=Math.sin(e.angle)*20;
+        e.mesh.position.y=Math.sin(e.angle*2)*5;
+      }
+    });
+    if(this.hubParticles){
+      this.hubParticles.rotation.y+=dt*.02;
+    }
+  },
+
+  // ─────────────────────────────────────────────────────────────
+  // SYNTH MODE - Music visualization
+  // ─────────────────────────────────────────────────────────────
+  initSynth(){
+    this.clearScene();
+    this.renderer.setClearColor(0x0a0015);
+    this.agents.audio=true;
+    this.updateAgentUI('audio',true);
+
+    // Frequency bars
+    for(let i=0;i<12;i++){
+      const bar=new THREE.Mesh(
+        new THREE.BoxGeometry(2,1,2),
+        new THREE.MeshPhongMaterial({color:T.hsl(i/12,.8,.5),emissive:T.hsl(i/12,.5,.2)})
+      );
+      bar.position.set((i-5.5)*4,0,0);
+      bar.userData={type:'freq-bar',note:NOTES[i],idx:i};
+      this.scene.add(bar);
+      this.entities.push({mesh:bar,type:'freq-bar',baseY:0,activity:0});
+    }
+
+    // Chord rings
+    for(let i=0;i<4;i++){
+      const ring=new THREE.Mesh(
+        new THREE.TorusGeometry(10+i*3,.3,8,32),
+        new THREE.MeshBasicMaterial({color:0x440044,transparent:true,opacity:.4})
+      );
+      ring.rotation.x=Math.PI/2;
+      ring.position.y=-5;
+      this.scene.add(ring);
+      this.entities.push({mesh:ring,type:'chord-ring',idx:i});
+    }
+
+    this.camera.position.set(0,20,40);
+  },
+
+  updateSynth(dt){
+    this.audio.drawWaveform();
+    this.entities.forEach(e=>{
+      if(e.type==='freq-bar'){
+        e.activity*=.95;
+        e.mesh.scale.y=1+e.activity*10;
+        e.mesh.position.y=e.mesh.scale.y/2;
+      }
+      if(e.type==='chord-ring'){
+        e.mesh.rotation.z+=dt*(e.idx+1)*.2;
+      }
+    });
+  },
+
+  // ─────────────────────────────────────────────────────────────
+  // DRONE MODE - Flight simulation
+  // ─────────────────────────────────────────────────────────────
+  initDrone(){
+    this.clearScene();
+    this.renderer.setClearColor(0x001122);
+
+    // Drone
+    const drone=this.createDrone();
+    drone.position.set(0,10,0);
+    this.scene.add(drone);
+    this.entities.push({mesh:drone,type:'player',vx:0,vy:0,vz:0,pitch:0,roll:0});
+    this.player=this.entities[this.entities.length-1];
+
+    // Ground
+    const ground=new THREE.Mesh(
+      new THREE.PlaneGeometry(500,500),
+      new THREE.MeshPhongMaterial({color:0x113322})
+    );
+    ground.rotation.x=-Math.PI/2;
+    this.scene.add(ground);
+
+    // Buildings
+    for(let i=0;i<30;i++){
+      const h=T.rnd(5,30);
+      const building=new THREE.Mesh(
+        new THREE.BoxGeometry(T.rnd(5,15),h,T.rnd(5,15)),
+        new THREE.MeshPhongMaterial({color:T.hsl(.6,.3,T.rnd(.2,.4))})
+      );
+      building.position.set(T.rnd(-200,200),h/2,T.rnd(-200,200));
+      this.scene.add(building);
+    }
+
+    this.camera.position.set(0,15,30);
+  },
+
+  createDrone(){
+    const g=new THREE.Group();
+    const body=new THREE.Mesh(new THREE.BoxGeometry(2,1,3),new THREE.MeshPhongMaterial({color:0x333333}));
+    g.add(body);
+    for(let x=-1;x<=1;x+=2){
+      for(let z=-1;z<=1;z+=2){
+        const arm=new THREE.Mesh(new THREE.CylinderGeometry(.1,.1,2),new THREE.MeshPhongMaterial({color:0x222222}));
+        arm.rotation.z=Math.PI/2*x;
+        arm.position.set(x*1.5,.3,z);
+        g.add(arm);
+        const rotor=new THREE.Mesh(new THREE.CylinderGeometry(.8,.8,.1,8),new THREE.MeshPhongMaterial({color:0x00ff00}));
+        rotor.position.set(x*2,.5,z);
+        rotor.userData={isRotor:true};
+        g.add(rotor);
+      }
+    }
+    return g;
+  },
+
+  updateDrone(dt){
+    if(!this.player)return;
+    const p=this.player;
+    const keys=this.input.keys;
+    const speed=20,turnSpeed=2;
+
+    // Movement
+    if(keys.KeyW)p.vz-=speed*dt;
+    if(keys.KeyS)p.vz+=speed*dt;
+    if(keys.KeyA)p.vx-=speed*dt;
+    if(keys.KeyD)p.vx+=speed*dt;
+    if(keys.Space)p.vy+=speed*dt;
+    if(keys.ShiftLeft)p.vy-=speed*dt;
+
+    // Apply velocity with damping
+    p.mesh.position.x+=p.vx;
+    p.mesh.position.y+=p.vy;
+    p.mesh.position.z+=p.vz;
+    p.vx*=.9;p.vy*=.9;p.vz*=.9;
+
+    // Tilt
+    p.mesh.rotation.z=T.lerp(p.mesh.rotation.z,-p.vx*.5,.1);
+    p.mesh.rotation.x=T.lerp(p.mesh.rotation.x,p.vz*.5,.1);
+
+    // Camera follow
+    this.camera.position.x=T.lerp(this.camera.position.x,p.mesh.position.x,.05);
+    this.camera.position.y=T.lerp(this.camera.position.y,p.mesh.position.y+10,.05);
+    this.camera.position.z=T.lerp(this.camera.position.z,p.mesh.position.z+25,.05);
+    this.camera.lookAt(p.mesh.position);
+
+    // Spin rotors
+    p.mesh.children.forEach(c=>{if(c.userData.isRotor)c.rotation.y+=dt*50;});
+
+    // Clamp height
+    p.mesh.position.y=Math.max(2,p.mesh.position.y);
+  },
+
+  // ─────────────────────────────────────────────────────────────
+  // SWARM MODE - Ant colony simulation
+  // ─────────────────────────────────────────────────────────────
+  initSwarm(){
+    this.clearScene();
+    this.renderer.setClearColor(0x0a0800);
+    this.agents.swarm=true;
+    this.updateAgentUI('swarm',true);
+
+    // Ground
+    const ground=new THREE.Mesh(new THREE.PlaneGeometry(200,200),new THREE.MeshPhongMaterial({color:0x332200}));
+    ground.rotation.x=-Math.PI/2;
+    this.scene.add(ground);
+
+    // Colony
+    const colony=new THREE.Mesh(new THREE.ConeGeometry(5,8,8),new THREE.MeshPhongMaterial({color:0x553300}));
+    colony.position.set(0,4,0);
+    this.scene.add(colony);
+    this.swarmHome=colony.position.clone();
+
+    // Food sources
+    for(let i=0;i<5;i++){
+      const food=new THREE.Mesh(new THREE.SphereGeometry(2,8,8),new THREE.MeshPhongMaterial({color:0x00ff00,emissive:0x003300}));
+      food.position.set(T.rnd(-80,80),2,T.rnd(-80,80));
+      food.userData={type:'food',amount:100};
+      this.scene.add(food);
+      this.entities.push({mesh:food,type:'food',amount:100});
+    }
+
+    // Spawn initial ants
+    for(let i=0;i<50;i++)this.spawnAnt();
+
+    this.camera.position.set(0,80,80);
+    this.camera.lookAt(0,0,0);
+  },
+
+  spawnAnt(){
+    const ant=new THREE.Mesh(
+      new THREE.ConeGeometry(.3,.8,4),
+      new THREE.MeshPhongMaterial({color:0x220000})
+    );
+    ant.rotation.x=Math.PI/2;
+    ant.position.set(this.swarmHome?.x||0,0.4,this.swarmHome?.z||0);
+    ant.userData={type:'ant',state:'search',target:null,carrying:false,pheromone:[]};
+    this.scene.add(ant);
+    this.entities.push({mesh:ant,type:'ant',vx:T.rnd(-1,1),vz:T.rnd(-1,1),state:'search',carrying:false});
+  },
+
+  updateSwarm(dt){
+    const ants=this.entities.filter(e=>e.type==='ant');
+    const foods=this.entities.filter(e=>e.type==='food');
+
+    ants.forEach(ant=>{
+      // Simple behavior
+      if(ant.state==='search'){
+        // Wander towards food
+        const nearestFood=foods.reduce((best,f)=>{
+          const d=ant.mesh.position.distanceTo(f.mesh.position);
+          return !best||d<best.dist?{food:f,dist:d}:best;
+        },null);
+
+        if(nearestFood&&nearestFood.dist<3){
+          ant.state='return';
+          ant.carrying=true;
+          ant.mesh.material.color.setHex(0x00ff00);
+          nearestFood.food.amount--;
+          if(nearestFood.food.amount<=0){
+            this.scene.remove(nearestFood.food.mesh);
+            const idx=this.entities.indexOf(nearestFood.food);
+            if(idx>-1)this.entities.splice(idx,1);
+          }
+        }else if(nearestFood){
+          const dir=nearestFood.food.mesh.position.clone().sub(ant.mesh.position).normalize();
+          ant.vx=T.lerp(ant.vx,dir.x,.1);
+          ant.vz=T.lerp(ant.vz,dir.z,.1);
+        }
+      }else if(ant.state==='return'){
+        // Go home
+        const dir=this.swarmHome.clone().sub(ant.mesh.position).normalize();
+        ant.vx=T.lerp(ant.vx,dir.x,.1);
+        ant.vz=T.lerp(ant.vz,dir.z,.1);
+
+        if(ant.mesh.position.distanceTo(this.swarmHome)<5){
+          ant.state='search';
+          ant.carrying=false;
+          ant.mesh.material.color.setHex(0x220000);
+          this.score++;
+        }
+      }
+
+      // Move
+      ant.mesh.position.x+=ant.vx*dt*10;
+      ant.mesh.position.z+=ant.vz*dt*10;
+
+      // Face direction
+      ant.mesh.rotation.y=Math.atan2(ant.vx,ant.vz);
+
+      // Bounds
+      ant.mesh.position.x=T.clamp(ant.mesh.position.x,-95,95);
+      ant.mesh.position.z=T.clamp(ant.mesh.position.z,-95,95);
+    });
+  },
+
+  // ─────────────────────────────────────────────────────────────
+  // NEURAL MODE - Neural network growth
+  // ─────────────────────────────────────────────────────────────
+  initNeural(){
+    this.clearScene();
+    this.renderer.setClearColor(0x100520);
+    this.agents.neural=true;
+    this.updateAgentUI('neural',true);
+
+    // Core neuron
+    const core=new THREE.Mesh(
+      new THREE.IcosahedronGeometry(3,1),
+      new THREE.MeshPhongMaterial({color:0xff00ff,emissive:0x440044})
+    );
+    this.scene.add(core);
+    this.entities.push({mesh:core,type:'neuron',energy:100,connections:[]});
+
+    // Spawn initial neurons
+    for(let i=0;i<10;i++)this.spawnNeuron();
+
+    this.camera.position.set(0,30,60);
+  },
+
+  spawnNeuron(){
+    const types=['neuron','synapse','dendrite'];
+    const type=types[Math.floor(Math.random()*types.length)];
+    const colors={neuron:0xff00ff,synapse:0x00ffff,dendrite:0xffff00};
+
+    const neuron=new THREE.Mesh(
+      new THREE.IcosahedronGeometry(T.rnd(.5,1.5),0),
+      new THREE.MeshPhongMaterial({color:colors[type],emissive:colors[type],emissiveIntensity:.2})
+    );
+    neuron.position.set(T.rnd(-40,40),T.rnd(-20,20),T.rnd(-40,40));
+    this.scene.add(neuron);
+
+    const entity={mesh:neuron,type:'neuron',subtype:type,energy:T.rnd(20,80),pulse:0};
+    this.entities.push(entity);
+
+    // Connect to nearby neurons
+    this.entities.filter(e=>e.type==='neuron'&&e!==entity).forEach(other=>{
+      if(T.dist(neuron.position,other.mesh.position)<20&&Math.random()>.6){
+        const line=new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints([neuron.position,other.mesh.position]),
+          new THREE.LineBasicMaterial({color:0x333366,transparent:true,opacity:.3})
+        );
+        this.scene.add(line);
+      }
+    });
+  },
+
+  updateNeural(dt){
+    this.entities.filter(e=>e.type==='neuron').forEach(n=>{
+      // Pulse animation
+      n.pulse+=dt*3;
+      const scale=1+Math.sin(n.pulse)*.1;
+      n.mesh.scale.setScalar(scale);
+
+      // Random firing
+      if(Math.random()<.001){
+        n.mesh.material.emissiveIntensity=1;
+        setTimeout(()=>n.mesh.material.emissiveIntensity=.2,100);
+      }
+
+      // Slow drift
+      n.mesh.position.x+=Math.sin(n.pulse*.1)*dt;
+      n.mesh.position.y+=Math.cos(n.pulse*.15)*dt;
+    });
+
+    // Auto spawn
+    if(this.playing&&Math.random()<.01&&this.entities.length<100){
+      this.spawnNeuron();
+    }
+  },
+
+  // ─────────────────────────────────────────────────────────────
+  // SHOOTER MODE - Rail shooter
+  // ─────────────────────────────────────────────────────────────
+  initShooter(){
+    this.clearScene();
+    this.renderer.setClearColor(0x000022);
+
+    // Player ship
+    const ship=this.createShip();
+    ship.position.set(0,0,0);
+    this.scene.add(ship);
+    this.entities.push({mesh:ship,type:'player',x:0,y:0});
+    this.player=this.entities[this.entities.length-1];
+
+    // Starfield
+    const stars=new THREE.BufferGeometry();
+    const starPos=[];
+    for(let i=0;i<1000;i++){
+      starPos.push(T.rnd(-200,200),T.rnd(-100,100),T.rnd(-500,50));
+    }
+    stars.setAttribute('position',new THREE.Float32BufferAttribute(starPos,3));
+    this.starField=new THREE.Points(stars,new THREE.PointsMaterial({color:0xffffff,size:1}));
+    this.scene.add(this.starField);
+
+    // Spawn enemies
+    for(let i=0;i<10;i++)this.spawnEnemy();
+
+    this.camera.position.set(0,10,30);
+    this.shooterDistance=0;
+  },
+
+  createShip(){
+    const g=new THREE.Group();
+    const body=new THREE.Mesh(new THREE.ConeGeometry(1.5,5,4),new THREE.MeshPhongMaterial({color:0xcccccc}));
+    body.rotation.x=-Math.PI/2;
+    body.rotation.y=Math.PI/4;
+    g.add(body);
+    const wing=new THREE.Mesh(new THREE.BoxGeometry(8,.2,2),new THREE.MeshPhongMaterial({color:0x4444ff}));
+    wing.position.z=1;
+    g.add(wing);
+    return g;
+  },
+
+  spawnEnemy(){
+    const enemy=new THREE.Mesh(
+      new THREE.ConeGeometry(1,3,3),
+      new THREE.MeshPhongMaterial({color:0xff0000})
+    );
+    enemy.rotation.x=-Math.PI/2;
+    enemy.position.set(T.rnd(-40,40),T.rnd(-20,20),-200-T.rnd(0,200));
+    this.scene.add(enemy);
+    this.entities.push({mesh:enemy,type:'enemy',hp:1});
+  },
+
+  updateShooter(dt){
+    if(!this.player)return;
+    const keys=this.input.keys;
+
+    // Move ship
+    if(keys.KeyA)this.player.x-=dt*30;
+    if(keys.KeyD)this.player.x+=dt*30;
+    if(keys.KeyW)this.player.y+=dt*30;
+    if(keys.KeyS)this.player.y-=dt*30;
+    this.player.x=T.clamp(this.player.x,-40,40);
+    this.player.y=T.clamp(this.player.y,-20,20);
+    this.player.mesh.position.x=this.player.x;
+    this.player.mesh.position.y=this.player.y;
+
+    // Scroll world
+    const scroll=dt*50;
+    this.shooterDistance+=scroll;
+
+    // Move stars
+    const sp=this.starField.geometry.attributes.position.array;
+    for(let i=0;i<sp.length;i+=3){
+      sp[i+2]+=scroll;
+      if(sp[i+2]>50)sp[i+2]=-500;
+    }
+    this.starField.geometry.attributes.position.needsUpdate=true;
+
+    // Move enemies
+    this.entities.filter(e=>e.type==='enemy').forEach(e=>{
+      e.mesh.position.z+=scroll;
+      if(e.mesh.position.z>50){
+        this.scene.remove(e.mesh);
+        e.dead=true;
+      }
+    });
+    this.entities=this.entities.filter(e=>!e.dead);
+
+    // Spawn new enemies
+    if(Math.random()<.03)this.spawnEnemy();
+
+    // Fire
+    if(keys.Space&&Math.random()<.3)this.fireBullet();
+
+    // Update bullets
+    this.entities.filter(e=>e.type==='bullet').forEach(b=>{
+      b.mesh.position.z-=dt*100;
+      if(b.mesh.position.z<-500){
+        this.scene.remove(b.mesh);
+        b.dead=true;
+      }
+      // Hit enemies
+      this.entities.filter(e=>e.type==='enemy').forEach(enemy=>{
+        if(T.dist(b.mesh.position,enemy.mesh.position)<3){
+          this.scene.remove(enemy.mesh);
+          enemy.dead=true;
+          b.dead=true;
+          this.scene.remove(b.mesh);
+          this.score+=10;
+        }
+      });
+    });
+    this.entities=this.entities.filter(e=>!e.dead);
+  },
+
+  fireBullet(){
+    const bullet=new THREE.Mesh(
+      new THREE.SphereGeometry(.3),
+      new THREE.MeshBasicMaterial({color:0x00ff00})
+    );
+    bullet.position.copy(this.player.mesh.position);
+    bullet.position.z-=3;
+    this.scene.add(bullet);
+    this.entities.push({mesh:bullet,type:'bullet'});
+  },
+
+  // ─────────────────────────────────────────────────────────────
+  // CIRCUIT MODE - PCB builder
+  // ─────────────────────────────────────────────────────────────
+  initCircuit(){
+    this.clearScene();
+    this.renderer.setClearColor(0x001100);
+
+    // PCB board
+    const board=new THREE.Mesh(
+      new THREE.BoxGeometry(80,2,60),
+      new THREE.MeshPhongMaterial({color:0x006600})
+    );
+    board.position.y=-1;
+    this.scene.add(board);
+
+    // Spawn components
+    const types=['mcu','resistor','capacitor','led','ic'];
+    for(let i=0;i<15;i++){
+      const type=types[Math.floor(Math.random()*types.length)];
+      this.spawnComponent(type);
+    }
+
+    // Traces
+    for(let i=0;i<20;i++){
+      const trace=new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([
+          T.v3(T.rnd(-35,35),0,T.rnd(-25,25)),
+          T.v3(T.rnd(-35,35),0,T.rnd(-25,25))
+        ]),
+        new THREE.LineBasicMaterial({color:0xffcc00})
+      );
+      this.scene.add(trace);
+    }
+
+    this.camera.position.set(0,60,40);
+    this.camera.lookAt(0,0,0);
+  },
+
+  spawnComponent(type){
+    const colors={mcu:0x333333,resistor:0x886644,capacitor:0x4444aa,led:0xff0000,ic:0x222222};
+    const sizes={mcu:[8,3,8],resistor:[4,1,1],capacitor:[2,3,2],led:[1,2,1],ic:[6,2,3]};
+    const s=sizes[type]||[2,2,2];
+
+    const comp=new THREE.Mesh(
+      new THREE.BoxGeometry(s[0],s[1],s[2]),
+      new THREE.MeshPhongMaterial({color:colors[type]||0x888888})
+    );
+    comp.position.set(T.rnd(-30,30),s[1]/2+1,T.rnd(-20,20));
+    this.scene.add(comp);
+    this.entities.push({mesh:comp,type:'component',subtype:type});
+
+    // LED glow
+    if(type==='led'){
+      const glow=new THREE.PointLight(0xff0000,.5,10);
+      glow.position.copy(comp.position);
+      glow.position.y+=2;
+      this.scene.add(glow);
+      comp.userData.light=glow;
+    }
+  },
+
+  updateCircuit(dt){
+    // Pulse LEDs
+    this.entities.filter(e=>e.subtype==='led').forEach(led=>{
+      if(led.mesh.userData.light){
+        led.mesh.userData.light.intensity=.3+Math.sin(Date.now()*.01)*.3;
+      }
+    });
+  },
+
+  // ─────────────────────────────────────────────────────────────
+  // VOXEL MODE - Block builder
+  // ─────────────────────────────────────────────────────────────
+  initVoxel(){
+    this.clearScene();
+    this.renderer.setClearColor(0x88ccff);
+
+    // Ground
+    for(let x=-10;x<=10;x++){
+      for(let z=-10;z<=10;z++){
+        const block=new THREE.Mesh(
+          new THREE.BoxGeometry(1,1,1),
+          new THREE.MeshPhongMaterial({color:T.hsl(.3,.6,.3+Math.random()*.1)})
+        );
+        block.position.set(x,-.5,z);
+        this.scene.add(block);
+      }
+    }
+
+    // Some structures
+    for(let i=0;i<20;i++){
+      const h=Math.floor(T.rnd(1,6));
+      const x=Math.floor(T.rnd(-8,8));
+      const z=Math.floor(T.rnd(-8,8));
+      for(let y=0;y<h;y++){
+        const block=new THREE.Mesh(
+          new THREE.BoxGeometry(1,1,1),
+          new THREE.MeshPhongMaterial({color:T.hsl(T.rnd(0,1),.5,.5)})
+        );
+        block.position.set(x,y+.5,z);
+        this.scene.add(block);
+        this.entities.push({mesh:block,type:'voxel'});
+      }
+    }
+
+    // Sun
+    this.sunLight.intensity=1;
+    this.sunLight.position.set(30,50,30);
+
+    this.camera.position.set(20,20,20);
+    this.camera.lookAt(0,0,0);
+  },
+
+  updateVoxel(dt){
+    // Camera orbit
+    const t=Date.now()*.0002;
+    this.camera.position.x=Math.sin(t)*25;
+    this.camera.position.z=Math.cos(t)*25;
+    this.camera.lookAt(0,3,0);
+  },
+
+  // ─────────────────────────────────────────────────────────────
+  // UTILITY FUNCTIONS
+  // ─────────────────────────────────────────────────────────────
+  clearScene(){
+    while(this.scene.children.length>0){
+      this.scene.remove(this.scene.children[0]);
+    }
+    this.scene.add(new THREE.AmbientLight(0x224466,.4));
+    this.scene.add(this.sunLight);
+    this.scene.add(this.pointLight);
+    this.entities=[];
+  },
+
+  togglePlay(){
+    this.playing=!this.playing;
+    document.getElementById('play-btn').textContent=this.playing?'⏸ Pause':'▶ Play';
+    document.getElementById('play-btn').classList.toggle('on',this.playing);
+  },
+
+  reset(){
+    this.score=0;
+    this.energy=100;
+    this.setMode(this.mode);
+  },
+
+  setSpeed(v){this.speed=v/50;},
+
+  spawn(type){
+    switch(this.mode){
+      case'swarm':this.spawnAnt();break;
+      case'neural':this.spawnNeuron();break;
+      case'shooter':this.spawnEnemy();break;
+      default:this.showMsg('Spawned '+type);
+    }
+  },
+
+  action(){
+    switch(this.mode){
+      case'synth':this.audio.playChord();break;
+      case'shooter':this.fireBullet();break;
+      default:this.showMsg('Action!');
+    }
+  },
+
+  toggleAgent(name){
+    this.agents[name]=!this.agents[name];
+    this.updateAgentUI(name,this.agents[name]);
+  },
+
+  updateAgentUI(name,active){
+    const el=document.getElementById('ag-'+name);
+    if(!el)return;
+    const status=el.querySelector('.agent-status');
+    el.classList.toggle('active',active);
+    status.style.background=active?'#0a0':'#600';
+    status.style.color=active?'#0f0':'#f66';
+    status.textContent=active?'ON':'OFF';
+  },
+
+  showMsg(txt){
+    const el=document.getElementById('msg');
+    el.textContent=txt;
+    el.style.opacity=1;
+    setTimeout(()=>el.style.opacity=0,2000);
+  },
+
+  // ─────────────────────────────────────────────────────────────
+  // MAIN LOOP
+  // ─────────────────────────────────────────────────────────────
+  animate(){
+    requestAnimationFrame(()=>this.animate());
+
+    const now=performance.now();
+    const dt=Math.min((now-this.lastTime)/1000,0.1)*this.speed;
+    this.lastTime=now;
+    this.time+=dt;
+
+    // Poll input
+    this.pollGamepad();
+    this.input.mouse.dx=0;
+    this.input.mouse.dy=0;
+
+    // Update current mode
+    switch(this.mode){
+      case'hub':this.updateHub(dt);break;
+      case'synth':this.updateSynth(dt);break;
+      case'drone':this.updateDrone(dt);break;
+      case'swarm':this.updateSwarm(dt);break;
+      case'neural':this.updateNeural(dt);break;
+      case'shooter':this.updateShooter(dt);break;
+      case'circuit':this.updateCircuit(dt);break;
+      case'voxel':this.updateVoxel(dt);break;
+    }
+
+    // Update point light
+    this.pointLight.position.x=Math.sin(this.time)*20;
+    this.pointLight.position.z=Math.cos(this.time)*20;
+    this.pointLight.position.y=10+Math.sin(this.time*2)*5;
+
+    // Update stats
+    document.getElementById('s-entities').textContent=this.entities.length;
+    document.getElementById('s-energy').textContent=Math.floor(this.energy);
+    document.getElementById('s-score').textContent=this.score;
+
+    // FPS
+    this.frameCount=(this.frameCount||0)+1;
+    if(this.frameCount%30===0){
+      document.getElementById('s-fps').textContent=Math.round(1/dt);
+    }
+
+    this.renderer.render(this.scene,this.camera);
+  }
+};
+
+// Initialize
+onload=()=>M.init();
+onresize=()=>{
+  M.renderer.setSize(innerWidth,innerHeight);
+  M.camera.aspect=innerWidth/innerHeight;
+  M.camera.updateProjectionMatrix();
+};
+</script>
+</body></html>
