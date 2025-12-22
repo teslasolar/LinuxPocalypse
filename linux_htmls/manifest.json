@@ -134,5 +134,13 @@
     "icon": "🎵",
     "color": "#ff00ff",
     "tags": ["Audio", "Synth", "Music", "Sequencer"]
+  },
+  {
+    "file": "drone-sight-v3.html",
+    "title": "Drone Sight v3",
+    "description": "Flight sim with Xbox/Gamepad support - analog sticks, triggers, vibration feedback, HUD with compass/altitude/speed, cockpit view, minimap",
+    "icon": "🎮",
+    "color": "#00ff00",
+    "tags": ["Gamepad", "Flight", "Controller", "HUD"]
   }
 ]
