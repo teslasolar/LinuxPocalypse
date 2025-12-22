@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>ClaudeOS</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body,html{height:100%;background:#000;overflow:hidden}
+#t{width:100%;height:100%;background:#000;color:#0f0;font:14px/1.4 'Courier New',monospace;padding:10px;overflow-y:auto;white-space:pre-wrap;word-wrap:break-word}
+#t:focus{outline:none}
+.c{color:#0ff}.y{color:#ff0}.r{color:#f55}.g{color:#0f0}.m{color:#f0f}.w{color:#fff}.d{color:#888}
+</style>
+</head>
+<body>
+<div id="t" tabindex="0"></div>
+<script>
+const $=document.getElementById('t');
+let buf='',cwd='/home/user',hist=[],hIdx=-1,booted=false;
+
+const fs={
+  '/etc/os-release':'NAME="ClaudeOS"\nVERSION="1.0"',
+  '/home/user/.bashrc':'# ClaudeOS bashrc',
+  '/proc/version':'Linux 6.1.0-claude',
+};
+const dirs=['/home/user','/etc','/usr/bin','/proc','/tmp'];
+const pkgs=['coreutils','nodejs','npm','claude-code'];
+
+function w(s){$.innerHTML+=s}
+function ln(s){$.innerHTML+=s+'\n';$.scrollTop=$.scrollHeight}
+function prompt(){w('<span class="g">user@claude</span>:<span class="c">'+cwd.replace('/home/user','~')+'</span>$ ')}
+
+async function boot(){
+  const d=ms=>new Promise(r=>setTimeout(r,ms));
+  ln('<span class="c">╔═══════════════════════════════════════╗</span>');
+  ln('<span class="c">║</span>     <span class="y">ClaudeOS 1.0</span> - Mini Linux        <span class="c">║</span>');
+  ln('<span class="c">╚═══════════════════════════════════════╝</span>');
+  ln('');
+  await d(300);
+  ln('<span class="y">[0.001]</span> Booting kernel...');
+  await d(200);
+  ln('<span class="y">[0.002]</span> Mounting filesystems...');
+  await d(200);
+  ln('<span class="g">[  OK  ]</span> Mounted /proc /etc /home');
+  await d(300);
+  ln('');
+  ln('<span class="c">>>> Auto-installing packages...</span>');
+  await d(200);
+  for(const p of ['nodejs','npm','claude-code']){
+    w('<span class="d">[pkg]</span> Installing '+p+'... ');
+    await d(300);
+    ln('<span class="g">✓</span>');
+  }
+  await d(200);
+  ln('');
+  ln('<span class="g">[  OK  ]</span> Environment ready');
+  ln('<span class="d">Type "help" for commands</span>');
+  ln('');
+  booted=true;
+  prompt();
+}
+
+function exec(cmd){
+  if(!cmd.trim())return;
+  hist.push(cmd);hIdx=hist.length;
+  const p=cmd.trim().split(/\s+/),c=p[0],a=p.slice(1);
+
+  const cmds={
+    help:()=>{
+      ln('<span class="y">Commands:</span>');
+      ln('  <span class="c">ls cd pwd cat touch rm echo clear</span>');
+      ln('  <span class="c">node npm claude neofetch ps free uname</span>');
+      ln('  <span class="c">whoami date history pkg exit</span>');
+    },
+    ls:()=>{
+      Object.keys(fs).filter(f=>f.startsWith(cwd+'/')).forEach(f=>ln('<span class="c">'+f.split('/').pop()+'</span>'));
+      dirs.filter(d=>d.startsWith(cwd+'/')&&d.split('/').length===cwd.split('/').length+1).forEach(d=>ln('<span class="c">'+d.split('/').pop()+'/</span>'));
+    },
+    cd:()=>{
+      const t=a[0]||'/home/user';
+      let np=t==='~'?'/home/user':t==='..'?cwd.split('/').slice(0,-1).join('/')||'/':t.startsWith('/')?t:cwd+'/'+t;
+      if(dirs.includes(np)||np==='/')cwd=np;
+      else ln('<span class="r">cd: '+t+': No such directory</span>');
+    },
+    pwd:()=>ln(cwd),
+    cat:()=>{
+      const path=a[0]?.startsWith('/')?a[0]:cwd+'/'+a[0];
+      if(fs[path])ln(fs[path]);else ln('<span class="r">cat: '+a[0]+': No such file</span>');
+    },
+    touch:()=>{if(a[0]){fs[cwd+'/'+a[0]]='';ln('<span class="g">✓</span> Created '+a[0])}},
+    rm:()=>{if(fs[cwd+'/'+a[0]]){delete fs[cwd+'/'+a[0]];ln('<span class="g">✓</span> Removed')}else ln('<span class="r">rm: not found</span>')},
+    echo:()=>ln(a.join(' ')),
+    clear:()=>{$.innerHTML='';prompt();return 1},
+    whoami:()=>ln('user'),
+    date:()=>ln(new Date().toString()),
+    uname:()=>ln(a[0]==='-a'?'Linux claude 6.1.0-claude x86_64':'Linux'),
+    free:()=>{ln('       total    used    free');ln('Mem:   16384   4096   12288')},
+    ps:()=>{ln('PID CMD');ln('  1 init');ln(' 42 bash')},
+    history:()=>hist.forEach((h,i)=>ln('  '+(i+1)+' '+h)),
+    node:()=>{
+      if(a[0]==='-v')return ln('v20.10.0');
+      if(!a[0])return ln('Usage: node <file>');
+      const code=fs[cwd+'/'+a[0]];
+      if(!code)return ln('<span class="r">not found</span>');
+      code.split('\n').forEach(l=>{const m=l.match(/console\.log\(['"`](.*)['"`]\)/);if(m)ln(m[1])});
+    },
+    npm:()=>{
+      if(a[0]==='-v')return ln('10.2.0');
+      if(a[0]==='install'||a[0]==='i'){
+        const pkg=a[1];
+        if(!pkg)return ln('<span class="g">✓</span> up to date');
+        ln('<span class="d">Installing '+pkg+'...</span>');
+        setTimeout(()=>{pkgs.push(pkg);ln('<span class="g">+ '+pkg+'</span>');prompt()},500);
+        return 1;
+      }
+      ln('npm install <pkg> | npm -v');
+    },
+    claude:()=>{
+      if(a[0]==='-v')return ln('1.0.38');
+      ln('<span class="m">╭─ Claude Code ─╮</span>');
+      ln('<span class="m">│</span> AI Assistant  <span class="m">│</span>');
+      ln('<span class="m">╰───────────────╯</span>');
+      ln('<span class="g">✓</span> Ready');
+    },
+    pkg:()=>{
+      if(a[0]==='list'){pkgs.forEach(p=>ln('<span class="g">✓</span> '+p))}
+      else if(a[0]==='install'&&a[1]){
+        ln('<span class="d">Installing...</span>');
+        setTimeout(()=>{pkgs.push(a[1]);ln('<span class="g">✓</span> '+a[1]);prompt()},400);
+        return 1;
+      }else ln('pkg list | pkg install <name>');
+    },
+    neofetch:()=>{
+      ln('<span class="c">    ▄▄▄▄▄</span>    user@<span class="c">claude</span>');
+      ln('<span class="c">  ▄███████▄</span>  ─────────────');
+      ln('<span class="c"> ███████████</span> <span class="c">OS:</span> ClaudeOS 1.0');
+      ln('<span class="c"> ███████████</span> <span class="c">Kernel:</span> 6.1.0');
+      ln('<span class="c">  ▀███████▀</span>  <span class="c">Packages:</span> '+pkgs.length);
+      ln('<span class="c">    ▀▀▀▀▀</span>    <span class="c">Shell:</span> bash');
+    },
+    exit:()=>{ln('logout');booted=false},
+    sudo:()=>ln('<span class="g">Access granted</span>'),
+    git:()=>ln(a[0]==='--version'?'git 2.42.0':'git <cmd>'),
+  };
+
+  if(cmds[c]){if(cmds[c]()===1)return}
+  else ln('<span class="r">'+c+': command not found</span>');
+}
+
+$.addEventListener('keydown',e=>{
+  if(!booted&&e.key!=='F5')return;
+  if(e.key==='Enter'){
+    ln('');
+    exec(buf);
+    buf='';
+    if(booted)prompt();
+  }else if(e.key==='Backspace'){
+    if(buf.length>0){buf=buf.slice(0,-1);$.innerHTML=$.innerHTML.slice(0,-1)}
+  }else if(e.key==='ArrowUp'){
+    if(hIdx>0){hIdx--;buf=hist[hIdx];const lines=$.innerHTML.split('\n');lines[lines.length-1]=lines[lines.length-1].replace(/\$.*$/,'$ '+buf);$.innerHTML=lines.join('\n')}
+  }else if(e.key==='ArrowDown'){
+    if(hIdx<hist.length-1){hIdx++;buf=hist[hIdx];const lines=$.innerHTML.split('\n');lines[lines.length-1]=lines[lines.length-1].replace(/\$.*$/,'$ '+buf);$.innerHTML=lines.join('\n')}
+  }else if(e.key.length===1&&!e.ctrlKey&&!e.metaKey){
+    buf+=e.key;
+    w(e.key);
+  }else if(e.ctrlKey&&e.key==='c'){
+    ln('^C');buf='';prompt();
+  }else if(e.ctrlKey&&e.key==='l'){
+    $.innerHTML='';prompt();
+  }
+});
+
+$.focus();
+boot();
+</script>
+</body>
+</html>
