@@ -126,5 +126,13 @@
     "icon": "🚁",
     "color": "#00ff88",
     "tags": ["Drones", "Tactics", "Swarm", "Military"]
+  },
+  {
+    "file": "synth-wave.html",
+    "title": "Synth Wave",
+    "description": "3D audio synthesizer with dual oscillators, 16-step sequencer, waveform visualization, frequency bars, filter/reverb/delay effects, and Web Audio API",
+    "icon": "🎵",
+    "color": "#ff00ff",
+    "tags": ["Audio", "Synth", "Music", "Sequencer"]
   }
 ]
