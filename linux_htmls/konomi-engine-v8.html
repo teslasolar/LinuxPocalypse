@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🌀 KONOMI v8 - Ender 3 KE Clean Prints</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#080810;--p:#0c0c14;--b:#1a1a28;--g:#ffd700;--c:#0ff;--gr:#0f8;--f:#f63;--d:#445}
+body{background:var(--bg);color:#aab;font-family:'JetBrains Mono',monospace;height:100vh;overflow:hidden}
+.app{display:grid;grid-template-columns:260px 1fr;height:100vh}
+.pnl{background:var(--p);padding:12px;overflow-y:auto;border-right:1px solid var(--b);font-size:9px}
+.pt{color:var(--c);text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--b);font-size:8px}
+.pt:first-child{margin-top:0}
+.vp{position:relative;background:#030305}
+#cc{width:100%;height:100%}
+.ov{position:absolute;top:8px;left:8px;font-size:8px;color:var(--d);pointer-events:none;line-height:1.5}
+.ovr{position:absolute;top:8px;right:8px;font-size:8px;color:var(--d);text-align:right;line-height:1.5}
+.row{display:flex;justify-content:space-between;margin-bottom:4px}
+.lbl{color:var(--d)}.val{color:var(--c);font-weight:700}
+input[type=range]{width:100%;height:3px;background:var(--b);-webkit-appearance:none;margin:3px 0 8px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;background:var(--g);border-radius:50%;cursor:pointer}
+button{width:100%;padding:8px;background:linear-gradient(135deg,var(--g),#a80);border:none;border-radius:4px;color:#000;font-family:inherit;font-weight:700;font-size:9px;cursor:pointer;margin-bottom:5px}
+button:hover{filter:brightness(1.1)}
+button.s{background:var(--b);color:var(--c)}
+button.e{background:linear-gradient(135deg,var(--gr),#0a5)}
+.sg{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px}
+.sb{background:rgba(0,0,0,.3);padding:6px;border-radius:3px;text-align:center}
+.sv{font-size:12px;font-weight:700;color:var(--g)}
+.sl{font-size:7px;color:var(--d)}
+.status{padding:8px;border-radius:4px;margin:8px 0;font-size:8px;background:rgba(0,255,136,.1);border:1px solid var(--gr);color:var(--gr)}
+.log{background:#000;border-radius:3px;padding:4px;font-size:7px;max-height:100px;overflow-y:auto}
+.lg{margin-bottom:1px;opacity:.8}
+.lg.g{color:var(--gr)}.lg.p{color:var(--g)}.lg.c{color:var(--c)}.lg.w{color:var(--f)}
+.info{background:rgba(0,255,255,.05);border:1px solid var(--b);border-radius:3px;padding:6px;margin-bottom:8px;font-size:8px;color:var(--d)}
+.info b{color:var(--c)}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="pnl">
+
+<div class="pt">🖨️ Ender 3 v3 KE</div>
+<div class="info">
+  Build: <b>220×220×240mm</b><br>
+  Layer: <b>0.2mm</b> | Nozzle: <b>0.4mm</b>
+</div>
+
+<div class="pt">📐 Object Size</div>
+<div class="row"><span class="lbl">Diameter</span><span class="val" id="vD">80mm</span></div>
+<input type="range" id="sD" min="20" max="200" value="80">
+<div class="row"><span class="lbl">Height</span><span class="val" id="vHt">60mm</span></div>
+<input type="range" id="sHt" min="10" max="200" value="60">
+
+<div class="pt">🎨 Shape Quality</div>
+<div class="row"><span class="lbl">Resolution</span><span class="val" id="vR">64</span></div>
+<input type="range" id="sR" min="16" max="128" step="8" value="64">
+<div class="row"><span class="lbl">Smoothness</span><span class="val" id="vS">0.8</span></div>
+<input type="range" id="sS" min="0" max="1" step=".1" value=".8">
+
+<div class="pt">🔧 Print Settings</div>
+<div class="row"><span class="lbl">Layer Height</span><span class="val" id="vL">0.2mm</span></div>
+<input type="range" id="sL" min=".1" max=".32" step=".04" value=".2">
+<div class="row"><span class="lbl">Wall Thickness</span><span class="val" id="vW">1.2mm</span></div>
+<input type="range" id="sW" min=".8" max="2.4" step=".4" value="1.2">
+
+<div class="pt">▶ Generate</div>
+<button onclick="gen()">🎲 RANDOM CLEAN OBJECT</button>
+<button class="s" onclick="regen()">↻ REGENERATE</button>
+
+<div class="pt">📊 Mesh Stats</div>
+<div class="sg">
+<div class="sb"><div class="sv" id="stV">0</div><div class="sl">Vertices</div></div>
+<div class="sb"><div class="sv" id="stT">0</div><div class="sl">Triangles</div></div>
+<div class="sb"><div class="sv" id="stL">0</div><div class="sl">Layers</div></div>
+<div class="sb"><div class="sv" id="stE">0g</div><div class="sl">Est. Filament</div></div>
+</div>
+
+<div class="pt">🔧 Status</div>
+<div class="status" id="status">Ready - Ender 3 v3 KE</div>
+
+<div class="pt">💾 Export</div>
+<button class="e" id="bE" onclick="exp()" disabled>📥 EXPORT STL</button>
+
+<div class="pt">📜 Log</div>
+<div class="log" id="log"></div>
+</div>
+
+<div class="vp">
+<div id="cc"></div>
+<div class="ov" id="ovl">
+  Build: 220×220×240mm<br>
+  Ready
+</div>
+<div class="ovr">
+  Ender 3 v3 KE<br>
+  Clean Geometry
+</div>
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+//═══════════════════════════════════════════════════════════════════
+// 🌀 KONOMI v8 - ENDER 3 v3 KE CLEAN PRINTS
+// Build: 220×220×240mm | Layer: 0.2mm | Nozzle: 0.4mm
+// High-quality smooth/geometric objects
+//═══════════════════════════════════════════════════════════════════
+
+// Build plate constants (Ender 3 v3 KE)
+const BUILD_X=220,BUILD_Y=220,BUILD_Z=240;
+const φ=1.618033988749895;
+
+// RNG
+let seed=φ;
+function rng(){seed=(seed*φ*9973)%1;return seed||.5}
+function rngR(a,b){return a+rng()*(b-a)}
+function rngI(a,b){return Math.floor(rngR(a,b+1))}
+function rngB(p=.5){return rng()<p}
+
+// Smoothing functions
+function smoothstep(t){return t*t*(3-2*t)}
+function smootherstep(t){return t*t*t*(t*(t*6-15)+10)}
+function lerp(a,b,t){return a+(b-a)*t}
+function cosInterp(a,b,t){return lerp(a,b,(1-Math.cos(t*Math.PI))/2)}
+
+//═══════════════════════════════════════════════════════════════════
+// CLEAN SHAPE GENERATORS
+// Produces smooth, printable geometry
+//═══════════════════════════════════════════════════════════════════
+
+function generateCleanShape(diameter,height,resolution,smoothness,layerH){
+  const layers=[];
+  const numLayers=Math.ceil(height/layerH);
+  const baseR=diameter/2;
+
+  // Pick a clean shape type
+  const shapeType=rngI(0,7);
+  log(`Shape: ${['Vase','Bowl','Cylinder','Cone','Sphere','Twist','Wave','Faceted'][shapeType]}`,'c');
+
+  // Shape parameters (all smooth)
+  const taperTop=rngR(.3,1.2);
+  const taperBot=rngR(.8,1.2);
+  const bulgeMid=rngR(.9,1.3);
+  const twistRate=rngR(0,Math.PI*2)*rngB(.5);
+  const wavesV=rngI(0,4);
+  const wavesH=rngI(0,6);
+  const waveAmpV=rngR(0,.15)*smoothness;
+  const waveAmpH=rngR(0,.1)*smoothness;
+  const facets=rngB(.3)?rngI(5,12):0;
+  const lipSize=rngB(.4)?rngR(.05,.15):0;
+  const baseFlare=rngB(.3)?rngR(1,1.3):1;
+
+  for(let L=0;L<numLayers;L++){
+    const y=L*layerH;
+    const t=L/numLayers; // 0 at bottom, 1 at top
+    const pts=[];
+
+    // Calculate radius at this height using smooth interpolation
+    let r=baseR;
+
+    // Base shape profile
+    switch(shapeType){
+      case 0: // Vase - curved sides, narrow middle
+        r*=cosInterp(taperBot,bulgeMid,smoothstep(t*.5))*
+           cosInterp(bulgeMid,taperTop,smoothstep((t-.5)*2));
+        if(t<.05)r*=lerp(baseFlare,1,t/.05); // Base flare
+        if(t>.9)r*=lerp(1,1+lipSize,(t-.9)/.1); // Lip
+        break;
+
+      case 1: // Bowl - hemisphere bottom, straight top
+        if(t<.6)r*=Math.sqrt(1-Math.pow(1-t/.6,2))*.8+.2;
+        else r*=lerp(.8+.2,taperTop,smoothstep((t-.6)/.4));
+        break;
+
+      case 2: // Cylinder - straight sides with optional taper
+        r*=lerp(1,taperTop,smootherstep(t));
+        break;
+
+      case 3: // Cone
+        r*=lerp(1,.1,smoothstep(t));
+        break;
+
+      case 4: // Sphere section
+        const st=t*2-1; // -1 to 1
+        r*=Math.sqrt(Math.max(0,1-st*st));
+        r=Math.max(r,2); // Minimum radius for printability
+        break;
+
+      case 5: // Twisted form
+        r*=lerp(taperBot,taperTop,smoothstep(t));
+        r*=1+Math.sin(t*Math.PI*2)*waveAmpV;
+        break;
+
+      case 6: // Wave/ripple
+        r*=lerp(taperBot,taperTop,t);
+        r*=1+Math.sin(t*Math.PI*wavesV*2)*waveAmpV*.5;
+        break;
+
+      case 7: // Faceted
+        r*=lerp(1,taperTop,smoothstep(t));
+        break;
+    }
+
+    // Ensure minimum radius for printability
+    r=Math.max(r,3);
+
+    // Generate points around circumference
+    const numPts=facets>0?facets:resolution;
+    const twist=twistRate*t;
+
+    for(let i=0;i<numPts;i++){
+      const a=(i/numPts)*Math.PI*2+twist;
+
+      // Horizontal wave modulation
+      let rr=r;
+      if(wavesH>0&&facets===0){
+        rr*=1+Math.sin(a*wavesH)*waveAmpH;
+      }
+
+      // Smooth the radius for non-faceted shapes
+      if(facets===0){
+        // Add subtle organic variation
+        rr*=1+Math.sin(a*3+t*5)*.01*smoothness;
+        rr*=1+Math.cos(a*5-t*3)*.008*smoothness;
+      }
+
+      pts.push({
+        x:Math.cos(a)*rr,
+        z:Math.sin(a)*rr
+      });
+    }
+
+    // Close the loop by duplicating first point
+    pts.push({...pts[0]});
+
+    layers.push({y,pts,r});
+  }
+
+  // Add bottom cap
+  const bottomPts=[{x:0,z:0}];
+  layers.unshift({y:0,pts:bottomPts,isBottom:true});
+
+  return{layers,numLayers,shapeType};
+}
+
+//═══════════════════════════════════════════════════════════════════
+// MESH BUILDER - High quality triangulation
+//═══════════════════════════════════════════════════════════════════
+
+function buildMesh(layers,wallThickness,layerH){
+  const verts=[];
+  const indices=[];
+  let vertCount=0;
+
+  // Skip bottom cap layer for now
+  const meshLayers=layers.filter(l=>!l.isBottom);
+
+  // Build outer wall
+  for(let L=0;L<meshLayers.length;L++){
+    const layer=meshLayers[L];
+    const y=layer.y;
+    const pts=layer.pts;
+
+    // Add vertices for this layer
+    for(const p of pts){
+      verts.push(p.x,y,p.z);
+    }
+
+    // Connect to previous layer
+    if(L>0){
+      const prevLayer=meshLayers[L-1];
+      const currStart=vertCount;
+      const prevStart=vertCount-prevLayer.pts.length;
+      const numPts=Math.min(pts.length,prevLayer.pts.length);
+
+      for(let i=0;i<numPts-1;i++){
+        // Two triangles per quad
+        indices.push(
+          prevStart+i,
+          currStart+i,
+          prevStart+i+1
+        );
+        indices.push(
+          prevStart+i+1,
+          currStart+i,
+          currStart+i+1
+        );
+      }
+    }
+
+    vertCount+=pts.length;
+  }
+
+  // Bottom cap (fan triangulation)
+  const bottomLayer=meshLayers[0];
+  const centerIdx=vertCount;
+  verts.push(0,0,0); // Center point
+  vertCount++;
+
+  for(let i=0;i<bottomLayer.pts.length-1;i++){
+    indices.push(centerIdx,i+1,i);
+  }
+
+  // Top cap
+  const topLayer=meshLayers[meshLayers.length-1];
+  const topStart=vertCount-1-topLayer.pts.length;
+  const topCenterIdx=vertCount;
+  verts.push(0,topLayer.y,0);
+  vertCount++;
+
+  for(let i=0;i<topLayer.pts.length-1;i++){
+    indices.push(topCenterIdx,topStart+i,topStart+i+1);
+  }
+
+  return{verts,indices,vertCount,triCount:indices.length/3};
+}
+
+//═══════════════════════════════════════════════════════════════════
+// THREE.JS SETUP
+//═══════════════════════════════════════════════════════════════════
+let scene,camera,renderer,mesh,buildPlate;
+
+function initGL(){
+  const container=document.getElementById('cc');
+
+  scene=new THREE.Scene();
+  scene.background=new THREE.Color(0x030305);
+
+  camera=new THREE.PerspectiveCamera(45,container.clientWidth/container.clientHeight,.1,2000);
+  camera.position.set(200,150,200);
+  camera.lookAt(0,50,0);
+
+  renderer=new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(container.clientWidth,container.clientHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  container.appendChild(renderer.domElement);
+
+  // Lighting
+  scene.add(new THREE.AmbientLight(0x404050,.6));
+  const sun=new THREE.DirectionalLight(0xffffff,.8);
+  sun.position.set(100,200,100);
+  scene.add(sun);
+  const fill=new THREE.DirectionalLight(0x4488ff,.3);
+  fill.position.set(-100,100,-100);
+  scene.add(fill);
+
+  // Build plate (Ender 3 v3 KE: 220x220mm)
+  const plateGeom=new THREE.BoxGeometry(BUILD_X,2,BUILD_Y);
+  const plateMat=new THREE.MeshStandardMaterial({
+    color:0x1a1a2a,
+    metalness:.3,
+    roughness:.7
+  });
+  buildPlate=new THREE.Mesh(plateGeom,plateMat);
+  buildPlate.position.y=-1;
+  scene.add(buildPlate);
+
+  // Grid on plate
+  const grid=new THREE.GridHelper(BUILD_X,22,0x333344,0x222233);
+  grid.position.y=.1;
+  scene.add(grid);
+
+  // Build volume wireframe
+  const volumeGeom=new THREE.BoxGeometry(BUILD_X,BUILD_Z,BUILD_Y);
+  const volumeEdges=new THREE.EdgesGeometry(volumeGeom);
+  const volumeLine=new THREE.LineSegments(
+    volumeEdges,
+    new THREE.LineBasicMaterial({color:0x333344,transparent:true,opacity:.3})
+  );
+  volumeLine.position.y=BUILD_Z/2;
+  scene.add(volumeLine);
+
+  // Origin marker
+  const origin=new THREE.Mesh(
+    new THREE.SphereGeometry(2,16,16),
+    new THREE.MeshBasicMaterial({color:0xffd700})
+  );
+  origin.position.y=1;
+  scene.add(origin);
+
+  // Controls
+  let dragging=false,prevX=0,prevY=0;
+  let spherical={theta:Math.PI/4,phi:Math.PI/3,r:350};
+
+  const el=renderer.domElement;
+  el.onmousedown=e=>{dragging=true;prevX=e.clientX;prevY=e.clientY};
+  el.onmouseup=el.onmouseleave=()=>dragging=false;
+  el.onmousemove=e=>{
+    if(!dragging)return;
+    spherical.theta-=(e.clientX-prevX)*.01;
+    spherical.phi=Math.max(.1,Math.min(Math.PI-.1,spherical.phi+(e.clientY-prevY)*.01));
+    prevX=e.clientX;prevY=e.clientY;
+    updateCamera();
+  };
+  el.onwheel=e=>{
+    spherical.r=Math.max(100,Math.min(800,spherical.r+e.deltaY*.3));
+    updateCamera();
+    e.preventDefault();
+  };
+
+  function updateCamera(){
+    camera.position.set(
+      spherical.r*Math.sin(spherical.phi)*Math.cos(spherical.theta),
+      spherical.r*Math.cos(spherical.phi),
+      spherical.r*Math.sin(spherical.phi)*Math.sin(spherical.theta)
+    );
+    camera.lookAt(0,50,0);
+  }
+  updateCamera();
+
+  window.onresize=()=>{
+    camera.aspect=container.clientWidth/container.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(container.clientWidth,container.clientHeight);
+  };
+
+  (function animate(){
+    requestAnimationFrame(animate);
+    renderer.render(scene,camera);
+  })();
+}
+
+function setMesh(verts,indices){
+  if(mesh){
+    scene.remove(mesh);
+    mesh.geometry.dispose();
+    mesh.material.dispose();
+  }
+
+  const geom=new THREE.BufferGeometry();
+  geom.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));
+  geom.setIndex(indices);
+  geom.computeVertexNormals();
+
+  const mat=new THREE.MeshStandardMaterial({
+    color:0xff6b35,
+    metalness:.15,
+    roughness:.4,
+    side:THREE.DoubleSide
+  });
+
+  mesh=new THREE.Mesh(geom,mat);
+  scene.add(mesh);
+}
+
+//═══════════════════════════════════════════════════════════════════
+// MAIN
+//═══════════════════════════════════════════════════════════════════
+
+function log(m,t='g'){
+  const l=document.getElementById('log');
+  const d=document.createElement('div');
+  d.className='lg '+t;
+  d.textContent=m;
+  l.appendChild(d);
+  l.scrollTop=l.scrollHeight;
+}
+
+function gen(){
+  // New random seed from entropy
+  seed=Date.now()%1e6/1e6*φ+performance.now()%1000/1000;
+  log(`Seed: ${seed.toFixed(6)}`,'p');
+  run();
+}
+
+function regen(){
+  log(`Reusing seed`,'p');
+  run();
+}
+
+function run(){
+  const diameter=parseFloat(document.getElementById('sD').value);
+  const height=parseFloat(document.getElementById('sHt').value);
+  const resolution=parseInt(document.getElementById('sR').value);
+  const smoothness=parseFloat(document.getElementById('sS').value);
+  const layerH=parseFloat(document.getElementById('sL').value);
+  const wallThickness=parseFloat(document.getElementById('sW').value);
+
+  // Validate fits on build plate
+  if(diameter>BUILD_X||diameter>BUILD_Y){
+    log(`⚠ Diameter exceeds build plate!`,'w');
+    return;
+  }
+  if(height>BUILD_Z){
+    log(`⚠ Height exceeds build volume!`,'w');
+    return;
+  }
+
+  document.getElementById('status').textContent='Generating...';
+  document.getElementById('status').style.color='var(--c)';
+
+  setTimeout(()=>{
+    // Generate clean shape
+    const{layers,numLayers,shapeType}=generateCleanShape(
+      diameter,height,resolution,smoothness,layerH
+    );
+
+    // Build high-quality mesh
+    const{verts,indices,vertCount,triCount}=buildMesh(layers,wallThickness,layerH);
+
+    // Set mesh in scene
+    setMesh(verts,indices);
+
+    // Calculate estimated filament usage (rough)
+    const volume=Math.PI*(diameter/2)**2*height*.15; // ~15% infill estimate
+    const filamentG=(volume/1000)*1.24; // PLA density ~1.24 g/cm³
+
+    // Update stats
+    document.getElementById('stV').textContent=vertCount.toLocaleString();
+    document.getElementById('stT').textContent=triCount.toLocaleString();
+    document.getElementById('stL').textContent=numLayers;
+    document.getElementById('stE').textContent=filamentG.toFixed(0)+'g';
+
+    document.getElementById('ovl').innerHTML=
+      `Build: ${BUILD_X}×${BUILD_Y}×${BUILD_Z}mm<br>`+
+      `Object: ${diameter}×${height}mm<br>`+
+      `Layers: ${numLayers} @ ${layerH}mm<br>`+
+      `Verts: ${vertCount} | Tris: ${triCount}`;
+
+    document.getElementById('status').textContent=
+      `✓ Clean ${['Vase','Bowl','Cylinder','Cone','Sphere','Twist','Wave','Faceted'][shapeType]} generated!`;
+    document.getElementById('status').style.color='var(--gr)';
+
+    document.getElementById('bE').disabled=false;
+    log(`✓ ${vertCount} verts, ${triCount} tris`,'g');
+  },20);
+}
+
+function exp(){
+  if(!mesh)return;
+  log('Exporting STL...','c');
+
+  const geom=mesh.geometry;
+  const pos=geom.getAttribute('position');
+  const idx=geom.getIndex();
+
+  const triCount=idx?idx.count/3:pos.count/9;
+  const buffer=new ArrayBuffer(84+triCount*50);
+  const view=new DataView(buffer);
+
+  // Header
+  const header='KONOMI v8 - Ender 3 v3 KE';
+  for(let i=0;i<80;i++)view.setUint8(i,i<header.length?header.charCodeAt(i):0);
+  view.setUint32(80,triCount,true);
+
+  let offset=84;
+  for(let i=0;i<triCount;i++){
+    const i0=idx.getX(i*3);
+    const i1=idx.getX(i*3+1);
+    const i2=idx.getX(i*3+2);
+
+    const v0=[pos.getX(i0),pos.getY(i0),pos.getZ(i0)];
+    const v1=[pos.getX(i1),pos.getY(i1),pos.getZ(i1)];
+    const v2=[pos.getX(i2),pos.getY(i2),pos.getZ(i2)];
+
+    // Calculate normal
+    const ax=v1[0]-v0[0],ay=v1[1]-v0[1],az=v1[2]-v0[2];
+    const bx=v2[0]-v0[0],by=v2[1]-v0[1],bz=v2[2]-v0[2];
+    let nx=ay*bz-az*by,ny=az*bx-ax*bz,nz=ax*by-ay*bx;
+    const len=Math.sqrt(nx*nx+ny*ny+nz*nz)||1;
+    nx/=len;ny/=len;nz/=len;
+
+    // Write normal
+    view.setFloat32(offset,nx,true);offset+=4;
+    view.setFloat32(offset,ny,true);offset+=4;
+    view.setFloat32(offset,nz,true);offset+=4;
+
+    // Write vertices
+    for(const v of[v0,v1,v2]){
+      view.setFloat32(offset,v[0],true);offset+=4;
+      view.setFloat32(offset,v[1],true);offset+=4;
+      view.setFloat32(offset,v[2],true);offset+=4;
+    }
+
+    // Attribute byte count
+    view.setUint16(offset,0,true);offset+=2;
+  }
+
+  // Download
+  const blob=new Blob([buffer],{type:'application/octet-stream'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`konomi-ender3-${Date.now()}.stl`;
+  a.click();
+  URL.revokeObjectURL(url);
+
+  log(`Exported ${triCount} triangles`,'p');
+}
+
+// Initialize
+window.onload=()=>{
+  // Bind sliders
+  document.getElementById('sD').oninput=function(){
+    document.getElementById('vD').textContent=this.value+'mm';
+  };
+  document.getElementById('sHt').oninput=function(){
+    document.getElementById('vHt').textContent=this.value+'mm';
+  };
+  document.getElementById('sR').oninput=function(){
+    document.getElementById('vR').textContent=this.value;
+  };
+  document.getElementById('sS').oninput=function(){
+    document.getElementById('vS').textContent=this.value;
+  };
+  document.getElementById('sL').oninput=function(){
+    document.getElementById('vL').textContent=this.value+'mm';
+  };
+  document.getElementById('sW').oninput=function(){
+    document.getElementById('vW').textContent=this.value+'mm';
+  };
+
+  initGL();
+  gen(); // Auto-generate on load
+};
+</script>
+</body>
+</html>
