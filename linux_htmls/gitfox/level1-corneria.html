@@ -308,13 +308,12 @@ const G={
       enemy.mesh.position.set(T.rnd(-80,80),-48,-T.rnd(250,400));
       enemy.vx=0;enemy.vy=0;
     }else if(type==='ring'){
-      // Bonus ring
+      // Bonus ring - faces player (no Y rotation)
       enemy.mesh=new THREE.Mesh(
         new THREE.TorusGeometry(8,1,8,16),
         new THREE.MeshPhongMaterial({color:0xffff00,emissive:0x444400})
       );
       enemy.mesh.position.set(T.rnd(-30,30),T.rnd(0,20),-250);
-      enemy.mesh.rotation.y=Math.PI/2;
       enemy.isRing=true;
     }
 

@@ -190,5 +190,13 @@
     "icon": "☄️",
     "color": "#6644aa",
     "tags": ["GitFox", "Rail-Shooter", "Space", "Level2"]
+  },
+  {
+    "file": "gitfox/level3-sectorx.html",
+    "title": "Git Fox - Level 3: Sector X",
+    "description": "Explore the derelict space station - floating debris, automated turrets, attack drones, and mysterious energy readings",
+    "icon": "🛸",
+    "color": "#8800aa",
+    "tags": ["GitFox", "Rail-Shooter", "Station", "Level3"]
   }
 ]

@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Git Fox - Level 2: Asteroid Field</title>
+<title>Git Fox - Level 3: Sector X</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}body{background:#000;overflow:hidden;font:bold 14px monospace;color:#0f0}
@@ -15,7 +15,7 @@
 #score{top:20px;right:20px;font-size:24px;color:#ff0;text-align:right}
 #bombs{top:55px;right:20px;font-size:16px;color:#f80}
 #lives{bottom:20px;left:20px;font-size:20px;color:#0f0}
-#level-title{top:100px;left:50%;transform:translateX(-50%);font-size:28px;color:#0ff;text-shadow:0 0 10px #0ff;opacity:0;transition:opacity 1s}
+#level-title{top:100px;left:50%;transform:translateX(-50%);font-size:28px;color:#f0f;text-shadow:0 0 10px #f0f;opacity:0;transition:opacity 1s}
 #crosshair{top:50%;left:50%;transform:translate(-50%,-50%);width:60px;height:60px}
 #radio{bottom:80px;left:50%;transform:translateX(-50%);background:rgba(0,20,0,.9);border:2px solid #0f0;border-radius:8px;padding:10px 20px;opacity:0;transition:opacity .5s}
 #radio-face{width:50px;height:50px;border:2px solid #0a0;border-radius:50%;background:#001a00;float:left;margin-right:15px;display:flex;align-items:center;justify-content:center;font-size:24px}
@@ -23,10 +23,8 @@
 #controls{bottom:20px;right:20px;font-size:10px;color:#888;text-align:right}
 #game-over{top:50%;left:50%;transform:translate(-50%,-50%);font-size:48px;color:#f00;text-shadow:0 0 20px #f00;display:none}
 #mission-complete{top:50%;left:50%;transform:translate(-50%,-50%);font-size:36px;color:#0f0;text-shadow:0 0 20px #0f0;display:none;text-align:center}
-#warp-effect{position:fixed;inset:0;background:radial-gradient(ellipse at center,transparent 0%,#000 100%);pointer-events:none;opacity:0;transition:opacity .5s}
+#warning{top:50%;left:50%;transform:translate(-50%,-50%);font-size:24px;color:#f80;text-shadow:0 0 10px #f80;opacity:0;transition:opacity .3s}
 </style></head><body><canvas id="c"></canvas>
-
-<div id="warp-effect"></div>
 
 <div class="hud" id="shield-bar"><div id="shield-fill"></div></div>
 <div class="hud" id="shield-label">SHIELD</div>
@@ -38,7 +36,8 @@
 <div class="hud" id="bombs">BOMBS: 3</div>
 <div class="hud" id="lives">♦ ♦ ♦</div>
 
-<div class="hud" id="level-title">LEVEL 2: ASTEROID FIELD</div>
+<div class="hud" id="level-title">LEVEL 3: SECTOR X</div>
+<div class="hud" id="warning">⚠️ DANGER ZONE ⚠️</div>
 
 <svg class="hud" id="crosshair" viewBox="0 0 60 60">
 <circle cx="30" cy="30" r="25" stroke="#0f0" stroke-width="2" fill="none" opacity="0.5"/>
@@ -51,7 +50,7 @@
 
 <div class="hud" id="radio">
 <div id="radio-face">🦊</div>
-<div id="radio-text">Entering asteroid field!</div>
+<div id="radio-text">Entering Sector X...</div>
 </div>
 
 <div class="hud" id="game-over">GAME OVER</div>
@@ -72,7 +71,7 @@ const G={
   bombs:3,
   lives:3,
   distance:0,
-  levelLength:4000,
+  levelLength:4500,
   gameOver:false,
   complete:false,
   barrelRolling:false,
@@ -81,9 +80,10 @@ const G={
 
   enemies:[],
   bullets:[],
-  asteroids:[],
+  debris:[],
   particles:[],
-  stars:[],
+  turrets:[],
+  beams:[],
 
   input:{lx:0,ly:0,rx:0,ry:0,buttons:{}},
   mouse:{x:0,y:0,locked:false},
@@ -100,56 +100,27 @@ const G={
     this.ca=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.1,3000);
     this.rn=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true});
     this.rn.setSize(innerWidth,innerHeight);
-    this.rn.setClearColor(0x000011);
+    this.rn.setClearColor(0x080010);
 
-    // Space lighting
-    this.sc.add(new THREE.AmbientLight(0x222244,.4));
-    const sun=new THREE.DirectionalLight(0xffffee,.8);
-    sun.position.set(100,50,-100);
-    this.sc.add(sun);
+    // Eerie purple lighting
+    this.sc.add(new THREE.AmbientLight(0x220044,.3));
+    const main=new THREE.DirectionalLight(0xaa88ff,.6);
+    main.position.set(50,30,-50);
+    this.sc.add(main);
+    const red=new THREE.PointLight(0xff2200,.5,200);
+    red.position.set(-50,20,-100);
+    this.sc.add(red);
 
-    // Distant sun
-    const sunMesh=new THREE.Mesh(
-      new THREE.SphereGeometry(50,16,16),
-      new THREE.MeshBasicMaterial({color:0xffff88})
-    );
-    sunMesh.position.set(500,200,-800);
-    this.sc.add(sunMesh);
+    // Starfield
+    this.createStarfield();
 
-    // Sun glow
-    const sunGlow=new THREE.Mesh(
-      new THREE.SphereGeometry(80,16,16),
-      new THREE.MeshBasicMaterial({color:0xffff44,transparent:true,opacity:.3})
-    );
-    sunGlow.position.copy(sunMesh.position);
-    this.sc.add(sunGlow);
+    // Damaged space station sections
+    this.createStationDebris();
 
     // Player ship
     this.ship=this.createShip();
     this.ship.position.set(0,0,0);
     this.sc.add(this.ship);
-
-    // Starfield
-    this.createStarfield();
-
-    // Initial asteroids
-    for(let i=0;i<30;i++)this.spawnAsteroid(-100-i*30);
-
-    // Nebula background planes
-    for(let i=0;i<5;i++){
-      const nebula=new THREE.Mesh(
-        new THREE.PlaneGeometry(800,400),
-        new THREE.MeshBasicMaterial({
-          color:new THREE.Color().setHSL(T.rnd(0,1),.5,.1),
-          transparent:true,
-          opacity:.15,
-          side:THREE.DoubleSide
-        })
-      );
-      nebula.position.set(T.rnd(-200,200),T.rnd(-100,100),-500-i*200);
-      nebula.rotation.z=T.rnd(0,Math.PI);
-      this.sc.add(nebula);
-    }
 
     // Camera
     this.ca.position.set(0,10,30);
@@ -183,9 +154,9 @@ const G={
     // Level intro
     setTimeout(()=>{
       document.getElementById('level-title').style.opacity=1;
-      this.showRadio('🦊','Entering the asteroid field! Watch for debris!');
+      this.showRadio('🦊','This is Sector X... Something terrible happened here.');
     },500);
-    setTimeout(()=>document.getElementById('level-title').style.opacity=0,3000);
+    setTimeout(()=>document.getElementById('level-title').style.opacity=0,3500);
 
     this.animate();
   },
@@ -259,108 +230,172 @@ const G={
   createStarfield(){
     const starGeo=new THREE.BufferGeometry();
     const starPos=[];
-    for(let i=0;i<2000;i++){
+    for(let i=0;i<1500;i++){
       starPos.push(
-        T.rnd(-500,500),
-        T.rnd(-300,300),
-        T.rnd(-1000,100)
+        T.rnd(-600,600),
+        T.rnd(-400,400),
+        T.rnd(-1200,100)
       );
     }
     starGeo.setAttribute('position',new THREE.Float32BufferAttribute(starPos,3));
     this.starField=new THREE.Points(
       starGeo,
-      new THREE.PointsMaterial({color:0xffffff,size:1})
+      new THREE.PointsMaterial({color:0x8888ff,size:.8})
     );
     this.sc.add(this.starField);
   },
 
-  spawnAsteroid(z){
-    const size=T.rnd(3,15);
-    const geo=new THREE.DodecahedronGeometry(size,0);
-    // Deform vertices for irregular shape
-    const pos=geo.attributes.position;
-    for(let i=0;i<pos.count;i++){
-      pos.setXYZ(i,
-        pos.getX(i)*(1+T.rnd(-.3,.3)),
-        pos.getY(i)*(1+T.rnd(-.3,.3)),
-        pos.getZ(i)*(1+T.rnd(-.3,.3))
-      );
+  createStationDebris(){
+    // Create initial debris field
+    for(let i=0;i<25;i++){
+      this.spawnDebris(-50-i*40);
     }
-    geo.computeVertexNormals();
-
-    const asteroid=new THREE.Mesh(geo,
-      new THREE.MeshPhongMaterial({
-        color:new THREE.Color().setHSL(T.rnd(.05,.1),.3,T.rnd(.2,.4)),
-        flatShading:true
-      })
-    );
-    asteroid.position.set(T.rnd(-80,80),T.rnd(-40,40),z);
-    asteroid.rotation.set(T.rnd(0,Math.PI*2),T.rnd(0,Math.PI*2),T.rnd(0,Math.PI*2));
-    asteroid.userData={
-      rotSpeed:T.v3(T.rnd(-.02,.02),T.rnd(-.02,.02),T.rnd(-.02,.02)),
-      size:size
-    };
-    this.sc.add(asteroid);
-    this.asteroids.push(asteroid);
+    // Some turrets on debris
+    for(let i=0;i<8;i++){
+      this.spawnTurret(-200-i*100);
+    }
   },
 
-  spawnEnemy(type='fighter'){
-    const enemy={type,hp:type==='fighter'?1:type==='cruiser'?5:3};
+  spawnDebris(z){
+    const types=['hull','beam','panel','module'];
+    const type=types[Math.floor(Math.random()*types.length)];
+    let mesh;
 
-    if(type==='fighter'){
-      // Space pirate fighter
+    if(type==='hull'){
+      // Curved hull section
+      mesh=new THREE.Mesh(
+        new THREE.CylinderGeometry(T.rnd(8,20),T.rnd(8,20),T.rnd(15,40),8,1,true,0,Math.PI),
+        new THREE.MeshPhongMaterial({color:0x445566,side:THREE.DoubleSide})
+      );
+    }else if(type==='beam'){
+      // Structural beam
+      mesh=new THREE.Mesh(
+        new THREE.BoxGeometry(T.rnd(2,5),T.rnd(2,5),T.rnd(20,60)),
+        new THREE.MeshPhongMaterial({color:0x556677})
+      );
+    }else if(type==='panel'){
+      // Flat panel
+      mesh=new THREE.Mesh(
+        new THREE.BoxGeometry(T.rnd(10,25),T.rnd(10,25),1),
+        new THREE.MeshPhongMaterial({color:0x334455})
+      );
+    }else{
+      // Damaged module
       const g=new THREE.Group();
-      const body=new THREE.Mesh(
-        new THREE.ConeGeometry(1.2,4,3),
-        new THREE.MeshPhongMaterial({color:0x880000})
+      const box=new THREE.Mesh(
+        new THREE.BoxGeometry(T.rnd(8,15),T.rnd(8,15),T.rnd(8,15)),
+        new THREE.MeshPhongMaterial({color:0x445566})
       );
-      body.rotation.x=-Math.PI/2;
-      g.add(body);
-      const wing1=new THREE.Mesh(
-        new THREE.BoxGeometry(5,.2,1.5),
-        new THREE.MeshPhongMaterial({color:0x660000})
-      );
-      wing1.position.z=1;
-      g.add(wing1);
-      enemy.mesh=g;
-      enemy.mesh.position.set(T.rnd(-50,50),T.rnd(-30,30),-350);
-      enemy.vx=T.rnd(-.4,.4);
-      enemy.vy=T.rnd(-.3,.3);
-    }else if(type==='cruiser'){
-      // Large enemy ship
-      const g=new THREE.Group();
-      const hull=new THREE.Mesh(
-        new THREE.BoxGeometry(8,3,15),
-        new THREE.MeshPhongMaterial({color:0x444466})
-      );
-      g.add(hull);
-      const bridge=new THREE.Mesh(
-        new THREE.BoxGeometry(3,2,4),
-        new THREE.MeshPhongMaterial({color:0x333355})
-      );
-      bridge.position.set(0,2.5,-3);
-      g.add(bridge);
-      // Engine glow
-      for(let i=-1;i<=1;i+=2){
-        const eng=new THREE.Mesh(
-          new THREE.CylinderGeometry(.8,.8,2),
+      g.add(box);
+      // Sparking damage
+      if(Math.random()>.5){
+        const spark=new THREE.Mesh(
+          new THREE.SphereGeometry(1),
           new THREE.MeshBasicMaterial({color:0xff4400})
         );
+        spark.position.set(T.rnd(-5,5),T.rnd(-5,5),T.rnd(-5,5));
+        spark.userData.isSpark=true;
+        g.add(spark);
+      }
+      mesh=g;
+    }
+
+    mesh.position.set(T.rnd(-100,100),T.rnd(-60,60),z);
+    mesh.rotation.set(T.rnd(0,Math.PI*2),T.rnd(0,Math.PI*2),T.rnd(0,Math.PI*2));
+    mesh.userData={
+      rotSpeed:T.v3(T.rnd(-.01,.01),T.rnd(-.01,.01),T.rnd(-.01,.01)),
+      size:type==='hull'?20:type==='module'?15:10
+    };
+    this.sc.add(mesh);
+    this.debris.push(mesh);
+  },
+
+  spawnTurret(z){
+    const g=new THREE.Group();
+    // Base
+    const base=new THREE.Mesh(
+      new THREE.CylinderGeometry(4,5,3,8),
+      new THREE.MeshPhongMaterial({color:0x664422})
+    );
+    g.add(base);
+    // Barrel
+    const barrel=new THREE.Mesh(
+      new THREE.CylinderGeometry(.5,.5,8,6),
+      new THREE.MeshPhongMaterial({color:0x444444})
+    );
+    barrel.rotation.x=Math.PI/2;
+    barrel.position.z=-4;
+    barrel.position.y=1;
+    g.add(barrel);
+    // Targeting light
+    const light=new THREE.Mesh(
+      new THREE.SphereGeometry(.8),
+      new THREE.MeshBasicMaterial({color:0xff0000})
+    );
+    light.position.set(0,2,0);
+    light.userData.isLight=true;
+    g.add(light);
+
+    g.position.set(T.rnd(-70,70),T.rnd(-30,30),z);
+    g.userData={
+      fireTimer:T.rnd(0,100),
+      hp:3
+    };
+    this.sc.add(g);
+    this.turrets.push(g);
+  },
+
+  spawnEnemy(type='drone'){
+    const enemy={type,hp:type==='drone'?2:type==='bomber'?4:3};
+
+    if(type==='drone'){
+      // Small attack drone
+      const g=new THREE.Group();
+      const body=new THREE.Mesh(
+        new THREE.OctahedronGeometry(2),
+        new THREE.MeshPhongMaterial({color:0x880088})
+      );
+      g.add(body);
+      // Glow core
+      const core=new THREE.Mesh(
+        new THREE.SphereGeometry(.5),
+        new THREE.MeshBasicMaterial({color:0xff00ff})
+      );
+      g.add(core);
+      enemy.mesh=g;
+      enemy.mesh.position.set(T.rnd(-60,60),T.rnd(-30,30),-400);
+      enemy.vx=T.rnd(-.5,.5);
+      enemy.vy=T.rnd(-.3,.3);
+    }else if(type==='bomber'){
+      // Heavy bomber
+      const g=new THREE.Group();
+      const body=new THREE.Mesh(
+        new THREE.BoxGeometry(6,3,10),
+        new THREE.MeshPhongMaterial({color:0x666688})
+      );
+      g.add(body);
+      // Engines
+      for(let i=-1;i<=1;i+=2){
+        const eng=new THREE.Mesh(
+          new THREE.CylinderGeometry(1,1,3),
+          new THREE.MeshBasicMaterial({color:0xff6600})
+        );
         eng.rotation.x=Math.PI/2;
-        eng.position.set(i*2.5,0,8);
+        eng.position.set(i*2,0,6);
         g.add(eng);
       }
       enemy.mesh=g;
-      enemy.mesh.position.set(T.rnd(-40,40),T.rnd(-20,20),-400);
+      enemy.mesh.position.set(T.rnd(-50,50),T.rnd(-20,20),-450);
       enemy.vx=0;
       enemy.vy=0;
     }else if(type==='ring'){
-      // Bonus ring - faces player (no Y rotation)
+      // Bonus ring - NO rotation.y so player can fly through!
       enemy.mesh=new THREE.Mesh(
-        new THREE.TorusGeometry(8,1,8,16),
-        new THREE.MeshPhongMaterial({color:0xffff00,emissive:0x444400})
+        new THREE.TorusGeometry(10,1.2,8,20),
+        new THREE.MeshPhongMaterial({color:0xffff00,emissive:0x666600})
       );
-      enemy.mesh.position.set(T.rnd(-30,30),T.rnd(-15,15),-280);
+      enemy.mesh.position.set(T.rnd(-35,35),T.rnd(-20,20),-320);
+      // Ring spins around Z but faces player (no Y rotation)
       enemy.isRing=true;
     }
 
@@ -394,27 +429,31 @@ const G={
     this.bombs--;
     document.getElementById('bombs').textContent='BOMBS: '+this.bombs;
 
-    // Destroy all enemies and nearby asteroids
+    // Destroy all enemies and beams
     this.enemies.forEach(e=>{
       if(!e.isRing){
         this.spawnExplosion(e.mesh.position);
         this.sc.remove(e.mesh);
         e.dead=true;
-        this.addScore(e.type==='fighter'?10:50);
+        this.addScore(e.type==='drone'?20:60);
       }
     });
     this.enemies=this.enemies.filter(e=>!e.dead);
 
-    // Destroy nearby asteroids
-    this.asteroids.forEach(a=>{
-      if(a.position.z>-200&&a.position.z<50){
-        this.spawnExplosion(a.position);
-        this.sc.remove(a);
-        a.userData.dead=true;
-        this.addScore(5);
+    // Destroy turrets
+    this.turrets.forEach(t=>{
+      if(t.position.z>-200&&t.position.z<50){
+        this.spawnExplosion(t.position);
+        this.sc.remove(t);
+        t.userData.dead=true;
+        this.addScore(30);
       }
     });
-    this.asteroids=this.asteroids.filter(a=>!a.userData.dead);
+    this.turrets=this.turrets.filter(t=>!t.userData.dead);
+
+    // Clear beams
+    this.beams.forEach(b=>{this.sc.remove(b);b.userData.dead=true});
+    this.beams=[];
 
     document.body.style.background='#fff';
     setTimeout(()=>document.body.style.background='#000',100);
@@ -429,15 +468,15 @@ const G={
   },
 
   spawnExplosion(pos){
-    for(let i=0;i<20;i++){
+    for(let i=0;i<25;i++){
       const p=new THREE.Mesh(
         new THREE.SphereGeometry(.5),
-        new THREE.MeshBasicMaterial({color:Math.random()>.5?0xff4400:0xffff00})
+        new THREE.MeshBasicMaterial({color:Math.random()>.3?0xff00ff:0xffff00})
       );
       p.position.copy(pos);
       p.userData={
         vel:T.v3(T.rnd(-1.5,1.5),T.rnd(-1.5,1.5),T.rnd(-1.5,1.5)),
-        life:40
+        life:45
       };
       this.sc.add(p);
       this.particles.push(p);
@@ -454,6 +493,11 @@ const G={
     this.shield-=amt;
     this.invincible=30;
     document.getElementById('shield-fill').style.width=Math.max(0,this.shield)+'%';
+
+    // Flash warning
+    const warn=document.getElementById('warning');
+    warn.style.opacity=1;
+    setTimeout(()=>warn.style.opacity=0,200);
 
     if(this.shield<=0){
       this.lives--;
@@ -536,82 +580,143 @@ const G={
     }
 
     // World scrolling
-    const scrollSpeed=2.5;
+    const scrollSpeed=2.2;
     this.distance+=scrollSpeed;
 
     // Move starfield
     const starPos=this.starField.geometry.attributes.position.array;
     for(let i=0;i<starPos.length;i+=3){
-      starPos[i+2]+=scrollSpeed*.5;
-      if(starPos[i+2]>100)starPos[i+2]=-1000;
+      starPos[i+2]+=scrollSpeed*.4;
+      if(starPos[i+2]>100)starPos[i+2]=-1200;
     }
     this.starField.geometry.attributes.position.needsUpdate=true;
 
-    // Move asteroids
-    this.asteroids.forEach(a=>{
-      a.position.z+=scrollSpeed;
-      a.rotation.x+=a.userData.rotSpeed.x;
-      a.rotation.y+=a.userData.rotSpeed.y;
-      a.rotation.z+=a.userData.rotSpeed.z;
+    // Move debris
+    this.debris.forEach(d=>{
+      d.position.z+=scrollSpeed;
+      d.rotation.x+=d.userData.rotSpeed.x;
+      d.rotation.y+=d.userData.rotSpeed.y;
+      d.rotation.z+=d.userData.rotSpeed.z;
+      // Sparks flicker
+      d.children?.forEach(c=>{
+        if(c.userData.isSpark){
+          c.visible=Math.random()>.3;
+        }
+      });
     });
 
-    // Spawn new asteroids
-    if(this.asteroids.length>0){
-      const minZ=Math.min(...this.asteroids.map(a=>a.position.z));
+    // Move turrets
+    this.turrets.forEach(t=>{
+      t.position.z+=scrollSpeed;
+      // Turret fires at player
+      t.userData.fireTimer--;
+      if(t.userData.fireTimer<=0&&t.position.z>-200&&t.position.z<20){
+        t.userData.fireTimer=80+T.rnd(0,40);
+        this.fireTurret(t);
+      }
+      // Targeting light blink
+      t.children?.forEach(c=>{
+        if(c.userData.isLight){
+          c.material.color.setHex(Math.sin(Date.now()*.01)>.5?0xff0000:0x440000);
+        }
+      });
+      // Look at player
+      const dir=this.ship.position.clone().sub(t.position);
+      const angle=Math.atan2(dir.x,dir.z);
+      t.rotation.y=angle;
+    });
+
+    // Spawn new debris
+    if(this.debris.length<30){
+      const minZ=Math.min(...this.debris.map(d=>d.position.z));
       if(minZ>-400){
-        for(let i=0;i<3;i++)this.spawnAsteroid(-400-T.rnd(0,100));
+        for(let i=0;i<3;i++)this.spawnDebris(-400-T.rnd(0,80));
       }
     }
 
+    // Spawn turrets
+    if(Math.random()<.003)this.spawnTurret(-500);
+
     // Spawn enemies
-    if(Math.random()<.015)this.spawnEnemy('fighter');
-    if(Math.random()<.003)this.spawnEnemy('cruiser');
-    if(Math.random()<.006)this.spawnEnemy('ring');
+    if(Math.random()<.012)this.spawnEnemy('drone');
+    if(Math.random()<.004)this.spawnEnemy('bomber');
+    if(Math.random()<.008)this.spawnEnemy('ring');
 
     // Update enemies
     this.enemies.forEach(e=>{
       e.mesh.position.z+=scrollSpeed;
 
-      if(e.type==='fighter'){
+      if(e.type==='drone'){
         e.mesh.position.x+=e.vx;
         e.mesh.position.y+=e.vy;
-        e.mesh.position.z+=.3;
+        e.mesh.position.z+=.4;
+        e.mesh.rotation.y+=.05;
       }
       if(e.isRing){
-        e.mesh.rotation.z+=.05;
+        // Spin the ring around Z (facing player)
+        e.mesh.rotation.z+=.04;
       }
 
       const dist=e.mesh.position.distanceTo(this.ship.position);
-      if(dist<(e.isRing?10:e.type==='cruiser'?12:5)){
+      if(dist<(e.isRing?12:e.type==='bomber'?10:5)){
         if(e.isRing){
-          this.addScore(100);
-          this.shield=Math.min(100,this.shield+25);
+          this.addScore(150);
+          this.shield=Math.min(100,this.shield+30);
           document.getElementById('shield-fill').style.width=this.shield+'%';
-          this.showRadio('🦊','Shield boosted!');
+          this.showRadio('🦊','Ring bonus! Shield restored!');
         }else{
-          this.takeDamage(e.type==='cruiser'?40:20);
+          this.takeDamage(e.type==='bomber'?35:25);
         }
         this.sc.remove(e.mesh);
         e.dead=true;
       }
 
-      if(e.mesh.position.z>50){
+      if(e.mesh.position.z>60){
         this.sc.remove(e.mesh);
         e.dead=true;
       }
     });
     this.enemies=this.enemies.filter(e=>!e.dead);
 
-    // Asteroid collision with player
-    this.asteroids.forEach(a=>{
-      const dist=a.position.distanceTo(this.ship.position);
-      if(dist<a.userData.size+3){
-        this.takeDamage(30);
-        this.spawnExplosion(a.position);
-        this.sc.remove(a);
-        a.userData.dead=true;
+    // Update beams (turret shots)
+    this.beams.forEach(b=>{
+      b.position.add(b.userData.vel);
+      b.userData.life--;
+      // Hit player
+      if(b.position.distanceTo(this.ship.position)<5){
+        this.takeDamage(15);
+        b.userData.life=0;
+      }
+      if(b.userData.life<=0){
+        this.sc.remove(b);
+        b.userData.dead=true;
       }
     });
+    this.beams=this.beams.filter(b=>!b.userData.dead);
+
+    // Debris collision
+    this.debris.forEach(d=>{
+      const dist=d.position.distanceTo(this.ship.position);
+      if(dist<d.userData.size+3){
+        this.takeDamage(25);
+        this.spawnExplosion(d.position);
+        this.sc.remove(d);
+        d.userData.dead=true;
+      }
+    });
+    this.debris=this.debris.filter(d=>!d.userData.dead);
+
+    // Turret collision
+    this.turrets.forEach(t=>{
+      const dist=t.position.distanceTo(this.ship.position);
+      if(dist<8){
+        this.takeDamage(30);
+        this.spawnExplosion(t.position);
+        this.sc.remove(t);
+        t.userData.dead=true;
+      }
+    });
+    this.turrets=this.turrets.filter(t=>!t.userData.dead);
 
     // Update bullets
     this.bullets.forEach(b=>{
@@ -620,26 +725,40 @@ const G={
 
       // Hit enemies
       this.enemies.forEach(e=>{
-        if(!e.isRing&&b.position.distanceTo(e.mesh.position)<(e.type==='cruiser'?8:4)){
+        if(!e.isRing&&b.position.distanceTo(e.mesh.position)<(e.type==='bomber'?6:3)){
           e.hp--;
           b.userData.life=0;
           if(e.hp<=0){
             this.spawnExplosion(e.mesh.position);
             this.sc.remove(e.mesh);
             e.dead=true;
-            this.addScore(e.type==='fighter'?15:75);
+            this.addScore(e.type==='drone'?25:80);
           }
         }
       });
 
-      // Hit asteroids
-      this.asteroids.forEach(a=>{
-        if(b.position.distanceTo(a.position)<a.userData.size){
+      // Hit turrets
+      this.turrets.forEach(t=>{
+        if(b.position.distanceTo(t.position)<6){
+          t.userData.hp--;
           b.userData.life=0;
-          this.spawnExplosion(a.position);
-          this.sc.remove(a);
-          a.userData.dead=true;
-          this.addScore(5);
+          if(t.userData.hp<=0){
+            this.spawnExplosion(t.position);
+            this.sc.remove(t);
+            t.userData.dead=true;
+            this.addScore(40);
+          }
+        }
+      });
+
+      // Hit debris (smaller pieces can be destroyed)
+      this.debris.forEach(d=>{
+        if(d.userData.size<12&&b.position.distanceTo(d.position)<d.userData.size){
+          b.userData.life=0;
+          this.spawnExplosion(d.position);
+          this.sc.remove(d);
+          d.userData.dead=true;
+          this.addScore(8);
         }
       });
 
@@ -649,13 +768,14 @@ const G={
       }
     });
     this.bullets=this.bullets.filter(b=>!b.dead);
-    this.asteroids=this.asteroids.filter(a=>!a.userData.dead);
+    this.turrets=this.turrets.filter(t=>!t.userData.dead);
+    this.debris=this.debris.filter(d=>!d.userData.dead);
 
     // Update particles
     this.particles.forEach(p=>{
       p.position.add(p.userData.vel);
       p.userData.life--;
-      p.scale.setScalar(p.userData.life/40);
+      p.scale.setScalar(p.userData.life/45);
       if(p.userData.life<=0){
         this.sc.remove(p);
         p.dead=true;
@@ -663,17 +783,24 @@ const G={
     });
     this.particles=this.particles.filter(p=>!p.dead);
 
-    // Cleanup far asteroids
-    this.asteroids=this.asteroids.filter(a=>{
-      if(a.position.z>80){
-        this.sc.remove(a);
+    // Cleanup far debris
+    this.debris=this.debris.filter(d=>{
+      if(d.position.z>100){
+        this.sc.remove(d);
+        return false;
+      }
+      return true;
+    });
+    this.turrets=this.turrets.filter(t=>{
+      if(t.position.z>80){
+        this.sc.remove(t);
         return false;
       }
       return true;
     });
 
     // Boost regen
-    this.boost=Math.min(100,this.boost+.08);
+    this.boost=Math.min(100,this.boost+.07);
     document.getElementById('boost-fill').style.width=this.boost+'%';
 
     if(this.invincible>0)this.invincible--;
@@ -690,23 +817,41 @@ const G={
       this.complete=true;
       document.getElementById('mission-complete').style.display='block';
       document.getElementById('final-score').textContent=this.score;
-      this.showRadio('🦊','We made it through! Great navigation!');
-      document.getElementById('warp-effect').style.opacity=.5;
+      this.showRadio('🦊','We escaped Sector X! Mission complete!');
     }
 
     // Radio messages
-    if(this.distance>600&&!this.msg1){
+    if(this.distance>500&&!this.msg1){
       this.msg1=true;
-      this.showRadio('🐰','Space pirates! Watch your six!');
+      this.showRadio('🐰','What happened to this station?!');
     }
-    if(this.distance>1500&&!this.msg2){
+    if(this.distance>1200&&!this.msg2){
       this.msg2=true;
-      this.showRadio('🦅','Those cruisers are tough! Use your bombs!');
+      this.showRadio('🦅','Automated defenses still online! Watch the turrets!');
     }
-    if(this.distance>2500&&!this.msg3){
+    if(this.distance>2200&&!this.msg3){
       this.msg3=true;
-      this.showRadio('🐸','Almost through the field! Keep going!');
+      this.showRadio('🐸','I\'m detecting strange energy readings ahead...');
     }
+    if(this.distance>3500&&!this.msg4){
+      this.msg4=true;
+      this.showRadio('🦊','Almost through! Push forward!');
+    }
+  },
+
+  fireTurret(turret){
+    const beam=new THREE.Mesh(
+      new THREE.SphereGeometry(.4),
+      new THREE.MeshBasicMaterial({color:0xff2200})
+    );
+    beam.position.copy(turret.position);
+    const dir=this.ship.position.clone().sub(turret.position).normalize();
+    beam.userData={
+      vel:dir.multiplyScalar(1.5),
+      life:100
+    };
+    this.sc.add(beam);
+    this.beams.push(beam);
   },
 
   animate(){
