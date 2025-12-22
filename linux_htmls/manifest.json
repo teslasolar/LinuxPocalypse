@@ -86,5 +86,13 @@
     "icon": "🐜",
     "color": "#00ff00",
     "tags": ["Swarm", "AI", "Evolution", "Colonies"]
+  },
+  {
+    "file": "vision-world.html",
+    "title": "Vision World",
+    "description": "CV agents with simulated computer vision - they sample pixels, detect colors, and react to user drawings in real-time",
+    "icon": "👁️",
+    "color": "#00ffff",
+    "tags": ["Vision", "CV", "Interactive", "Perception"]
   }
 ]
