@@ -70,5 +70,13 @@
     "icon": "🧱",
     "color": "#44aa44",
     "tags": ["Voxel", "Minecraft", "Circuits", "Bots"]
+  },
+  {
+    "file": "world-printer.html",
+    "title": "World Printer",
+    "description": "3D prints entire worlds layer-by-layer with FDM extrusion beads, multiple print heads, and terrain generation",
+    "icon": "🌍",
+    "color": "#4488ff",
+    "tags": ["World", "FDM", "Terrain", "Multi-Head"]
   }
 ]
