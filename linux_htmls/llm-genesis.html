@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Genesis - 3D Neural Language Model Builder</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#0ff}
+        #canvas{position:fixed;top:0;left:0}
+        #hud{position:fixed;top:10px;left:10px;font-size:11px;pointer-events:none;z-index:100}
+        .panel{background:rgba(0,20,40,0.85);border:1px solid #0ff;padding:10px;margin-bottom:8px;border-radius:4px;min-width:280px}
+        .title{color:#ff0;font-size:14px;margin-bottom:8px;text-transform:uppercase;letter-spacing:2px}
+        .row{display:flex;justify-content:space-between;margin:3px 0}
+        .label{color:#088}
+        .value{color:#0ff}
+        .highlight{color:#ff0}
+        .agent{color:#f0f}
+        .token{color:#0f0}
+        #agents{position:fixed;top:10px;right:10px;font-size:10px;pointer-events:none;z-index:100}
+        .agent-card{background:rgba(40,0,40,0.85);border:1px solid #f0f;padding:8px;margin-bottom:5px;border-radius:4px;min-width:200px}
+        .agent-name{color:#ff0;font-size:12px;margin-bottom:5px}
+        .agent-status{color:#0f0;font-size:9px}
+        .progress-bar{height:4px;background:#222;border-radius:2px;margin-top:3px}
+        .progress-fill{height:100%;background:linear-gradient(90deg,#f0f,#0ff);border-radius:2px;transition:width 0.3s}
+        #metrics{position:fixed;bottom:10px;left:10px;font-size:10px;pointer-events:none;z-index:100}
+        .metric-chart{width:250px;height:60px;background:rgba(0,20,40,0.85);border:1px solid #0ff;margin-top:5px}
+        #tokens{position:fixed;bottom:10px;right:10px;font-size:9px;pointer-events:none;z-index:100;max-width:300px}
+        .token-stream{background:rgba(0,40,0,0.85);border:1px solid #0f0;padding:8px;border-radius:4px;max-height:150px;overflow:hidden}
+        #phase{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-size:24px;color:#ff0;text-shadow:0 0 20px #ff0;pointer-events:none;z-index:200;opacity:0;transition:opacity 0.5s}
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="phase">INITIALIZING LLM GENESIS...</div>
+    <div id="hud">
+        <div class="panel">
+            <div class="title">⚛ LLM Genesis Core</div>
+            <div class="row"><span class="label">Architecture:</span><span class="value" id="arch">Transformer-3D</span></div>
+            <div class="row"><span class="label">Parameters:</span><span class="value" id="params">0</span></div>
+            <div class="row"><span class="label">Layers:</span><span class="value" id="layers">0</span></div>
+            <div class="row"><span class="label">Attention Heads:</span><span class="value" id="heads">0</span></div>
+            <div class="row"><span class="label">Embedding Dim:</span><span class="value" id="embdim">0</span></div>
+            <div class="row"><span class="label">3D Spatial Dim:</span><span class="value" id="spatial">0</span></div>
+        </div>
+        <div class="panel">
+            <div class="title">📊 Training Status</div>
+            <div class="row"><span class="label">Epoch:</span><span class="highlight" id="epoch">0</span></div>
+            <div class="row"><span class="label">Batch:</span><span class="value" id="batch">0</span></div>
+            <div class="row"><span class="label">Loss:</span><span class="value" id="loss">∞</span></div>
+            <div class="row"><span class="label">Accuracy:</span><span class="value" id="accuracy">0%</span></div>
+            <div class="row"><span class="label">Tokens/sec:</span><span class="token" id="tps">0</span></div>
+            <div class="row"><span class="label">3D Points/sec:</span><span class="token" id="pps">0</span></div>
+        </div>
+    </div>
+    <div id="agents"></div>
+    <div id="metrics">
+        <div class="panel">
+            <div class="title">📈 Loss Curve</div>
+            <canvas id="lossChart" class="metric-chart" width="250" height="60"></canvas>
+        </div>
+    </div>
+    <div id="tokens">
+        <div class="token-stream">
+            <div style="color:#ff0;margin-bottom:5px">🔤 Token Stream</div>
+            <div id="tokenLog"></div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // LLM Genesis - 3D Neural Language Model Builder
+        const canvas=document.getElementById('canvas');
+        const scene=new THREE.Scene();
+        const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,2000);
+        const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
+        renderer.setSize(innerWidth,innerHeight);
+        renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+        camera.position.set(0,50,100);
+        camera.lookAt(0,0,0);
+
+        // State
+        const state={
+            phase:0,
+            epoch:0,
+            batch:0,
+            loss:10,
+            accuracy:0,
+            params:0,
+            layers:0,
+            heads:0,
+            embDim:0,
+            spatialDim:0,
+            tokensProcessed:0,
+            pointsProcessed:0,
+            lossHistory:[],
+            building:true
+        };
+
+        // Sub-Agents
+        const agents={
+            tokenizer:{name:'Tokenizer Agent',status:'idle',progress:0,color:0x00ff00,task:'Breaking text into tokens'},
+            embedder:{name:'Embedder Agent',status:'idle',progress:0,color:0x00ffff,task:'Converting tokens to vectors'},
+            attention:{name:'Attention Head Agent',status:'idle',progress:0,color:0xff00ff,task:'Computing attention patterns'},
+            transformer:{name:'Transformer Layer Agent',status:'idle',progress:0,color:0xffff00,task:'Building transformer blocks'},
+            spatial:{name:'3D Spatial Encoder',status:'idle',progress:0,color:0xff8800,task:'Encoding 3D coordinates'},
+            trainer:{name:'Training Agent',status:'idle',progress:0,color:0xff0000,task:'Optimizing parameters'},
+            architect:{name:'Architect Agent',status:'idle',progress:0,color:0x8888ff,task:'Designing network topology'},
+            validator:{name:'Validator Agent',status:'idle',progress:0,color:0x88ff88,task:'Validating model outputs'}
+        };
+
+        // 3D Objects
+        const nodes=[];
+        const connections=[];
+        const tokens=[];
+        const spatialPoints=[];
+        const attentionBeams=[];
+
+        // Materials
+        const nodeMat=new THREE.MeshPhongMaterial({color:0x00ffff,emissive:0x004444,transparent:true,opacity:0.8});
+        const tokenMat=new THREE.MeshBasicMaterial({color:0x00ff00});
+        const spatialMat=new THREE.MeshBasicMaterial({color:0xff8800});
+        const connectionMat=new THREE.LineBasicMaterial({color:0x0088ff,transparent:true,opacity:0.3});
+        const attentionMat=new THREE.LineBasicMaterial({color:0xff00ff,transparent:true,opacity:0.5});
+
+        // Lighting
+        scene.add(new THREE.AmbientLight(0x404040));
+        const light1=new THREE.PointLight(0x00ffff,1,200);light1.position.set(50,50,50);scene.add(light1);
+        const light2=new THREE.PointLight(0xff00ff,1,200);light2.position.set(-50,50,-50);scene.add(light2);
+
+        // Grid
+        const grid=new THREE.GridHelper(200,20,0x004444,0x002222);
+        grid.position.y=-30;
+        scene.add(grid);
+
+        // Core structure group
+        const coreGroup=new THREE.Group();
+        scene.add(coreGroup);
+
+        // NLP vocabulary for token generation
+        const vocabulary=['the','neural','network','learns','patterns','from','data','tokens','embeddings',
+            'attention','transformer','layer','model','training','loss','gradient','optimize','weights',
+            'bias','activation','relu','softmax','dropout','batch','epoch','inference','prediction',
+            '3D','spatial','coordinate','vertex','mesh','point','cloud','geometry','topology'];
+
+        // 3D spatial data generator
+        function generate3DPoint(){
+            return{
+                x:(Math.random()-0.5)*50,
+                y:(Math.random()-0.5)*50,
+                z:(Math.random()-0.5)*50,
+                normal:[Math.random(),Math.random(),Math.random()],
+                color:[Math.random(),Math.random(),Math.random()]
+            };
+        }
+
+        // Create neural node
+        function createNode(x,y,z,type='hidden'){
+            const geo=type==='input'?new THREE.SphereGeometry(1.5,16,16):
+                       type==='output'?new THREE.OctahedronGeometry(2):
+                       new THREE.IcosahedronGeometry(1,0);
+            const mat=nodeMat.clone();
+            mat.color.setHex(type==='input'?0x00ff00:type==='output'?0xff0000:0x00ffff);
+            mat.emissive.setHex(type==='input'?0x004400:type==='output'?0x440000:0x004444);
+            const mesh=new THREE.Mesh(geo,mat);
+            mesh.position.set(x,y,z);
+            mesh.userData={type,activation:0,connections:[]};
+            coreGroup.add(mesh);
+            nodes.push(mesh);
+            return mesh;
+        }
+
+        // Create connection between nodes
+        function createConnection(nodeA,nodeB,weight=1){
+            const points=[nodeA.position.clone(),nodeB.position.clone()];
+            const geo=new THREE.BufferGeometry().setFromPoints(points);
+            const mat=connectionMat.clone();
+            mat.opacity=Math.min(0.8,weight*0.3);
+            const line=new THREE.Line(geo,mat);
+            line.userData={from:nodeA,to:nodeB,weight};
+            coreGroup.add(line);
+            connections.push(line);
+            nodeA.userData.connections.push(line);
+            return line;
+        }
+
+        // Spawn token particle
+        function spawnToken(text){
+            const geo=new THREE.BoxGeometry(0.8,0.8,0.8);
+            const mat=tokenMat.clone();
+            const mesh=new THREE.Mesh(geo,mat);
+            mesh.position.set(-80+Math.random()*20,Math.random()*40-20,Math.random()*20-10);
+            mesh.userData={text,target:null,speed:0.5+Math.random()*0.5,life:1};
+            scene.add(mesh);
+            tokens.push(mesh);
+            state.tokensProcessed++;
+            logToken('NLP',text);
+        }
+
+        // Spawn 3D spatial point
+        function spawnSpatialPoint(point){
+            const geo=new THREE.TetrahedronGeometry(0.6);
+            const mat=spatialMat.clone();
+            const mesh=new THREE.Mesh(geo,mat);
+            mesh.position.set(80+Math.random()*20,Math.random()*40-20,Math.random()*20-10);
+            mesh.userData={point,target:null,speed:0.4+Math.random()*0.4,life:1};
+            scene.add(mesh);
+            spatialPoints.push(mesh);
+            state.pointsProcessed++;
+            logToken('3D',`[${point.x.toFixed(1)},${point.y.toFixed(1)},${point.z.toFixed(1)}]`);
+        }
+
+        // Log token to stream
+        const tokenLog=document.getElementById('tokenLog');
+        let logLines=[];
+        function logToken(type,text){
+            const color=type==='NLP'?'#0f0':'#f80';
+            logLines.unshift(`<span style="color:${color}">[${type}]</span> ${text}`);
+            if(logLines.length>10)logLines.pop();
+            tokenLog.innerHTML=logLines.join('<br>');
+        }
+
+        // Build transformer layer
+        function buildTransformerLayer(layerIndex){
+            const y=layerIndex*12-state.layers*6;
+            const layerNodes=[];
+
+            // Create attention heads for this layer
+            for(let h=0;h<state.heads;h++){
+                const angle=(h/state.heads)*Math.PI*2;
+                const x=Math.cos(angle)*15;
+                const z=Math.sin(angle)*15;
+                const node=createNode(x,y,z,'hidden');
+                node.userData.layer=layerIndex;
+                node.userData.head=h;
+                layerNodes.push(node);
+            }
+
+            // Connect to previous layer
+            if(layerIndex>0){
+                const prevLayer=nodes.filter(n=>n.userData.layer===layerIndex-1);
+                layerNodes.forEach(node=>{
+                    prevLayer.forEach(prev=>{
+                        if(Math.random()>0.3){
+                            createConnection(prev,node,Math.random());
+                        }
+                    });
+                });
+            }
+
+            state.params+=state.heads*state.embDim*state.embDim;
+        }
+
+        // Create attention beam visualization
+        function createAttentionBeam(from,to,strength){
+            const points=[from.clone(),to.clone()];
+            const geo=new THREE.BufferGeometry().setFromPoints(points);
+            const mat=attentionMat.clone();
+            mat.opacity=strength*0.8;
+            const line=new THREE.Line(geo,mat);
+            line.userData={life:1,decay:0.02};
+            scene.add(line);
+            attentionBeams.push(line);
+        }
+
+        // Update agent display
+        function updateAgentDisplay(){
+            const container=document.getElementById('agents');
+            container.innerHTML='<div class="panel"><div class="title">🤖 Sub-Agents</div></div>';
+            Object.values(agents).forEach(agent=>{
+                const card=document.createElement('div');
+                card.className='agent-card';
+                card.innerHTML=`
+                    <div class="agent-name">${agent.name}</div>
+                    <div class="agent-status">${agent.status}: ${agent.task}</div>
+                    <div class="progress-bar"><div class="progress-fill" style="width:${agent.progress}%"></div></div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // Draw loss chart
+        const lossCanvas=document.getElementById('lossChart');
+        const lossCtx=lossCanvas.getContext('2d');
+        function drawLossChart(){
+            lossCtx.fillStyle='rgba(0,20,40,0.3)';
+            lossCtx.fillRect(0,0,250,60);
+            if(state.lossHistory.length<2)return;
+
+            const max=Math.max(...state.lossHistory,1);
+            lossCtx.strokeStyle='#0ff';
+            lossCtx.lineWidth=1;
+            lossCtx.beginPath();
+            state.lossHistory.forEach((loss,i)=>{
+                const x=(i/Math.max(state.lossHistory.length-1,1))*250;
+                const y=60-(loss/max)*55;
+                if(i===0)lossCtx.moveTo(x,y);
+                else lossCtx.lineTo(x,y);
+            });
+            lossCtx.stroke();
+        }
+
+        // Phase system
+        const phases=[
+            {name:'INITIALIZING GENESIS CORE',duration:2000},
+            {name:'SPAWNING ARCHITECT AGENT',duration:1500},
+            {name:'DESIGNING NETWORK TOPOLOGY',duration:2000},
+            {name:'BUILDING INPUT LAYER',duration:1500},
+            {name:'SPAWNING TRANSFORMER AGENTS',duration:2000},
+            {name:'CONSTRUCTING ATTENTION HEADS',duration:3000},
+            {name:'INITIALIZING 3D SPATIAL ENCODER',duration:2000},
+            {name:'SPAWNING TRAINING AGENT',duration:1500},
+            {name:'BEGINNING CONTINUOUS TRAINING',duration:2000},
+            {name:'LLM GENESIS ACTIVE',duration:0}
+        ];
+
+        let phaseStartTime=Date.now();
+        const phaseEl=document.getElementById('phase');
+
+        function showPhase(text){
+            phaseEl.textContent=text;
+            phaseEl.style.opacity='1';
+            setTimeout(()=>phaseEl.style.opacity='0',1500);
+        }
+
+        function runPhase(){
+            if(state.phase>=phases.length)return;
+
+            const phase=phases[state.phase];
+            showPhase(phase.name);
+
+            switch(state.phase){
+                case 0: // Init
+                    agents.architect.status='initializing';
+                    agents.architect.progress=50;
+                    break;
+                case 1: // Spawn architect
+                    agents.architect.status='active';
+                    agents.architect.progress=100;
+                    state.embDim=256;
+                    state.spatialDim=128;
+                    break;
+                case 2: // Design topology
+                    agents.architect.task='Designing 8-layer transformer';
+                    state.layers=8;
+                    state.heads=8;
+                    break;
+                case 3: // Input layer
+                    agents.tokenizer.status='active';
+                    agents.tokenizer.progress=100;
+                    agents.embedder.status='active';
+                    agents.embedder.progress=100;
+                    // Create input nodes
+                    for(let i=0;i<12;i++){
+                        const angle=(i/12)*Math.PI*2;
+                        createNode(Math.cos(angle)*25,-40,Math.sin(angle)*25,'input');
+                    }
+                    break;
+                case 4: // Spawn transformer agents
+                    agents.transformer.status='active';
+                    agents.attention.status='active';
+                    break;
+                case 5: // Build layers
+                    for(let l=0;l<state.layers;l++){
+                        setTimeout(()=>{
+                            buildTransformerLayer(l);
+                            agents.transformer.progress=(l+1)/state.layers*100;
+                            agents.attention.progress=(l+1)/state.layers*100;
+                        },l*300);
+                    }
+                    break;
+                case 6: // 3D encoder
+                    agents.spatial.status='active';
+                    agents.spatial.progress=100;
+                    // Create output layer
+                    for(let i=0;i<8;i++){
+                        const angle=(i/8)*Math.PI*2;
+                        const node=createNode(Math.cos(angle)*20,state.layers*12-state.layers*6+15,Math.sin(angle)*20,'output');
+                        // Connect to last transformer layer
+                        const lastLayer=nodes.filter(n=>n.userData.layer===state.layers-1);
+                        lastLayer.forEach(prev=>{
+                            if(Math.random()>0.5)createConnection(prev,node,Math.random());
+                        });
+                    }
+                    state.params+=state.embDim*state.spatialDim*2;
+                    break;
+                case 7: // Training agent
+                    agents.trainer.status='active';
+                    agents.validator.status='active';
+                    break;
+                case 8: // Begin training
+                    agents.trainer.task='Continuous training loop';
+                    state.building=false;
+                    break;
+                case 9: // Active
+                    Object.values(agents).forEach(a=>{
+                        a.status='running';
+                        a.progress=100;
+                    });
+                    break;
+            }
+
+            updateAgentDisplay();
+
+            if(phase.duration>0){
+                setTimeout(()=>{
+                    state.phase++;
+                    runPhase();
+                },phase.duration);
+            }
+        }
+
+        // Training loop
+        function trainStep(){
+            if(state.building)return;
+
+            state.batch++;
+            if(state.batch>=100){
+                state.batch=0;
+                state.epoch++;
+            }
+
+            // Decrease loss with noise
+            const targetLoss=Math.max(0.01,10*Math.exp(-state.epoch*0.1));
+            state.loss+=(targetLoss-state.loss)*0.1+(Math.random()-0.5)*0.1;
+            state.loss=Math.max(0.001,state.loss);
+
+            // Increase accuracy
+            state.accuracy=Math.min(99.9,100*(1-state.loss/10)+Math.random()*2);
+
+            // Record loss
+            if(state.batch%10===0){
+                state.lossHistory.push(state.loss);
+                if(state.lossHistory.length>50)state.lossHistory.shift();
+            }
+
+            // Update agent tasks
+            agents.trainer.task=`Epoch ${state.epoch}, Batch ${state.batch}`;
+            agents.trainer.progress=state.batch;
+            agents.validator.task=`Accuracy: ${state.accuracy.toFixed(1)}%`;
+
+            // Spawn tokens and 3D points
+            if(Math.random()>0.7){
+                spawnToken(vocabulary[Math.floor(Math.random()*vocabulary.length)]);
+            }
+            if(Math.random()>0.7){
+                spawnSpatialPoint(generate3DPoint());
+            }
+
+            // Create attention beams
+            if(Math.random()>0.9&&nodes.length>10){
+                const from=nodes[Math.floor(Math.random()*nodes.length)];
+                const to=nodes[Math.floor(Math.random()*nodes.length)];
+                if(from!==to){
+                    createAttentionBeam(from.position,to.position,Math.random());
+                }
+            }
+        }
+
+        // Update HUD
+        function updateHUD(){
+            document.getElementById('params').textContent=state.params.toLocaleString();
+            document.getElementById('layers').textContent=state.layers;
+            document.getElementById('heads').textContent=state.heads;
+            document.getElementById('embdim').textContent=state.embDim;
+            document.getElementById('spatial').textContent=state.spatialDim;
+            document.getElementById('epoch').textContent=state.epoch;
+            document.getElementById('batch').textContent=state.batch;
+            document.getElementById('loss').textContent=state.loss.toFixed(4);
+            document.getElementById('accuracy').textContent=state.accuracy.toFixed(1)+'%';
+            document.getElementById('tps').textContent=Math.floor(state.tokensProcessed/((Date.now()-phaseStartTime)/1000));
+            document.getElementById('pps').textContent=Math.floor(state.pointsProcessed/((Date.now()-phaseStartTime)/1000));
+        }
+
+        // Animation
+        let time=0;
+        function animate(){
+            requestAnimationFrame(animate);
+            time+=0.016;
+
+            // Rotate camera
+            camera.position.x=Math.sin(time*0.1)*100;
+            camera.position.z=Math.cos(time*0.1)*100;
+            camera.position.y=50+Math.sin(time*0.2)*20;
+            camera.lookAt(0,0,0);
+
+            // Rotate core
+            coreGroup.rotation.y+=0.002;
+
+            // Animate nodes
+            nodes.forEach((node,i)=>{
+                node.rotation.x+=0.01;
+                node.rotation.y+=0.02;
+                // Pulse based on activation
+                const scale=1+Math.sin(time*3+i)*0.1*node.userData.activation;
+                node.scale.setScalar(scale);
+                node.userData.activation*=0.98;
+            });
+
+            // Animate connections
+            connections.forEach(conn=>{
+                conn.material.opacity=0.2+Math.sin(time*2)*0.1;
+            });
+
+            // Move tokens toward network
+            tokens.forEach((token,i)=>{
+                if(!token.userData.target&&nodes.length>0){
+                    const inputNodes=nodes.filter(n=>n.userData.type==='input');
+                    if(inputNodes.length>0){
+                        token.userData.target=inputNodes[Math.floor(Math.random()*inputNodes.length)];
+                    }
+                }
+                if(token.userData.target){
+                    const dir=token.userData.target.position.clone().sub(token.position);
+                    if(dir.length()>2){
+                        dir.normalize().multiplyScalar(token.userData.speed);
+                        token.position.add(dir);
+                    }else{
+                        // Absorbed by node
+                        token.userData.target.userData.activation=1;
+                        scene.remove(token);
+                        tokens.splice(i,1);
+                    }
+                }
+                token.rotation.x+=0.1;
+                token.rotation.y+=0.1;
+            });
+
+            // Move spatial points
+            spatialPoints.forEach((point,i)=>{
+                if(!point.userData.target&&nodes.length>0){
+                    const outputNodes=nodes.filter(n=>n.userData.type==='output');
+                    if(outputNodes.length>0){
+                        point.userData.target=outputNodes[Math.floor(Math.random()*outputNodes.length)];
+                    }
+                }
+                if(point.userData.target){
+                    const dir=point.userData.target.position.clone().sub(point.position);
+                    if(dir.length()>2){
+                        dir.normalize().multiplyScalar(point.userData.speed);
+                        point.position.add(dir);
+                    }else{
+                        point.userData.target.userData.activation=1;
+                        scene.remove(point);
+                        spatialPoints.splice(i,1);
+                    }
+                }
+                point.rotation.x+=0.05;
+                point.rotation.z+=0.05;
+            });
+
+            // Decay attention beams
+            attentionBeams.forEach((beam,i)=>{
+                beam.userData.life-=beam.userData.decay;
+                beam.material.opacity=beam.userData.life*0.5;
+                if(beam.userData.life<=0){
+                    scene.remove(beam);
+                    attentionBeams.splice(i,1);
+                }
+            });
+
+            // Training step
+            trainStep();
+
+            // Update displays
+            updateHUD();
+            updateAgentDisplay();
+            drawLossChart();
+
+            renderer.render(scene,camera);
+        }
+
+        // Resize handler
+        window.addEventListener('resize',()=>{
+            camera.aspect=innerWidth/innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(innerWidth,innerHeight);
+        });
+
+        // Start
+        setTimeout(()=>{
+            runPhase();
+            animate();
+        },500);
+    </script>
+</body>
+</html>

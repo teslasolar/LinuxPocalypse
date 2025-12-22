@@ -1,5 +1,13 @@
 [
   {
+    "file": "llm-genesis.html",
+    "title": "LLM Genesis",
+    "description": "3D LLM builder with 8 sub-agents (Tokenizer, Embedder, Attention, Transformer, Spatial, Trainer, Architect, Validator) that autonomously construct a transformer network, feed NLP tokens + 3D spatial data, and continuously train with real-time loss visualization",
+    "icon": "⚛",
+    "color": "#ff00ff",
+    "tags": ["LLM", "AI", "3D", "Autonomous", "Training"]
+  },
+  {
     "file": "megazord.html",
     "title": "MEGAZORD",
     "description": "Unified mega-system combining ALL simulations: Synth, Drone, Swarm, Neural, Shooter, Circuit, Voxel - with shared audio engine, gamepad support, and mode switching",
