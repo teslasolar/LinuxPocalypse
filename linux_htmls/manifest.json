@@ -102,5 +102,13 @@
     "icon": "🌌",
     "color": "#0088ff",
     "tags": ["Code", "Repo", "3D", "Dependencies"]
+  },
+  {
+    "file": "drone-sight.html",
+    "title": "Drone Sight",
+    "description": "3D flying drones with simulated computer vision - raycasting perception, obstacle avoidance, target tracking, weather systems, and live camera feeds",
+    "icon": "🚁",
+    "color": "#00ff00",
+    "tags": ["Drones", "Vision", "3D", "Simulation"]
   }
 ]
