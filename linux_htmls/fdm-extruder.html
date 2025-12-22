@@ -283,16 +283,16 @@ const F={
       const len=Math.sqrt(dx*dx+dz*dz);
       if(len<.01)return null;
 
-      const beadHeight=F.settings.layerHeight*.8;
-      const beadWidth=nozzleWidth*.9;
+      const beadHeight=F.settings.layerHeight*4;
+      const beadWidth=nozzleWidth*1.2;
 
-      // Capsule/pill shape: cylinder with rounded ends
-      const geo=new THREE.CapsuleGeometry(beadWidth/2,len,4,8);
+      // Create cylinder for the bead (works in r128)
+      const geo=new THREE.CylinderGeometry(beadWidth/2,beadWidth/2,len,8,1);
       const mat=new THREE.MeshPhongMaterial({
         color,
         emissive:color,
-        emissiveIntensity:.15,
-        shininess:30
+        emissiveIntensity:.2,
+        shininess:40
       });
 
       const mesh=new THREE.Mesh(geo,mat);
@@ -300,12 +300,13 @@ const F={
       // Position at midpoint
       mesh.position.set((x1+x2)/2,y+beadHeight/2,(z1+z2)/2);
 
-      // Rotate to align with direction
+      // Rotate cylinder to lay flat and align with direction
       mesh.rotation.z=π/2;
-      mesh.rotation.y=-Math.atan2(dz,dx);
+      mesh.rotation.y=-Math.atan2(dz,dx)+π/2;
 
-      // Flatten to layer height
-      mesh.scale.y=beadHeight/beadWidth;
+      // Flatten to layer height (squish the cylinder)
+      mesh.scale.y=1;
+      mesh.scale.x=beadHeight/beadWidth;
 
       mesh.castShadow=true;
       this.scene.add(mesh);
