@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Claude Code Env v3</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0d1117;color:#c9d1d9;font-family:system-ui;display:flex;flex-direction:column;height:100vh}
+.bar{height:36px;background:#161b22;border-bottom:1px solid #30363d;display:flex;align-items:center;padding:0 12px;gap:12px}
+.bar h1{font-size:14px;color:#58a6ff;font-weight:500}
+.bar .s{margin-left:auto;font-size:11px;padding:3px 8px;border-radius:10px;background:#238636}
+.wrap{flex:1;display:flex;overflow:hidden}
+.side{width:220px;background:#161b22;border-right:1px solid #30363d;overflow-y:auto;font-size:12px}
+.side-h{padding:8px 12px;color:#8b949e;font-size:10px;text-transform:uppercase;border-bottom:1px solid #30363d}
+.f{padding:5px 12px;cursor:pointer;display:flex;align-items:center;gap:6px}
+.f:hover{background:#21262d}
+.f.sel{background:#388bfd33;color:#58a6ff}
+.main{flex:1;display:flex;flex-direction:column}
+#ed{flex:1;min-height:200px}
+.term{height:320px;border-top:1px solid #30363d;display:flex;flex-direction:column}
+.term-h{height:28px;background:#161b22;display:flex;align-items:center;padding:0 10px;font-size:11px;color:#8b949e;border-bottom:1px solid #30363d}
+.term-h button{background:#21262d;border:none;color:#8b949e;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:10px;margin-left:8px}
+.term-h button:hover{background:#30363d;color:#fff}
+#term{flex:1}
+.xterm{height:100%}
+.pkg{padding:8px 12px;border-top:1px solid #30363d}
+.pkg-h{font-size:10px;color:#8b949e;margin-bottom:6px}
+.pkg-i{font-size:11px;color:#58a6ff;padding:2px 0}
+</style>
+</head>
+<body>
+<div class="bar">
+<h1>⚡ Claude Code Env v3</h1>
+<span class="s">Ready</span>
+</div>
+<div class="wrap">
+<div class="side">
+<div class="side-h">Files</div>
+<div id="fs"></div>
+<div class="pkg" id="pkgs" style="display:none">
+<div class="pkg-h">PACKAGES</div>
+<div id="pkglist"></div>
+</div>
+</div>
+<div class="main">
+<div id="ed"></div>
+<div class="term">
+<div class="term-h">Terminal <button onclick="SH.clear()">Clear</button></div>
+<div id="term"></div>
+</div>
+</div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.8.0/lib/addon-fit.min.js"></script>
+<script>
+// Virtual File System
+const FS={
+  files:{
+    '/package.json':JSON.stringify({name:"claude-env",version:"1.0.0",type:"module",scripts:{start:"node index.js",test:"node test.js"},dependencies:{}},null,2),
+    '/index.js':`// Claude Code Environment
+console.log('Hello from Claude Code Env!');
+console.log('Node.js simulation ready');
+
+const http = require('http');
+const server = http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end('Hello World!');
+});
+server.listen(3000);
+console.log('Server running on port 3000');`,
+    '/test.js':`console.log('Running tests...');
+console.log('✓ Test 1 passed');
+console.log('✓ Test 2 passed');
+console.log('All tests passed!');`,
+    '/README.md':`# Claude Code Environment
+
+A simulated Node.js environment in your browser.
+
+## Commands
+- \`ls\` - list files
+- \`cat <file>\` - show file contents
+- \`node <file>\` - run JavaScript
+- \`npm install <pkg>\` - install package
+- \`help\` - show all commands`
+  },
+  packages:{},
+  read(p){return this.files[p]||null},
+  write(p,c){this.files[p]=c;updateTree()},
+  list(){return Object.keys(this.files).map(f=>f.slice(1))},
+  exists(p){return p in this.files}
+};
+
+// Shell
+const SH={
+  t:null,f:null,buf:'',cwd:'/',
+  init(){
+    this.t=new Terminal({
+      theme:{background:'#0d1117',foreground:'#c9d1d9',cursor:'#58a6ff',
+        green:'#3fb950',yellow:'#d29922',blue:'#58a6ff',magenta:'#bc8cff',cyan:'#39c5cf',red:'#ff7b72'},
+      fontSize:13,cursorBlink:true,cursorStyle:'bar'
+    });
+    this.f=new FitAddon.FitAddon();
+    this.t.loadAddon(this.f);
+    this.t.open(document.getElementById('term'));
+    this.f.fit();
+    window.onresize=()=>this.f.fit();
+    this.t.onData(d=>this.input(d));
+    this.welcome();
+    this.prompt();
+  },
+  welcome(){
+    this.t.writeln('\x1b[1;36m╔══════════════════════════════════════╗\x1b[0m');
+    this.t.writeln('\x1b[1;36m║\x1b[0m  \x1b[1;33m⚡ Claude Code Environment v3\x1b[0m      \x1b[1;36m║\x1b[0m');
+    this.t.writeln('\x1b[1;36m║\x1b[0m  \x1b[90mSimulated Node.js Terminal\x1b[0m         \x1b[1;36m║\x1b[0m');
+    this.t.writeln('\x1b[1;36m╚══════════════════════════════════════╝\x1b[0m');
+    this.t.writeln('');
+    this.t.writeln('\x1b[32m✓\x1b[0m Environment ready. Type \x1b[33mhelp\x1b[0m for commands.');
+    this.t.writeln('');
+  },
+  prompt(){this.t.write('\x1b[36m~\x1b[0m \x1b[35m❯\x1b[0m ')},
+  clear(){this.t.clear();this.prompt()},
+  input(d){
+    if(d==='\r'){
+      this.t.writeln('');
+      this.exec(this.buf.trim());
+      this.buf='';
+      this.prompt();
+    }else if(d==='\x7f'){
+      if(this.buf.length>0){
+        this.buf=this.buf.slice(0,-1);
+        this.t.write('\b \b');
+      }
+    }else if(d==='\x03'){
+      this.t.writeln('^C');
+      this.buf='';
+      this.prompt();
+    }else if(d.charCodeAt(0)>=32){
+      this.buf+=d;
+      this.t.write(d);
+    }
+  },
+  exec(cmd){
+    if(!cmd)return;
+    const parts=cmd.split(/\s+/);
+    const c=parts[0];
+    const args=parts.slice(1);
+
+    const cmds={
+      help:()=>{
+        this.t.writeln('\x1b[1;33mAvailable Commands:\x1b[0m');
+        this.t.writeln('  \x1b[36mls\x1b[0m              List files');
+        this.t.writeln('  \x1b[36mcat\x1b[0m <file>      Show file contents');
+        this.t.writeln('  \x1b[36mtouch\x1b[0m <file>    Create empty file');
+        this.t.writeln('  \x1b[36mrm\x1b[0m <file>       Delete file');
+        this.t.writeln('  \x1b[36mnode\x1b[0m <file>     Run JavaScript file');
+        this.t.writeln('  \x1b[36mnpm install\x1b[0m <p> Install package');
+        this.t.writeln('  \x1b[36mnpm start\x1b[0m       Run start script');
+        this.t.writeln('  \x1b[36mnpm test\x1b[0m        Run test script');
+        this.t.writeln('  \x1b[36mecho\x1b[0m <text>     Print text');
+        this.t.writeln('  \x1b[36mpwd\x1b[0m             Print working directory');
+        this.t.writeln('  \x1b[36mclear\x1b[0m           Clear terminal');
+        this.t.writeln('  \x1b[36menv\x1b[0m             Show environment');
+        this.t.writeln('  \x1b[36mnode -v\x1b[0m         Show Node version');
+        this.t.writeln('  \x1b[36mnpm -v\x1b[0m          Show npm version');
+      },
+      ls:()=>{
+        FS.list().forEach(f=>this.t.writeln('\x1b[36m'+f+'\x1b[0m'));
+      },
+      cat:()=>{
+        const file='/'+args[0];
+        const c=FS.read(file);
+        if(c)this.t.writeln(c);
+        else this.t.writeln('\x1b[31mcat: '+args[0]+': No such file\x1b[0m');
+      },
+      touch:()=>{
+        if(!args[0])return this.t.writeln('\x1b[31mUsage: touch <filename>\x1b[0m');
+        FS.write('/'+args[0],'');
+        this.t.writeln('\x1b[32m✓\x1b[0m Created '+args[0]);
+      },
+      rm:()=>{
+        const file='/'+args[0];
+        if(FS.exists(file)){delete FS.files[file];updateTree();this.t.writeln('\x1b[32m✓\x1b[0m Deleted '+args[0])}
+        else this.t.writeln('\x1b[31mrm: '+args[0]+': No such file\x1b[0m');
+      },
+      pwd:()=>this.t.writeln('/home/user/project'),
+      echo:()=>this.t.writeln(args.join(' ')),
+      clear:()=>this.clear(),
+      env:()=>{
+        this.t.writeln('NODE_ENV=development');
+        this.t.writeln('HOME=/home/user');
+        this.t.writeln('PATH=/usr/local/bin:/usr/bin');
+        this.t.writeln('SHELL=/bin/bash');
+      },
+      node:()=>{
+        if(args[0]==='-v'||args[0]==='--version'){
+          return this.t.writeln('v20.10.0');
+        }
+        const file='/'+args[0];
+        const code=FS.read(file);
+        if(!code)return this.t.writeln('\x1b[31mnode: '+args[0]+': No such file\x1b[0m');
+        this.t.writeln('\x1b[90m> Running '+args[0]+'...\x1b[0m');
+        // Simulate execution
+        const lines=code.split('\n');
+        lines.forEach(line=>{
+          const m=line.match(/console\.log\(['"`](.*)['"`]\)/);
+          if(m)this.t.writeln(m[1]);
+        });
+      },
+      npm:()=>{
+        if(args[0]==='-v'||args[0]==='--version'){
+          return this.t.writeln('10.2.0');
+        }
+        if(args[0]==='install'||args[0]==='i'){
+          const pkg=args[1];
+          if(!pkg){
+            this.t.writeln('\x1b[90m> Installing dependencies...\x1b[0m');
+            setTimeout(()=>{
+              this.t.writeln('\x1b[32m✓\x1b[0m Dependencies installed');
+              this.prompt();
+            },800);
+            return'async';
+          }
+          this.t.writeln('\x1b[90m> Installing '+pkg+'...\x1b[0m');
+          setTimeout(()=>{
+            FS.packages[pkg]='^1.0.0';
+            updatePkgs();
+            this.t.writeln('\x1b[32m+ '+pkg+'@1.0.0\x1b[0m');
+            this.t.writeln('\x1b[32m✓\x1b[0m Added 1 package');
+            this.prompt();
+          },1000);
+          return'async';
+        }
+        if(args[0]==='start'){
+          this.t.writeln('\x1b[90m> node index.js\x1b[0m');
+          cmds.node.call(this);args[0]='index.js';cmds.node();
+          return;
+        }
+        if(args[0]==='test'){
+          this.t.writeln('\x1b[90m> node test.js\x1b[0m');
+          args[0]='test.js';cmds.node();
+          return;
+        }
+        this.t.writeln('\x1b[31mUnknown npm command: '+args[0]+'\x1b[0m');
+      },
+      git:()=>{
+        if(args[0]==='status'){
+          this.t.writeln('On branch main');
+          this.t.writeln('nothing to commit, working tree clean');
+        }else if(args[0]==='--version'){
+          this.t.writeln('git version 2.42.0');
+        }else{
+          this.t.writeln('\x1b[90mgit: simulated\x1b[0m');
+        }
+      },
+      whoami:()=>this.t.writeln('claude'),
+      date:()=>this.t.writeln(new Date().toString()),
+      uname:()=>this.t.writeln('Linux claude-env 6.1.0 x86_64'),
+    };
+
+    if(cmds[c]){
+      const r=cmds[c]();
+      if(r==='async')return; // Don't show prompt yet
+    }else{
+      this.t.writeln('\x1b[31mcommand not found: '+c+'\x1b[0m');
+      this.t.writeln('\x1b[90mType "help" for available commands\x1b[0m');
+    }
+  }
+};
+
+// File tree
+function updateTree(){
+  const el=document.getElementById('fs');
+  el.innerHTML='';
+  FS.list().forEach(f=>{
+    const d=document.createElement('div');
+    d.className='f';
+    d.textContent='📄 '+f;
+    d.onclick=()=>openFile('/'+f);
+    el.appendChild(d);
+  });
+}
+
+// Packages
+function updatePkgs(){
+  const el=document.getElementById('pkglist');
+  const wrap=document.getElementById('pkgs');
+  const pkgs=Object.keys(FS.packages);
+  if(pkgs.length>0){
+    wrap.style.display='block';
+    el.innerHTML=pkgs.map(p=>'<div class="pkg-i">'+p+' '+FS.packages[p]+'</div>').join('');
+  }
+}
+
+// Editor
+let editor,curFile='/index.js';
+require.config({paths:{vs:'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs'}});
+require(['vs/editor/editor.main'],()=>{
+  editor=monaco.editor.create(document.getElementById('ed'),{
+    value:FS.read('/index.js'),
+    language:'javascript',
+    theme:'vs-dark',
+    automaticLayout:true,
+    minimap:{enabled:false},
+    fontSize:13
+  });
+  editor.addCommand(monaco.KeyMod.CtrlCmd|monaco.KeyCode.KeyS,()=>{
+    FS.write(curFile,editor.getValue());
+    SH.t.writeln('\n\x1b[32m✓ Saved '+curFile+'\x1b[0m');
+    SH.prompt();
+  });
+  updateTree();
+});
+
+function openFile(p){
+  const c=FS.read(p);
+  if(c!==null){
+    curFile=p;
+    const ext=p.split('.').pop();
+    const lang={js:'javascript',json:'json',md:'markdown'}[ext]||'plaintext';
+    monaco.editor.setModelLanguage(editor.getModel(),lang);
+    editor.setValue(c);
+    document.querySelectorAll('.f').forEach(el=>el.classList.remove('sel'));
+    event.target.classList.add('sel');
+  }
+}
+
+// Init
+SH.init();
+</script>
+</body>
+</html>

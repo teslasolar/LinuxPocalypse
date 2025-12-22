@@ -1,5 +1,13 @@
 [
   {
+    "file": "claude-code-env-v3.html",
+    "title": "Claude Code Env v3",
+    "description": "Simulated Node.js terminal - no WebContainers, works instantly! Virtual FS, npm simulation, Monaco editor, full shell commands",
+    "icon": "⚡",
+    "color": "#3fb950",
+    "tags": ["Terminal", "Simulated", "Instant", "NoWebContainer"]
+  },
+  {
     "file": "claude-code-env-v2.html",
     "title": "Claude Code Env v2",
     "description": "Minimal WebContainer environment - token-reduced, faster boot, better COI handling, xterm.js terminal",
