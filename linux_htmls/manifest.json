@@ -182,5 +182,13 @@
     "icon": "🦊",
     "color": "#ff8800",
     "tags": ["GitFox", "Rail-Shooter", "Arcade", "Level1"]
+  },
+  {
+    "file": "gitfox/level2-asteroid.html",
+    "title": "Git Fox - Level 2: Asteroid Field",
+    "description": "Navigate the treacherous asteroid belt - dodge space rocks, fight pirates and cruisers, survive the cosmic debris field",
+    "icon": "☄️",
+    "color": "#6644aa",
+    "tags": ["GitFox", "Rail-Shooter", "Space", "Level2"]
   }
 ]
