@@ -110,5 +110,21 @@
     "icon": "🚁",
     "color": "#00ff00",
     "tags": ["Drones", "Vision", "3D", "Simulation"]
+  },
+  {
+    "file": "code-cosmos-v2.html",
+    "title": "Code Cosmos v2",
+    "description": "Force-directed repo graph with animated data flow, git timeline, code previews, complexity hotspots, and 8 framework templates",
+    "icon": "🌌",
+    "color": "#00aaff",
+    "tags": ["Code", "Force-Graph", "Git", "Flow"]
+  },
+  {
+    "file": "drone-sight-v2.html",
+    "title": "Drone Sight v2",
+    "description": "Tactical drone swarm with formations, waypoints, missions, radar display, comms network, threats, and vision modes (thermal/night/radar)",
+    "icon": "🚁",
+    "color": "#00ff88",
+    "tags": ["Drones", "Tactics", "Swarm", "Military"]
   }
 ]

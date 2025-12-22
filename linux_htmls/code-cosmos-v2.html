@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Code Cosmos v2 - Force Graph Repository</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#000;overflow:hidden;font:11px monospace;color:#0ff}
+#c{position:fixed;inset:0}
+.p{position:absolute;background:rgba(0,10,20,.94);border:1px solid #0af;border-radius:6px;padding:10px;z-index:10}
+button{background:linear-gradient(135deg,#06a,#048);color:#0ff;border:1px solid #0af;padding:5px 10px;margin:2px;border-radius:4px;cursor:pointer;font-size:10px}
+button:hover{background:#0af;color:#000}button.active{background:#0f0;color:#000;border-color:#0f0}
+.row{display:flex;gap:5px;margin:4px 0;flex-wrap:wrap;align-items:center}
+.stat{background:#001525;border:1px solid #068;border-radius:4px;padding:5px 8px;text-align:center;min-width:50px}
+.val{font-size:13px;font-weight:bold}
+.lbl{font-size:8px;opacity:.7}
+input,select{background:#001525;color:#0ff;border:1px solid #068;padding:5px;border-radius:4px;font-size:10px;flex:1}
+#tooltip{position:fixed;background:rgba(0,20,40,.96);border:2px solid #0af;padding:12px;border-radius:8px;pointer-events:none;display:none;z-index:100;max-width:320px;box-shadow:0 0 20px rgba(0,150,255,.3)}
+.code-preview{background:#000;padding:8px;border-radius:4px;font-size:9px;max-height:120px;overflow:hidden;margin-top:8px;border-left:3px solid}
+.timeline{height:60px;background:#000;border-radius:4px;margin-top:5px;position:relative;overflow:hidden}
+.commit{position:absolute;bottom:0;width:3px;background:#0f0;border-radius:2px 2px 0 0;cursor:pointer}
+.commit:hover{background:#fff}
+.legend{display:flex;gap:6px;flex-wrap:wrap;font-size:8px;margin-top:5px}
+.leg-item{display:flex;align-items:center;gap:3px}
+.leg-dot{width:8px;height:8px;border-radius:2px}
+.search-results{max-height:100px;overflow-y:auto;font-size:9px;margin-top:5px}
+.search-item{padding:3px 5px;cursor:pointer;border-radius:3px;display:flex;align-items:center;gap:5px}
+.search-item:hover{background:#0af3}
+.metric{display:inline-block;padding:2px 5px;border-radius:3px;font-size:8px;margin:1px}
+</style></head><body><canvas id="c"></canvas>
+<div id="tooltip"></div>
+
+<div class="p" style="top:8px;left:8px;width:220px">
+<div style="color:#0ff;text-align:center;font-size:14px;margin-bottom:8px">🌌 CODE COSMOS <span style="color:#0f0">v2</span></div>
+<div class="row">
+<div class="stat"><div class="val" id="files">0</div><div class="lbl">Files</div></div>
+<div class="stat"><div class="val" id="dirs">0</div><div class="lbl">Dirs</div></div>
+<div class="stat"><div class="val" id="lines">0</div><div class="lbl">Lines</div></div>
+</div>
+<div class="row">
+<div class="stat" style="border-color:#f80"><div class="val" id="deps">0</div><div class="lbl">Imports</div></div>
+<div class="stat" style="border-color:#0f0"><div class="val" id="commits">0</div><div class="lbl">Commits</div></div>
+</div>
+<div style="margin-top:8px;font-size:10px;color:#888">
+<div>🧲 Force-directed layout</div>
+<div>⚡ Live data flow</div>
+</div>
+</div>
+
+<div class="p" style="top:8px;right:8px;width:260px">
+<div style="color:#f80;text-align:center;font-size:11px;margin-bottom:5px">📁 GENERATE</div>
+<div class="row">
+<select id="repo-type" style="flex:1">
+<option value="react">React App</option>
+<option value="nextjs">Next.js</option>
+<option value="express">Express API</option>
+<option value="fastapi">FastAPI</option>
+<option value="rust">Rust Crate</option>
+<option value="go">Go Module</option>
+<option value="flutter">Flutter App</option>
+<option value="electron">Electron</option>
+</select>
+<button onclick="S.generate()">🔄 Gen</button>
+</div>
+<div class="row">
+<input type="text" id="search" placeholder="🔍 Search files..." oninput="S.search(this.value)">
+</div>
+<div class="search-results" id="search-results"></div>
+<div class="legend">
+<div class="leg-item"><div class="leg-dot" style="background:#f7df1e"></div>JS</div>
+<div class="leg-item"><div class="leg-dot" style="background:#3178c6"></div>TS</div>
+<div class="leg-item"><div class="leg-dot" style="background:#61dafb"></div>JSX</div>
+<div class="leg-item"><div class="leg-dot" style="background:#3572A5"></div>PY</div>
+<div class="leg-item"><div class="leg-dot" style="background:#dea584"></div>RS</div>
+<div class="leg-item"><div class="leg-dot" style="background:#00add8"></div>GO</div>
+<div class="leg-item"><div class="leg-dot" style="background:#02569b"></div>DART</div>
+</div>
+</div>
+
+<div class="p" style="top:200px;right:8px;width:260px">
+<div style="color:#0f0;text-align:center;font-size:11px;margin-bottom:5px">⚙️ CONTROLS</div>
+<div class="row">
+<button id="btn-flow" class="active" onclick="S.toggleFlow()">⚡ Flow</button>
+<button id="btn-force" class="active" onclick="S.toggleForce()">🧲 Force</button>
+<button onclick="S.toggleLabels()">🏷️ Labels</button>
+</div>
+<div class="row">
+<button onclick="S.explode()">💥 Explode</button>
+<button onclick="S.implode()">🧲 Implode</button>
+<button onclick="S.shake()">🎲 Shake</button>
+</div>
+<div class="row">
+<button onclick="S.addRandomFile()">+File</button>
+<button onclick="S.addRandomDep()">+Import</button>
+<button onclick="S.clear()">🗑️</button>
+</div>
+</div>
+
+<div class="p" style="bottom:8px;left:8px;width:350px">
+<div style="color:#f0f;text-align:center;font-size:11px;margin-bottom:5px">📅 GIT TIMELINE</div>
+<div class="timeline" id="timeline"></div>
+<div class="row" style="justify-content:space-between;font-size:9px;color:#666;margin-top:3px">
+<span id="date-start">-</span>
+<span id="date-end">Now</span>
+</div>
+</div>
+
+<div class="p" style="bottom:8px;right:8px;width:200px">
+<div style="color:#ff0;text-align:center;font-size:11px;margin-bottom:5px">📊 HOTSPOTS</div>
+<div id="hotspots" style="font-size:9px;max-height:80px;overflow-y:auto"></div>
+</div>
+
+<script>
+const T={v3:(x,y,z)=>new THREE.Vector3(x,y,z),rnd:(a,b)=>a+Math.random()*(b-a),pick:a=>a[Math.floor(Math.random()*a.length)],clamp:(v,a,b)=>Math.max(a,Math.min(b,v))};
+
+const FILE_TYPES={
+  js:{color:0xf7df1e,geo:'icosa',size:1.2},
+  ts:{color:0x3178c6,geo:'icosa',size:1.3},
+  jsx:{color:0x61dafb,geo:'dodeca',size:1.4},
+  tsx:{color:0x3178c6,geo:'dodeca',size:1.4},
+  json:{color:0x888888,geo:'box',size:.8},
+  py:{color:0x3572A5,geo:'octa',size:1.2},
+  rs:{color:0xdea584,geo:'tetra',size:1.3},
+  go:{color:0x00add8,geo:'torus',size:1.1},
+  dart:{color:0x02569b,geo:'cone',size:1.2},
+  html:{color:0xe34c26,geo:'box',size:.9},
+  css:{color:0x563d7c,geo:'box',size:.8},
+  md:{color:0x555555,geo:'sphere',size:.6},
+  yaml:{color:0xcb171e,geo:'box',size:.5},
+  toml:{color:0x9c4121,geo:'box',size:.5}
+};
+
+const GEOS={
+  icosa:s=>new THREE.IcosahedronGeometry(s*2),
+  dodeca:s=>new THREE.DodecahedronGeometry(s*2),
+  octa:s=>new THREE.OctahedronGeometry(s*2),
+  tetra:s=>new THREE.TetrahedronGeometry(s*2.5),
+  box:s=>new THREE.BoxGeometry(s*2.5,s*2.5,s*2.5),
+  sphere:s=>new THREE.SphereGeometry(s*1.5,8,8),
+  torus:s=>new THREE.TorusGeometry(s*1.5,s*.5,8,16),
+  cone:s=>new THREE.ConeGeometry(s*1.5,s*3,6)
+};
+
+const CODE_SNIPPETS={
+  js:['const app = express();','module.exports = {','function handle(req, res) {','export default class'],
+  ts:['interface Props {','const [state, setState] = useState','export type Config = {','async function fetch'],
+  jsx:['return <Component />','<div className={styles.','onClick={() => {','useEffect(() => {'],
+  tsx:['const App: FC<Props> = () =>','<Button variant="primary"','interface State {'],
+  py:['def __init__(self):','async def main():','class Handler:','from fastapi import'],
+  rs:['fn main() {','impl Trait for','pub struct Config','#[derive(Debug)]'],
+  go:['func main() {','type Config struct','func (s *Server)','package main'],
+  dart:['void main() {','class MyApp extends','Widget build(','final controller =']
+};
+
+const REPOS={
+  react:{
+    dirs:['src','src/components','src/hooks','src/pages','src/utils','src/styles','public','tests'],
+    files:[
+      {n:'App',t:'tsx',d:'src',imp:['Header','Footer','Router']},
+      {n:'index',t:'tsx',d:'src',imp:['App']},
+      {n:'Header',t:'tsx',d:'src/components',imp:['Logo','Nav','useAuth']},
+      {n:'Footer',t:'tsx',d:'src/components',imp:[]},
+      {n:'Button',t:'tsx',d:'src/components',imp:['styles']},
+      {n:'Card',t:'tsx',d:'src/components',imp:['styles']},
+      {n:'Modal',t:'tsx',d:'src/components',imp:['Portal','useModal']},
+      {n:'Home',t:'tsx',d:'src/pages',imp:['Header','Card','useFetch']},
+      {n:'About',t:'tsx',d:'src/pages',imp:['Header']},
+      {n:'useAuth',t:'ts',d:'src/hooks',imp:['api']},
+      {n:'useFetch',t:'ts',d:'src/hooks',imp:['api']},
+      {n:'useModal',t:'ts',d:'src/hooks',imp:[]},
+      {n:'api',t:'ts',d:'src/utils',imp:[]},
+      {n:'helpers',t:'ts',d:'src/utils',imp:[]},
+      {n:'styles',t:'css',d:'src/styles',imp:[]},
+      {n:'package',t:'json',d:'',imp:[]},
+      {n:'tsconfig',t:'json',d:'',imp:[]},
+      {n:'README',t:'md',d:'',imp:[]}
+    ]
+  },
+  nextjs:{
+    dirs:['app','app/api','app/components','lib','public','styles'],
+    files:[
+      {n:'layout',t:'tsx',d:'app',imp:['Header','globals']},
+      {n:'page',t:'tsx',d:'app',imp:['Hero','Features']},
+      {n:'route',t:'ts',d:'app/api',imp:['db','auth']},
+      {n:'Header',t:'tsx',d:'app/components',imp:['Nav','Logo']},
+      {n:'Hero',t:'tsx',d:'app/components',imp:['Button']},
+      {n:'Features',t:'tsx',d:'app/components',imp:['Card']},
+      {n:'db',t:'ts',d:'lib',imp:[]},
+      {n:'auth',t:'ts',d:'lib',imp:['db']},
+      {n:'utils',t:'ts',d:'lib',imp:[]},
+      {n:'globals',t:'css',d:'styles',imp:[]},
+      {n:'next.config',t:'js',d:'',imp:[]},
+      {n:'package',t:'json',d:'',imp:[]}
+    ]
+  },
+  express:{
+    dirs:['src','src/routes','src/controllers','src/models','src/middleware','config'],
+    files:[
+      {n:'server',t:'ts',d:'src',imp:['app','config']},
+      {n:'app',t:'ts',d:'src',imp:['routes','middleware']},
+      {n:'users',t:'ts',d:'src/routes',imp:['userController','authMiddleware']},
+      {n:'products',t:'ts',d:'src/routes',imp:['productController']},
+      {n:'userController',t:'ts',d:'src/controllers',imp:['User','helpers']},
+      {n:'productController',t:'ts',d:'src/controllers',imp:['Product']},
+      {n:'User',t:'ts',d:'src/models',imp:[]},
+      {n:'Product',t:'ts',d:'src/models',imp:[]},
+      {n:'authMiddleware',t:'ts',d:'src/middleware',imp:['jwt']},
+      {n:'errorHandler',t:'ts',d:'src/middleware',imp:[]},
+      {n:'database',t:'ts',d:'config',imp:[]},
+      {n:'package',t:'json',d:'',imp:[]}
+    ]
+  },
+  fastapi:{
+    dirs:['app','app/api','app/models','app/services','app/core','tests'],
+    files:[
+      {n:'main',t:'py',d:'app',imp:['api','config']},
+      {n:'users',t:'py',d:'app/api',imp:['UserService','schemas']},
+      {n:'items',t:'py',d:'app/api',imp:['ItemService']},
+      {n:'user',t:'py',d:'app/models',imp:['base']},
+      {n:'item',t:'py',d:'app/models',imp:['base']},
+      {n:'base',t:'py',d:'app/models',imp:[]},
+      {n:'UserService',t:'py',d:'app/services',imp:['user','db']},
+      {n:'ItemService',t:'py',d:'app/services',imp:['item','db']},
+      {n:'config',t:'py',d:'app/core',imp:[]},
+      {n:'db',t:'py',d:'app/core',imp:['config']},
+      {n:'schemas',t:'py',d:'app',imp:[]},
+      {n:'requirements',t:'txt',d:'',imp:[]}
+    ]
+  },
+  rust:{
+    dirs:['src','src/api','src/db','src/models','tests'],
+    files:[
+      {n:'main',t:'rs',d:'src',imp:['lib','config']},
+      {n:'lib',t:'rs',d:'src',imp:['api','db']},
+      {n:'handlers',t:'rs',d:'src/api',imp:['models','db']},
+      {n:'routes',t:'rs',d:'src/api',imp:['handlers']},
+      {n:'connection',t:'rs',d:'src/db',imp:['config']},
+      {n:'queries',t:'rs',d:'src/db',imp:['models']},
+      {n:'user',t:'rs',d:'src/models',imp:[]},
+      {n:'post',t:'rs',d:'src/models',imp:['user']},
+      {n:'config',t:'rs',d:'src',imp:[]},
+      {n:'Cargo',t:'toml',d:'',imp:[]}
+    ]
+  },
+  go:{
+    dirs:['cmd','internal','internal/api','internal/db','pkg'],
+    files:[
+      {n:'main',t:'go',d:'cmd',imp:['api','config']},
+      {n:'server',t:'go',d:'internal/api',imp:['handlers','middleware']},
+      {n:'handlers',t:'go',d:'internal/api',imp:['db','models']},
+      {n:'middleware',t:'go',d:'internal/api',imp:['auth']},
+      {n:'postgres',t:'go',d:'internal/db',imp:['models']},
+      {n:'queries',t:'go',d:'internal/db',imp:[]},
+      {n:'models',t:'go',d:'pkg',imp:[]},
+      {n:'auth',t:'go',d:'pkg',imp:[]},
+      {n:'config',t:'go',d:'pkg',imp:[]},
+      {n:'go',t:'mod',d:'',imp:[]}
+    ]
+  },
+  flutter:{
+    dirs:['lib','lib/screens','lib/widgets','lib/models','lib/services','test'],
+    files:[
+      {n:'main',t:'dart',d:'lib',imp:['app','config']},
+      {n:'app',t:'dart',d:'lib',imp:['home','theme']},
+      {n:'home',t:'dart',d:'lib/screens',imp:['widgets','userService']},
+      {n:'profile',t:'dart',d:'lib/screens',imp:['widgets']},
+      {n:'button',t:'dart',d:'lib/widgets',imp:['theme']},
+      {n:'card',t:'dart',d:'lib/widgets',imp:['theme']},
+      {n:'user',t:'dart',d:'lib/models',imp:[]},
+      {n:'userService',t:'dart',d:'lib/services',imp:['api','user']},
+      {n:'api',t:'dart',d:'lib/services',imp:['config']},
+      {n:'theme',t:'dart',d:'lib',imp:[]},
+      {n:'config',t:'dart',d:'lib',imp:[]},
+      {n:'pubspec',t:'yaml',d:'',imp:[]}
+    ]
+  },
+  electron:{
+    dirs:['src','src/main','src/renderer','src/preload','src/shared'],
+    files:[
+      {n:'main',t:'ts',d:'src/main',imp:['window','ipc']},
+      {n:'window',t:'ts',d:'src/main',imp:['config']},
+      {n:'ipc',t:'ts',d:'src/main',imp:['handlers']},
+      {n:'App',t:'tsx',d:'src/renderer',imp:['Header','useIpc']},
+      {n:'Header',t:'tsx',d:'src/renderer',imp:['styles']},
+      {n:'preload',t:'ts',d:'src/preload',imp:['api']},
+      {n:'api',t:'ts',d:'src/preload',imp:[]},
+      {n:'types',t:'ts',d:'src/shared',imp:[]},
+      {n:'config',t:'ts',d:'src/shared',imp:[]},
+      {n:'handlers',t:'ts',d:'src/main',imp:['types']},
+      {n:'useIpc',t:'ts',d:'src/renderer',imp:['types']},
+      {n:'styles',t:'css',d:'src/renderer',imp:[]},
+      {n:'package',t:'json',d:'',imp:[]}
+    ]
+  }
+};
+
+const S={
+  files:[],dirs:[],deps:[],commits:[],particles:[],
+  showFlow:true,showForce:true,showLabels:false,
+  selected:null,
+  raycaster:new THREE.Raycaster(),
+  mouse:new THREE.Vector2(),
+
+  init(){
+    this.sc=new THREE.Scene();
+    this.ca=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.1,1000);
+    this.rn=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true});
+    this.rn.setSize(innerWidth,innerHeight);
+    this.rn.setClearColor(0x000308);
+    this.ca.position.set(80,60,80);
+
+    // Lighting
+    this.sc.add(new THREE.AmbientLight(0x303040,.5));
+    const dl=new THREE.DirectionalLight(0xffffff,.6);dl.position.set(50,100,50);
+    this.sc.add(dl);
+    [0x0088ff,0x00ff88,0xff8800,0xff0088].forEach((c,i)=>{
+      const pl=new THREE.PointLight(c,.3,120);
+      pl.position.set(Math.cos(i*1.57)*60,30,Math.sin(i*1.57)*60);
+      this.sc.add(pl);
+    });
+
+    // Star field
+    const stars=new THREE.BufferGeometry();
+    const starPos=[];
+    for(let i=0;i<2000;i++){
+      starPos.push(T.rnd(-500,500),T.rnd(-500,500),T.rnd(-500,500));
+    }
+    stars.setAttribute('position',new THREE.Float32BufferAttribute(starPos,3));
+    this.sc.add(new THREE.Points(stars,new THREE.PointsMaterial({color:0xffffff,size:.5})));
+
+    // Grid
+    const grid=new THREE.GridHelper(200,40,0x0a2040,0x051020);
+    grid.position.y=-30;
+    this.sc.add(grid);
+
+    this.sc.fog=new THREE.FogExp2(0x000308,.003);
+
+    // Deps/flow group
+    this.depsGroup=new THREE.Group();
+    this.sc.add(this.depsGroup);
+    this.particleGroup=new THREE.Group();
+    this.sc.add(this.particleGroup);
+
+    window.addEventListener('mousemove',e=>this.onMouse(e));
+    window.addEventListener('click',e=>this.onClick(e));
+
+    this.generate();
+    this.animate();
+    setInterval(()=>this.physics(),16);
+  },
+
+  createFileMesh(f){
+    const ft=FILE_TYPES[f.t]||{color:0x888888,geo:'sphere',size:1};
+    const geo=GEOS[ft.geo](ft.size);
+    const mat=new THREE.MeshPhongMaterial({
+      color:ft.color,
+      emissive:ft.color,
+      emissiveIntensity:.15,
+      transparent:true,
+      opacity:.9
+    });
+    const mesh=new THREE.Mesh(geo,mat);
+
+    // Glow ring
+    const ring=new THREE.Mesh(
+      new THREE.TorusGeometry(ft.size*2.5,.15,8,32),
+      new THREE.MeshBasicMaterial({color:ft.color,transparent:true,opacity:.3})
+    );
+    ring.rotation.x=Math.PI/2;
+    mesh.add(ring);
+
+    return mesh;
+  },
+
+  generate(){
+    this.clear();
+    const type=document.getElementById('repo-type').value;
+    const repo=REPOS[type];
+
+    // Create dirs
+    repo.dirs.forEach((d,i)=>{
+      const depth=d.split('/').length;
+      const angle=(i/repo.dirs.length)*Math.PI*2;
+      const radius=25+depth*12;
+      this.dirs.push({
+        name:d,
+        x:Math.cos(angle)*radius,
+        y:(depth-1)*15,
+        z:Math.sin(angle)*radius
+      });
+    });
+
+    // Create files
+    const fileMap={};
+    repo.files.forEach((f,i)=>{
+      const ft=FILE_TYPES[f.t]||{color:0x888888,geo:'sphere',size:1};
+      const mesh=this.createFileMesh(f);
+
+      const dir=this.dirs.find(d=>d.name===f.d)||{x:0,y:-10,z:0};
+      const angle=Math.random()*Math.PI*2;
+      const r=T.rnd(8,18);
+
+      mesh.position.set(
+        dir.x+Math.cos(angle)*r,
+        dir.y+T.rnd(-5,5),
+        dir.z+Math.sin(angle)*r
+      );
+
+      const ext=f.t;
+      const snippet=CODE_SNIPPETS[ext]?T.pick(CODE_SNIPPETS[ext]):'// code...';
+      const lines=Math.floor(T.rnd(50,800));
+      const complexity=Math.floor(T.rnd(1,10));
+
+      mesh.userData={
+        name:f.n+(FILE_TYPES[f.t]?'.'+f.t:''),
+        type:f.t,
+        dir:f.d||'root',
+        lines,
+        complexity,
+        imports:f.imp||[],
+        snippet,
+        idx:this.files.length,
+        vel:T.v3(0,0,0)
+      };
+
+      this.sc.add(mesh);
+      const file={mesh,...mesh.userData,ft};
+      this.files.push(file);
+      fileMap[f.n]=file;
+    });
+
+    // Create dependencies
+    this.files.forEach(f=>{
+      f.imports.forEach(impName=>{
+        const target=fileMap[impName];
+        if(target&&target!==f){
+          this.deps.push({from:f,to:target});
+        }
+      });
+    });
+
+    this.createDepLines();
+    this.generateCommits();
+    this.updateUI();
+    this.updateHotspots();
+  },
+
+  createDepLines(){
+    this.depsGroup.clear();
+    this.deps.forEach(d=>{
+      const pts=[d.from.mesh.position.clone(),d.to.mesh.position.clone()];
+      const mid=pts[0].clone().add(pts[1]).multiplyScalar(.5);
+      mid.y+=15;
+
+      const curve=new THREE.QuadraticBezierCurve3(pts[0],mid,pts[1]);
+      const geo=new THREE.TubeGeometry(curve,20,.12,6);
+      const mat=new THREE.MeshBasicMaterial({
+        color:0x0066aa,
+        transparent:true,
+        opacity:.25
+      });
+      const tube=new THREE.Mesh(geo,mat);
+      tube.userData={from:d.from,to:d.to,curve};
+      this.depsGroup.add(tube);
+    });
+  },
+
+  generateCommits(){
+    this.commits=[];
+    const timeline=document.getElementById('timeline');
+    timeline.innerHTML='';
+
+    const numCommits=Math.floor(T.rnd(20,50));
+    const now=Date.now();
+    const start=now-90*24*60*60*1000;// 90 days ago
+
+    for(let i=0;i<numCommits;i++){
+      const time=start+Math.random()*(now-start);
+      const files=Math.floor(T.rnd(1,8));
+      const additions=Math.floor(T.rnd(10,200));
+      const deletions=Math.floor(T.rnd(0,50));
+
+      this.commits.push({time,files,additions,deletions});
+
+      const el=document.createElement('div');
+      el.className='commit';
+      el.style.left=((time-start)/(now-start)*100)+'%';
+      el.style.height=(files*8)+'px';
+      el.style.background=deletions>additions?'#f44':'#0f0';
+      el.title=`${files} files, +${additions} -${deletions}`;
+      timeline.appendChild(el);
+    }
+
+    document.getElementById('date-start').textContent='90d ago';
+    document.getElementById('commits').textContent=numCommits;
+  },
+
+  physics(){
+    if(!this.showForce)return;
+
+    // Force-directed layout
+    const k=.5,repel=500,attract=.01;
+
+    this.files.forEach(f=>{
+      const force=T.v3(0,0,0);
+
+      // Repulsion from other files
+      this.files.forEach(other=>{
+        if(other===f)return;
+        const diff=f.mesh.position.clone().sub(other.mesh.position);
+        const dist=diff.length()||1;
+        if(dist<50){
+          diff.normalize().multiplyScalar(repel/(dist*dist));
+          force.add(diff);
+        }
+      });
+
+      // Attraction along deps
+      this.deps.forEach(d=>{
+        if(d.from===f||d.to===f){
+          const other=d.from===f?d.to:d.from;
+          const diff=other.mesh.position.clone().sub(f.mesh.position);
+          const dist=diff.length();
+          diff.normalize().multiplyScalar(dist*attract);
+          force.add(diff);
+        }
+      });
+
+      // Center gravity
+      const toCenter=f.mesh.position.clone().negate();
+      toCenter.multiplyScalar(.01);
+      force.add(toCenter);
+
+      // Apply
+      f.vel.add(force.multiplyScalar(.02));
+      f.vel.multiplyScalar(.9);// damping
+      f.mesh.position.add(f.vel);
+    });
+
+    // Update dep lines periodically
+    if(Math.random()<.1)this.createDepLines();
+  },
+
+  spawnParticle(dep){
+    const geo=new THREE.SphereGeometry(.3);
+    const mat=new THREE.MeshBasicMaterial({color:0x00ffff});
+    const p=new THREE.Mesh(geo,mat);
+    p.userData={curve:dep.curve,t:0,speed:T.rnd(.01,.03)};
+    this.particleGroup.add(p);
+    this.particles.push(p);
+  },
+
+  search(q){
+    const results=document.getElementById('search-results');
+    if(!q){results.innerHTML='';return}
+
+    const matches=this.files.filter(f=>
+      f.name.toLowerCase().includes(q.toLowerCase())||
+      f.dir.toLowerCase().includes(q.toLowerCase())
+    ).slice(0,10);
+
+    results.innerHTML=matches.map(f=>{
+      const col='#'+(FILE_TYPES[f.type]?.color||0x888888).toString(16).padStart(6,'0');
+      return `<div class="search-item" onclick="S.focusFile(${f.idx})">
+        <span style="color:${col}">●</span>${f.name}<span style="color:#666;margin-left:auto">${f.dir}</span>
+      </div>`;
+    }).join('');
+  },
+
+  focusFile(idx){
+    const f=this.files[idx];
+    if(!f)return;
+
+    this.files.forEach(f=>f.mesh.material.emissiveIntensity=.15);
+    f.mesh.material.emissiveIntensity=.8;
+    this.selected=f;
+
+    // Move camera toward file
+    const target=f.mesh.position.clone().add(T.v3(30,20,30));
+    this.targetCam=target;
+  },
+
+  toggleFlow(){
+    this.showFlow=!this.showFlow;
+    document.getElementById('btn-flow').classList.toggle('active');
+  },
+
+  toggleForce(){
+    this.showForce=!this.showForce;
+    document.getElementById('btn-force').classList.toggle('active');
+  },
+
+  toggleLabels(){
+    this.showLabels=!this.showLabels;
+  },
+
+  explode(){
+    this.files.forEach(f=>{
+      const dir=f.mesh.position.clone().normalize();
+      f.vel.add(dir.multiplyScalar(5));
+    });
+  },
+
+  implode(){
+    this.files.forEach(f=>{
+      const dir=f.mesh.position.clone().normalize().negate();
+      f.vel.add(dir.multiplyScalar(3));
+    });
+  },
+
+  shake(){
+    this.files.forEach(f=>{
+      f.vel.add(T.v3(T.rnd(-3,3),T.rnd(-3,3),T.rnd(-3,3)));
+    });
+  },
+
+  addRandomFile(){
+    const types=Object.keys(FILE_TYPES);
+    const t=T.pick(types);
+    const ft=FILE_TYPES[t];
+    const mesh=this.createFileMesh({t});
+
+    mesh.position.set(T.rnd(-40,40),T.rnd(-10,30),T.rnd(-40,40));
+    mesh.userData={
+      name:'new_'+this.files.length+'.'+t,
+      type:t,dir:'generated',
+      lines:Math.floor(T.rnd(50,300)),
+      complexity:Math.floor(T.rnd(1,10)),
+      imports:[],snippet:'// new file',
+      idx:this.files.length,
+      vel:T.v3(0,0,0)
+    };
+
+    this.sc.add(mesh);
+    this.files.push({mesh,...mesh.userData,ft});
+    this.updateUI();
+  },
+
+  addRandomDep(){
+    if(this.files.length<2)return;
+    const from=T.pick(this.files);
+    const to=T.pick(this.files);
+    if(from!==to&&!this.deps.find(d=>d.from===from&&d.to===to)){
+      this.deps.push({from,to});
+      this.createDepLines();
+      this.updateUI();
+    }
+  },
+
+  clear(){
+    this.files.forEach(f=>this.sc.remove(f.mesh));
+    this.files=[];this.dirs=[];this.deps=[];
+    this.depsGroup.clear();
+    this.particleGroup.clear();
+    this.particles=[];
+    this.updateUI();
+  },
+
+  onMouse(e){
+    this.mouse.x=(e.clientX/innerWidth)*2-1;
+    this.mouse.y=-(e.clientY/innerHeight)*2+1;
+
+    this.raycaster.setFromCamera(this.mouse,this.ca);
+    const hits=this.raycaster.intersectObjects(this.files.map(f=>f.mesh));
+
+    const tip=document.getElementById('tooltip');
+    if(hits.length>0){
+      const f=this.files.find(f=>f.mesh===hits[0].object);
+      if(f){
+        const col='#'+(FILE_TYPES[f.type]?.color||0x888888).toString(16).padStart(6,'0');
+        tip.style.display='block';
+        tip.style.left=e.clientX+15+'px';
+        tip.style.top=e.clientY+15+'px';
+        tip.innerHTML=`
+          <div style="color:${col};font-size:14px;font-weight:bold">${f.name}</div>
+          <div style="color:#888;font-size:10px">📁 ${f.dir}</div>
+          <div style="margin-top:5px">
+            <span class="metric" style="background:#0a0;color:#0f0">📝 ${f.lines} lines</span>
+            <span class="metric" style="background:#a00;color:#f88">⚠️ ${f.complexity}/10</span>
+            <span class="metric" style="background:#006;color:#08f">🔗 ${f.imports.length} imports</span>
+          </div>
+          <div class="code-preview" style="border-color:${col}">${f.snippet}</div>
+        `;
+      }
+    }else{
+      tip.style.display='none';
+    }
+  },
+
+  onClick(e){
+    this.raycaster.setFromCamera(this.mouse,this.ca);
+    const hits=this.raycaster.intersectObjects(this.files.map(f=>f.mesh));
+
+    this.files.forEach(f=>f.mesh.material.emissiveIntensity=.15);
+    this.depsGroup.children.forEach(c=>{c.material.opacity=.25;c.material.color.setHex(0x0066aa)});
+
+    if(hits.length>0){
+      const f=this.files.find(f=>f.mesh===hits[0].object);
+      if(f){
+        f.mesh.material.emissiveIntensity=.8;
+        this.selected=f;
+
+        // Highlight deps
+        this.depsGroup.children.forEach(c=>{
+          if(c.userData.from===f||c.userData.to===f){
+            c.material.opacity=.7;
+            c.material.color.setHex(0x00ff88);
+          }
+        });
+      }
+    }else{
+      this.selected=null;
+    }
+  },
+
+  updateHotspots(){
+    const sorted=[...this.files].sort((a,b)=>b.complexity-a.complexity).slice(0,5);
+    document.getElementById('hotspots').innerHTML=sorted.map(f=>{
+      const col='#'+(FILE_TYPES[f.type]?.color||0x888888).toString(16).padStart(6,'0');
+      return `<div style="display:flex;align-items:center;gap:5px;padding:2px 0">
+        <span style="color:${col}">●</span>
+        <span>${f.name}</span>
+        <span style="margin-left:auto;color:#f44">⚠️${f.complexity}</span>
+      </div>`;
+    }).join('');
+  },
+
+  updateUI(){
+    document.getElementById('files').textContent=this.files.length;
+    document.getElementById('dirs').textContent=this.dirs.length;
+    document.getElementById('lines').textContent=this.files.reduce((a,f)=>a+f.lines,0);
+    document.getElementById('deps').textContent=this.deps.length;
+  },
+
+  animate(){
+    requestAnimationFrame(()=>this.animate());
+    const t=Date.now()*.001;
+
+    // Camera
+    if(this.targetCam){
+      this.ca.position.lerp(this.targetCam,.02);
+      if(this.ca.position.distanceTo(this.targetCam)<1)this.targetCam=null;
+    }else{
+      const r=120+Math.sin(t*.15)*30;
+      this.ca.position.x=Math.cos(t*.06)*r;
+      this.ca.position.z=Math.sin(t*.06)*r;
+      this.ca.position.y=60+Math.sin(t*.1)*15;
+    }
+    this.ca.lookAt(0,10,0);
+
+    // Animate files
+    this.files.forEach((f,i)=>{
+      f.mesh.rotation.y+=.005;
+      f.mesh.children[0].rotation.z+=.01;// ring
+    });
+
+    // Flow particles
+    if(this.showFlow&&Math.random()<.1&&this.deps.length>0){
+      const dep=T.pick(this.deps);
+      const tube=this.depsGroup.children.find(c=>c.userData.from===dep.from&&c.userData.to===dep.to);
+      if(tube)this.spawnParticle({curve:tube.userData.curve});
+    }
+
+    // Update particles
+    for(let i=this.particles.length-1;i>=0;i--){
+      const p=this.particles[i];
+      p.userData.t+=p.userData.speed;
+      if(p.userData.t>=1){
+        this.particleGroup.remove(p);
+        this.particles.splice(i,1);
+      }else{
+        const pos=p.userData.curve.getPoint(p.userData.t);
+        p.position.copy(pos);
+      }
+    }
+
+    // Pulse selected
+    if(this.selected){
+      this.selected.mesh.scale.setScalar(1+Math.sin(t*5)*.1);
+    }
+
+    this.rn.render(this.sc,this.ca);
+  }
+};
+
+onload=()=>S.init();
+onresize=()=>{S.rn.setSize(innerWidth,innerHeight);S.ca.aspect=innerWidth/innerHeight;S.ca.updateProjectionMatrix()};
+</script></body></html>
