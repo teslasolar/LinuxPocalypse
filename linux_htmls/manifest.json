@@ -8,6 +8,14 @@
     "tags": ["Unified", "All-Modes", "Mega", "Hub"]
   },
   {
+    "file": "origin-ranger-v2.html",
+    "title": "Origin Ranger v2",
+    "description": "Dual-scope discovery - probes BOTH the server (host, headers, endpoints, latency) AND client (hardware, GPU, APIs) autonomously with 3D visualization",
+    "icon": "🔍",
+    "color": "#ff8800",
+    "tags": ["Server", "Client", "Dual-Scope", "Discovery"]
+  },
+  {
     "file": "origin-ranger.html",
     "title": "Origin Ranger",
     "description": "System & network discovery visualizer - detects CPU, GPU, RAM, screen, network type, local IP, storage, and simulates network topology scanning with 3D radar display",
