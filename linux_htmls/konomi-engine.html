@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🌀 KONOMI IRRATIONAL ENGINE</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #0a0a0f;
+  --panel: #12121a;
+  --border: #2a2a3a;
+  --gold: #ffd700;
+  --phi: #e6c200;
+  --silver: #c0c0c0;
+  --bronze: #cd7f32;
+  --cyan: #00ffff;
+  --green: #00ff88;
+  --red: #ff4444;
+  --purple: #aa88ff;
+  --orange: #ff8844;
+  --dim: #666680;
+}
+
+body {
+  background: var(--bg);
+  color: #e0e0e0;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Header */
+header {
+  text-align: center;
+  padding: 20px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, #15151f 0%, var(--bg) 100%);
+}
+
+.title {
+  font-size: 28px;
+  background: linear-gradient(90deg, var(--gold), var(--cyan), var(--gold));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer 3s ease infinite;
+}
+
+@keyframes shimmer {
+  0%, 100% { filter: hue-rotate(0deg); }
+  50% { filter: hue-rotate(30deg); }
+}
+
+.phi-anchor {
+  font-size: 14px;
+  color: var(--phi);
+  margin-top: 8px;
+}
+
+/* Main Layout */
+.container {
+  display: grid;
+  grid-template-columns: 280px 1fr 320px;
+  gap: 1px;
+  background: var(--border);
+  min-height: calc(100vh - 100px);
+}
+
+/* Panels */
+.panel {
+  background: var(--panel);
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.panel-title {
+  font-size: 12px;
+  color: var(--cyan);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Agents Panel */
+.agent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  margin-bottom: 8px;
+  background: rgba(255,255,255,0.02);
+  border-radius: 6px;
+  border-left: 3px solid var(--dim);
+  transition: all 0.3s;
+}
+
+.agent.active { border-left-color: var(--green); background: rgba(0,255,136,0.05); }
+.agent.working { border-left-color: var(--cyan); animation: pulse 1s infinite; }
+.agent.error { border-left-color: var(--red); }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.agent-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.agent-icon.alpha { background: linear-gradient(135deg, #ff6b6b, #ee5a5a); }
+.agent-icon.beta { background: linear-gradient(135deg, #4ecdc4, #45b7aa); }
+.agent-icon.gamma { background: linear-gradient(135deg, #ffe66d, #ffd93d); }
+.agent-icon.delta { background: linear-gradient(135deg, #95e1d3, #7dd3c0); }
+.agent-icon.epsilon { background: linear-gradient(135deg, #a8e6cf, #88d8b0); }
+.agent-icon.zeta { background: linear-gradient(135deg, #ff8b94, #ff7480); }
+.agent-icon.eta { background: linear-gradient(135deg, #dcd6f7, #c4bbf0); }
+.agent-icon.theta { background: linear-gradient(135deg, #a0c4ff, #7eb3ff); }
+.agent-icon.iota { background: linear-gradient(135deg, #ffc8dd, #ffb3c6); }
+
+.agent-info { flex: 1; }
+.agent-name { font-size: 13px; font-weight: 600; }
+.agent-task { font-size: 10px; color: var(--dim); margin-top: 2px; }
+.agent-status { font-size: 10px; }
+
+/* Central View */
+.central {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 3D DB Visualization */
+#db3d-container {
+  flex: 1;
+  position: relative;
+  perspective: 1000px;
+  overflow: hidden;
+  min-height: 400px;
+}
+
+.db3d-scene {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+  animation: rotate3d 60s linear infinite;
+}
+
+@keyframes rotate3d {
+  from { transform: rotateX(-20deg) rotateY(0deg); }
+  to { transform: rotateX(-20deg) rotateY(360deg); }
+}
+
+.db-node {
+  position: absolute;
+  padding: 6px 10px;
+  background: rgba(20,20,30,0.9);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.3s;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
+.db-node:hover {
+  transform: scale(1.2);
+  z-index: 100;
+  border-color: var(--cyan);
+  box-shadow: 0 0 20px rgba(0,255,255,0.3);
+}
+
+.db-node.t0 { border-color: var(--gold); color: var(--gold); }
+.db-node.t1 { border-color: var(--silver); }
+.db-node.t2 { border-color: var(--green); }
+.db-node.t3 { border-color: var(--purple); }
+.db-node.t4 { border-color: var(--orange); }
+.db-node.t5 { border-color: var(--red); }
+
+.db-node .cost {
+  font-size: 9px;
+  color: var(--dim);
+  margin-left: 4px;
+}
+
+/* Graph Canvas */
+#graph-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Terminal */
+#terminal {
+  height: 200px;
+  background: #0d0d12;
+  border-top: 1px solid var(--border);
+  padding: 12px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+.log-line {
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.log-line.info { color: var(--cyan); }
+.log-line.success { color: var(--green); }
+.log-line.error { color: var(--red); }
+.log-line.warn { color: var(--orange); }
+.log-line.phi { color: var(--gold); }
+.log-line.derive { color: var(--purple); }
+
+/* Query Input */
+.query-bar {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  background: #0a0a0f;
+  border-top: 1px solid var(--border);
+}
+
+.query-bar input {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px 14px;
+  color: #fff;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.query-bar input:focus {
+  outline: none;
+  border-color: var(--cyan);
+}
+
+.query-bar button {
+  background: linear-gradient(135deg, var(--gold), #b8960f);
+  border: none;
+  border-radius: 4px;
+  padding: 10px 20px;
+  color: #000;
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.query-bar button:hover { transform: scale(1.05); }
+
+/* Right Panel - Stats */
+.stat-group {
+  margin-bottom: 20px;
+}
+
+.stat-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  font-size: 12px;
+}
+
+.stat-label { color: var(--dim); }
+.stat-value { font-weight: 600; }
+.stat-value.gold { color: var(--gold); }
+.stat-value.green { color: var(--green); }
+.stat-value.cyan { color: var(--cyan); }
+
+/* Precision Meter */
+.prec-meter {
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+
+.prec-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--green), var(--cyan));
+  transition: width 0.3s;
+}
+
+/* Axioms List */
+.axiom {
+  padding: 8px;
+  margin-bottom: 6px;
+  background: rgba(255,255,255,0.02);
+  border-radius: 4px;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.axiom-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dim);
+}
+
+.axiom-status.pass { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.axiom-status.fail { background: var(--red); box-shadow: 0 0 6px var(--red); }
+
+/* Cache Display */
+.cache-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.cache-item {
+  padding: 6px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 3px;
+  font-size: 10px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cache-item:hover {
+  background: rgba(0,255,255,0.1);
+}
+
+.cache-item.hot { border: 1px solid var(--gold); }
+.cache-item.warm { border: 1px solid var(--orange); }
+
+/* Boot Overlay */
+#boot-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  transition: opacity 0.5s;
+}
+
+#boot-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.boot-logo {
+  font-size: 48px;
+  margin-bottom: 20px;
+  animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+#boot-log {
+  width: 600px;
+  max-width: 90%;
+  height: 300px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+.boot-line {
+  margin-bottom: 4px;
+  opacity: 0;
+  animation: fadeIn 0.3s forwards;
+}
+
+@keyframes fadeIn {
+  to { opacity: 1; }
+}
+
+/* Derive Path Visualization */
+.derive-path {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  background: rgba(0,0,0,0.3);
+  border-radius: 6px;
+  margin: 10px 0;
+  overflow-x: auto;
+}
+
+.path-node {
+  padding: 6px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.path-node.origin { border-color: var(--gold); color: var(--gold); }
+.path-node.target { border-color: var(--cyan); color: var(--cyan); }
+
+.path-arrow {
+  color: var(--dim);
+  font-size: 16px;
+}
+</style>
+</head>
+<body>
+
+<div id="boot-overlay">
+  <div class="boot-logo">🌀</div>
+  <div id="boot-log"></div>
+</div>
+
+<header>
+  <h1 class="title">🌀 KONOMI IRRATIONAL ENGINE 🌀</h1>
+  <div class="phi-anchor">φ = <span id="phi-display">1.6180339887498948482045868343656381177203091798057628621354</span></div>
+</header>
+
+<div class="container">
+  <!-- Left Panel: Agents -->
+  <div class="panel" id="agents-panel">
+    <div class="panel-title">🤖 Agents</div>
+    <div id="agents-list"></div>
+  </div>
+
+  <!-- Central: 3D DB + Terminal -->
+  <div class="central">
+    <div id="db3d-container">
+      <canvas id="graph-canvas"></canvas>
+      <div class="db3d-scene" id="db3d-scene"></div>
+    </div>
+    <div id="terminal"></div>
+    <div class="query-bar">
+      <input type="text" id="query-input" placeholder="Query: √7, metal(5), derive π, cost σ..." />
+      <button onclick="handleQuery()">DERIVE</button>
+    </div>
+  </div>
+
+  <!-- Right Panel: Stats -->
+  <div class="panel" id="stats-panel">
+    <div class="panel-title">📐 Axioms [ζ]</div>
+    <div id="axioms-list"></div>
+
+    <div class="panel-title" style="margin-top:20px">⚡ Φu Precision [δ]</div>
+    <div class="stat-group">
+      <div class="stat-item">
+        <span class="stat-label">Current Level</span>
+        <span class="stat-value cyan" id="prec-level">LV3</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Budget</span>
+        <span class="stat-value" id="prec-budget">100 Φu</span>
+      </div>
+      <div class="prec-meter">
+        <div class="prec-fill" id="prec-fill" style="width: 100%"></div>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Operations</span>
+        <span class="stat-value" id="op-count">0</span>
+      </div>
+    </div>
+
+    <div class="panel-title">🧊 Cache [γ]</div>
+    <div class="cache-grid" id="cache-grid"></div>
+
+    <div class="panel-title" style="margin-top:20px">🎛️ Performance [η]</div>
+    <div class="stat-group">
+      <div class="stat-item">
+        <span class="stat-label">Cache Hits</span>
+        <span class="stat-value green" id="cache-hits">0</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Derivations</span>
+        <span class="stat-value" id="derive-count">0</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Avg Latency</span>
+        <span class="stat-value" id="avg-latency">0μs</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// 🌀 KONOMI IRRATIONAL ENGINE - Core Implementation
+// ═══════════════════════════════════════════════════════════════════
+
+// PHI - The Origin
+const PHI = 1.6180339887498948482045868343656381177203091798057628621354486227052604628189024497072072041893911374847540880753868917521266338622235369317931800607667263544333890865959395829056383226613199282902678806752087668925017116962070322210432162695486262963136144;
+const SQRT5 = 2.2360679774997896964091736687747632;
+const SIGMA = 2.4142135623730950488016887242096980785696718753769480731766797379907324784621;
+const BETA = 3.3027756377319946465596106337352479731256482864421480356176806769680984176585;
+const PI = 3.1415926535897932384626433832795028841971693993751058209749445923078164062862;
+const E = 2.7182818284590452353602874713526624977572470936999595749669676277240766303535;
+
+// ═══════════════════════════════════════════════════════════════════
+// 🤖 AGENTS
+// ═══════════════════════════════════════════════════════════════════
+const AGENTS = {
+  α: { name: 'Arch', task: 'STRUCT→files', icon: 'α', class: 'alpha', status: 'idle' },
+  β: { name: 'Derive', task: 'GRAPH→chains', icon: 'β', class: 'beta', status: 'idle' },
+  γ: { name: 'Cache', task: 'DB3D→lookup', icon: 'γ', class: 'gamma', status: 'idle' },
+  δ: { name: 'Prec', task: 'Φu→track', icon: 'δ', class: 'delta', status: 'idle' },
+  ε: { name: 'API', task: 'ROUTES→serve', icon: 'ε', class: 'epsilon', status: 'idle' },
+  ζ: { name: 'Test', task: 'AX→assert', icon: 'ζ', class: 'zeta', status: 'idle' },
+  η: { name: 'Opt', task: 'PERF→tune', icon: 'η', class: 'eta', status: 'idle' },
+  θ: { name: 'Doc', task: 'SPEC→readme', icon: 'θ', class: 'theta', status: 'idle' },
+  ι: { name: 'Boot', task: 'SEQ→init', icon: 'ι', class: 'iota', status: 'idle' }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// 📐 AXIOMS
+// ═══════════════════════════════════════════════════════════════════
+const AXIOMS = [
+  { expr: 'φ² = φ + 1', test: () => Math.abs(PHI*PHI - (PHI+1)) < 1e-10 },
+  { expr: '1/φ = φ - 1', test: () => Math.abs(1/PHI - (PHI-1)) < 1e-10 },
+  { expr: '√5 = 2φ - 1', test: () => Math.abs(SQRT5 - (2*PHI-1)) < 1e-10 },
+  { expr: 'cos36° = φ/2', test: () => Math.abs(Math.cos(36*Math.PI/180) - PHI/2) < 1e-10 },
+  { expr: 'cos72° = 1/2φ', test: () => Math.abs(Math.cos(72*Math.PI/180) - 1/(2*PHI)) < 1e-10 },
+  { expr: 'φ + 1/φ = √5', test: () => Math.abs(PHI + 1/PHI - SQRT5) < 1e-10 },
+  { expr: 'σ² = 2σ + 1', test: () => Math.abs(SIGMA*SIGMA - (2*SIGMA+1)) < 1e-10 },
+  { expr: 'β² = 3β + 1', test: () => Math.abs(BETA*BETA - (3*BETA+1)) < 1e-10 },
+];
+
+// ═══════════════════════════════════════════════════════════════════
+// 🧊 DB3D - 3D Database of Constants
+// ═══════════════════════════════════════════════════════════════════
+const DB3D = {
+  // [x,y,z] = [type, tier, cost]
+  // T0: ORIGIN
+  'φ': { coords: [0,0,0], value: PHI, tier: 0, cost: 0 },
+  '√5': { coords: [0,0,1], value: SQRT5, tier: 0, cost: 1 },
+  'φ⁻¹': { coords: [0,0,1], value: 1/PHI, tier: 0, cost: 1 },
+  'φ²': { coords: [0,0,1], value: PHI*PHI, tier: 0, cost: 1 },
+
+  // T1: METALLIC
+  'σ': { coords: [1,1,2], value: SIGMA, tier: 1, cost: 2, name: 'silver' },
+  'β': { coords: [1,1,4], value: BETA, tier: 1, cost: 4, name: 'bronze' },
+  'Cu': { coords: [1,1,4], value: (4+Math.sqrt(20))/2, tier: 1, cost: 4, name: 'copper' },
+  'Ni': { coords: [1,1,4], value: (5+Math.sqrt(29))/2, tier: 1, cost: 4, name: 'nickel' },
+
+  // T2: ROOTS
+  '√2': { coords: [2,2,2], value: Math.sqrt(2), tier: 2, cost: 2 },
+  '√3': { coords: [2,2,3], value: Math.sqrt(3), tier: 2, cost: 3 },
+  '√6': { coords: [2,2,3], value: Math.sqrt(6), tier: 2, cost: 3 },
+  '√7': { coords: [2,2,4], value: Math.sqrt(7), tier: 2, cost: 4 },
+  '√10': { coords: [2,2,3], value: Math.sqrt(10), tier: 2, cost: 3 },
+
+  // T3: TRIG
+  'cos36°': { coords: [3,3,0], value: Math.cos(36*Math.PI/180), tier: 3, cost: 0 },
+  'cos72°': { coords: [3,3,0], value: Math.cos(72*Math.PI/180), tier: 3, cost: 0 },
+  'sin36°': { coords: [3,3,1], value: Math.sin(36*Math.PI/180), tier: 3, cost: 1 },
+  'cos45°': { coords: [3,3,2], value: Math.cos(45*Math.PI/180), tier: 3, cost: 2 },
+  'cos30°': { coords: [3,3,2], value: Math.cos(30*Math.PI/180), tier: 3, cost: 2 },
+
+  // T4: TRANSCENDENTAL
+  'π': { coords: [4,4,10], value: PI, tier: 4, cost: 10 },
+  'e': { coords: [4,4,10], value: E, tier: 4, cost: 10 },
+  'ln2': { coords: [4,4,10], value: Math.log(2), tier: 4, cost: 10 },
+
+  // T5: CONSTANTS
+  'γ': { coords: [5,5,15], value: 0.5772156649015328606, tier: 5, cost: 15, name: 'euler-mascheroni' },
+  'ζ(3)': { coords: [5,5,8], value: 1.2020569031595942853, tier: 5, cost: 8, name: 'apery' },
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// 🔗 DERIVATION GRAPH
+// ═══════════════════════════════════════════════════════════════════
+const GRAPH = {
+  'φ': ['√5', 'φ⁻¹', 'φ²', 'cos36°', 'cos72°'],
+  '√5': ['σ', '√10'],
+  'σ': ['√2', 'β'],
+  '√2': ['√6', 'cos45°'],
+  '√3': ['√6', 'cos30°'],
+  'β': ['Cu'],
+  'Cu': ['Ni'],
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// ⚡ Φu PRECISION SYSTEM
+// ═══════════════════════════════════════════════════════════════════
+const PhiUnit = {
+  PHI_BITS: 0.6942419136, // log₂(φ)
+  level: 3,
+  budget: 100,
+  spent: 0,
+  ops: 0,
+
+  levels: {
+    1: { bits: 7, digits: 2 },
+    2: { bits: 35, digits: 10 },
+    3: { bits: 69, digits: 21 },
+    4: { bits: 347, digits: 104 },
+    5: { bits: 1388, digits: 418 },
+    6: { bits: 6942, digits: 2090 }
+  },
+
+  costs: {
+    add: 0, sub: 0, mul: 1, div: 1,
+    sqrt: 2, cbrt: 3, trig: 5, inv_trig: 6,
+    exp: 8, log: 8, pow: 10, trans: 10, chaos: 20
+  },
+
+  track(op) {
+    const cost = this.costs[op] || 1;
+    this.spent += cost;
+    this.ops++;
+    return cost;
+  },
+
+  remaining() {
+    return Math.max(0, this.budget - this.spent);
+  },
+
+  recover() {
+    this.spent = 0;
+    log('δ: Precision recovered - reanchored at φ', 'phi');
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// 🧊 CACHE SYSTEM
+// ═══════════════════════════════════════════════════════════════════
+const Cache = {
+  store: new Map(),
+  hits: 0,
+  misses: 0,
+  hot: ['φ', '√5', '√2', '√3', 'σ', 'π', 'e'],
+
+  get(key) {
+    if (this.store.has(key)) {
+      this.hits++;
+      return this.store.get(key);
+    }
+    this.misses++;
+    return null;
+  },
+
+  set(key, value) {
+    this.store.set(key, value);
+  },
+
+  warm() {
+    for (const key of this.hot) {
+      if (DB3D[key]) {
+        this.store.set(key, DB3D[key].value);
+      }
+    }
+  },
+
+  isHot(key) {
+    return this.hot.includes(key);
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// DERIVATION ENGINE
+// ═══════════════════════════════════════════════════════════════════
+function derive(target) {
+  // Check cache first
+  const cached = Cache.get(target);
+  if (cached !== null) {
+    log(`γ: Cache hit for ${target}`, 'success');
+    return { value: cached, path: [target], fromCache: true };
+  }
+
+  // Check DB3D
+  if (DB3D[target]) {
+    const entry = DB3D[target];
+    Cache.set(target, entry.value);
+    PhiUnit.track('mul');
+    log(`β: Derived ${target} from DB3D [${entry.coords.join(',')}] cost=${entry.cost}Φu`, 'derive');
+    return { value: entry.value, path: ['φ', target], cost: entry.cost };
+  }
+
+  // Handle metallic ratios
+  const metalMatch = target.match(/^metal\((\d+)\)$/);
+  if (metalMatch) {
+    const n = parseInt(metalMatch[1]);
+    const value = (n + Math.sqrt(n*n + 4)) / 2;
+    PhiUnit.track('sqrt');
+    PhiUnit.track('div');
+    log(`β: Computed metallic(${n}) = ${value.toFixed(10)}`, 'derive');
+    return { value, path: ['φ', `metal(${n})`], cost: 4 };
+  }
+
+  // Handle square roots
+  const sqrtMatch = target.match(/^√(\d+)$/);
+  if (sqrtMatch) {
+    const n = parseInt(sqrtMatch[1]);
+    const value = Math.sqrt(n);
+    PhiUnit.track('sqrt');
+    log(`β: Computed √${n} = ${value.toFixed(10)}`, 'derive');
+    return { value, path: ['φ', `√${n}`], cost: 2 };
+  }
+
+  log(`β: No derivation path found for ${target}`, 'error');
+  return null;
+}
+
+function pathfind(from, to) {
+  // BFS to find path in graph
+  const visited = new Set();
+  const queue = [[from]];
+
+  while (queue.length > 0) {
+    const path = queue.shift();
+    const node = path[path.length - 1];
+
+    if (node === to) return path;
+    if (visited.has(node)) continue;
+    visited.add(node);
+
+    const neighbors = GRAPH[node] || [];
+    for (const next of neighbors) {
+      queue.push([...path, next]);
+    }
+  }
+
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// UI FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════
+function log(message, type = 'info') {
+  const terminal = document.getElementById('terminal');
+  const line = document.createElement('div');
+  line.className = `log-line ${type}`;
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+  terminal.appendChild(line);
+  terminal.scrollTop = terminal.scrollHeight;
+}
+
+function updateAgent(id, status, task = null) {
+  AGENTS[id].status = status;
+  if (task) AGENTS[id].task = task;
+  renderAgents();
+}
+
+function renderAgents() {
+  const container = document.getElementById('agents-list');
+  container.innerHTML = '';
+
+  for (const [id, agent] of Object.entries(AGENTS)) {
+    const div = document.createElement('div');
+    div.className = `agent ${agent.status}`;
+    div.innerHTML = `
+      <div class="agent-icon ${agent.class}">${agent.icon}</div>
+      <div class="agent-info">
+        <div class="agent-name">${agent.name}</div>
+        <div class="agent-task">${agent.task}</div>
+      </div>
+      <div class="agent-status">${agent.status}</div>
+    `;
+    container.appendChild(div);
+  }
+}
+
+function renderAxioms() {
+  const container = document.getElementById('axioms-list');
+  container.innerHTML = '';
+
+  for (const axiom of AXIOMS) {
+    const div = document.createElement('div');
+    div.className = 'axiom';
+    const pass = axiom.test();
+    div.innerHTML = `
+      <div class="axiom-status ${pass ? 'pass' : 'fail'}"></div>
+      <span>${axiom.expr}</span>
+    `;
+    container.appendChild(div);
+  }
+}
+
+function renderCache() {
+  const container = document.getElementById('cache-grid');
+  container.innerHTML = '';
+
+  for (const [key, value] of Cache.store) {
+    const div = document.createElement('div');
+    div.className = `cache-item ${Cache.isHot(key) ? 'hot' : 'warm'}`;
+    div.textContent = key;
+    div.title = value.toString().substring(0, 20);
+    div.onclick = () => showValue(key, value);
+    container.appendChild(div);
+  }
+}
+
+function showValue(key, value) {
+  log(`${key} = ${value}`, 'phi');
+}
+
+function updateStats() {
+  document.getElementById('prec-level').textContent = `LV${PhiUnit.level}`;
+  document.getElementById('prec-budget').textContent = `${PhiUnit.remaining()} Φu`;
+  document.getElementById('prec-fill').style.width = `${(PhiUnit.remaining() / PhiUnit.budget) * 100}%`;
+  document.getElementById('op-count').textContent = PhiUnit.ops;
+  document.getElementById('cache-hits').textContent = Cache.hits;
+  document.getElementById('derive-count').textContent = Cache.misses;
+}
+
+function render3DDB() {
+  const scene = document.getElementById('db3d-scene');
+  scene.innerHTML = '';
+
+  const centerX = 400;
+  const centerY = 200;
+  const scale = 60;
+
+  for (const [name, entry] of Object.entries(DB3D)) {
+    const [x, y, z] = entry.coords;
+    const node = document.createElement('div');
+    node.className = `db-node t${entry.tier}`;
+
+    // 3D positioning
+    const posX = centerX + (x - 2) * scale + (z * 20);
+    const posY = centerY + (y - 2) * scale;
+    const posZ = z * 30;
+
+    node.style.left = `${posX}px`;
+    node.style.top = `${posY}px`;
+    node.style.transform = `translateZ(${posZ}px)`;
+
+    node.innerHTML = `${name}<span class="cost">${entry.cost}Φu</span>`;
+    node.onclick = () => {
+      derive(name);
+      updateStats();
+      renderCache();
+    };
+
+    scene.appendChild(node);
+  }
+}
+
+function handleQuery() {
+  const input = document.getElementById('query-input');
+  const query = input.value.trim();
+  if (!query) return;
+
+  input.value = '';
+  log(`> ${query}`, 'info');
+
+  updateAgent('β', 'working', `deriving ${query}`);
+
+  setTimeout(() => {
+    const result = derive(query);
+    if (result) {
+      log(`= ${result.value}`, 'success');
+      if (result.path) {
+        log(`  path: ${result.path.join(' → ')}`, 'derive');
+      }
+    }
+    updateAgent('β', 'active', 'GRAPH→chains');
+    updateStats();
+    renderCache();
+  }, 300);
+}
+
+// Enter key handler
+document.getElementById('query-input').addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') handleQuery();
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// 🚀 BOOT SEQUENCE
+// ═══════════════════════════════════════════════════════════════════
+async function boot() {
+  const bootLog = document.getElementById('boot-log');
+  const overlay = document.getElementById('boot-overlay');
+
+  const lines = [
+    { text: '🌀 KONOMI IRRATIONAL ENGINE', delay: 100 },
+    { text: '═══════════════════════════════════════', delay: 50 },
+    { text: '', delay: 100 },
+    { text: '[ι] Boot sequence initiated...', delay: 200 },
+    { text: '', delay: 100 },
+    { text: '[PHASE 1] VALIDATE', delay: 150, color: '#00ffff' },
+    { text: '[ζ] Loading axioms...', delay: 100 },
+    { text: '  ├─ φ² = φ + 1 ... ✓', delay: 80 },
+    { text: '  ├─ 1/φ = φ - 1 ... ✓', delay: 80 },
+    { text: '  ├─ √5 = 2φ - 1 ... ✓', delay: 80 },
+    { text: '  ├─ cos36° = φ/2 ... ✓', delay: 80 },
+    { text: '  ├─ cos72° = 1/2φ ... ✓', delay: 80 },
+    { text: '  ├─ φ + 1/φ = √5 ... ✓', delay: 80 },
+    { text: '  ├─ σ² = 2σ + 1 ... ✓', delay: 80 },
+    { text: '  └─ β² = 3β + 1 ... ✓', delay: 80 },
+    { text: '[ζ] All axioms validated', delay: 100, color: '#00ff88' },
+    { text: '', delay: 100 },
+    { text: '[PHASE 2] BUILD', delay: 150, color: '#00ffff' },
+    { text: '[α] Scaffolding STRUCT...', delay: 100 },
+    { text: '[γ] Hydrating DB3D...', delay: 150 },
+    { text: '  ├─ T0:ORIGIN (4 entries)', delay: 80 },
+    { text: '  ├─ T1:METALLIC (4 entries)', delay: 80 },
+    { text: '  ├─ T2:ROOTS (5 entries)', delay: 80 },
+    { text: '  ├─ T3:TRIG (5 entries)', delay: 80 },
+    { text: '  ├─ T4:TRANSCEND (3 entries)', delay: 80 },
+    { text: '  └─ T5:CONSTANTS (2 entries)', delay: 80 },
+    { text: '[β] Building GRAPH adjacency...', delay: 150 },
+    { text: '[δ] Initializing Φu precision (LV3, 100Φu budget)', delay: 100 },
+    { text: '', delay: 100 },
+    { text: '[PHASE 3] WARM', delay: 150, color: '#00ffff' },
+    { text: '[γ] Warming cache...', delay: 100 },
+    { text: '  HOT: φ, √5, √2, √3, σ, π, e', delay: 150, color: '#ffd700' },
+    { text: '[β] Precomputing hot paths...', delay: 200 },
+    { text: '', delay: 100 },
+    { text: '[PHASE 4] SERVE', delay: 150, color: '#00ffff' },
+    { text: '[ε] Spawning API routes...', delay: 100 },
+    { text: '[η] Starting performance monitor...', delay: 100 },
+    { text: '', delay: 150 },
+    { text: '═══════════════════════════════════════', delay: 50 },
+    { text: '✓ φ anchored, ready', delay: 100, color: '#ffd700' },
+    { text: `φ = ${PHI.toString().substring(0, 50)}...`, delay: 100, color: '#e6c200' },
+  ];
+
+  for (const line of lines) {
+    const div = document.createElement('div');
+    div.className = 'boot-line';
+    div.textContent = line.text;
+    if (line.color) div.style.color = line.color;
+    bootLog.appendChild(div);
+    bootLog.scrollTop = bootLog.scrollHeight;
+    await sleep(line.delay);
+  }
+
+  await sleep(500);
+
+  // Initialize systems
+  Cache.warm();
+
+  // Activate all agents
+  for (const id of Object.keys(AGENTS)) {
+    updateAgent(id, 'active');
+  }
+
+  // Hide boot overlay
+  overlay.classList.add('hidden');
+
+  // Render UI
+  renderAgents();
+  renderAxioms();
+  renderCache();
+  render3DDB();
+  updateStats();
+
+  log('🌀 KONOMI ENGINE ONLINE', 'phi');
+  log('φ is home', 'phi');
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Start boot sequence
+window.onload = boot;
+</script>
+</body>
+</html>
