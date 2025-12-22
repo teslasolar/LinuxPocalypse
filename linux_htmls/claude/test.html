@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Claude Components - Test Suite</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0d1117; color: #c9d1d9; font-family: system-ui; padding: 20px; }
+h1 { color: #58a6ff; margin-bottom: 20px; }
+h2 { color: #3fb950; margin: 20px 0 10px; font-size: 16px; }
+.test { background: #161b22; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #30363d; }
+.test-name { font-weight: 600; margin-bottom: 8px; }
+.test-result { font-family: monospace; font-size: 12px; white-space: pre-wrap; background: #0d1117; padding: 10px; border-radius: 4px; max-height: 200px; overflow-y: auto; }
+.pass { color: #3fb950; }
+.fail { color: #f85149; }
+.info { color: #8b949e; }
+#summary { margin-top: 20px; padding: 15px; background: #21262d; border-radius: 8px; }
+</style>
+</head>
+<body>
+<h1>🧪 Claude Components Test Suite</h1>
+<div id="tests"></div>
+<div id="summary"></div>
+
+<!-- Load components -->
+<script src="filesystem.js"></script>
+<script src="shell.js"></script>
+<script src="api.js"></script>
+
+<script>
+const results = { passed: 0, failed: 0 };
+
+function test(name, fn) {
+  const div = document.createElement('div');
+  div.className = 'test';
+
+  const nameEl = document.createElement('div');
+  nameEl.className = 'test-name';
+  nameEl.textContent = name;
+  div.appendChild(nameEl);
+
+  const resultEl = document.createElement('div');
+  resultEl.className = 'test-result';
+
+  try {
+    const result = fn();
+    if (result.success) {
+      resultEl.innerHTML = '<span class="pass">✓ PASS</span>\n' + (result.details || '');
+      results.passed++;
+    } else {
+      resultEl.innerHTML = '<span class="fail">✗ FAIL</span>\n' + (result.error || '');
+      results.failed++;
+    }
+  } catch (e) {
+    resultEl.innerHTML = '<span class="fail">✗ ERROR</span>\n' + e.message;
+    results.failed++;
+  }
+
+  div.appendChild(resultEl);
+  document.getElementById('tests').appendChild(div);
+}
+
+// ========== FILESYSTEM TESTS ==========
+const h2fs = document.createElement('h2');
+h2fs.textContent = '📁 Filesystem Component';
+document.getElementById('tests').appendChild(h2fs);
+
+test('FS.init()', () => {
+  const fs = Object.create(FS).init();
+  return {
+    success: fs.files && fs.dirs.length > 0,
+    details: `Files: ${Object.keys(fs.files).length}\nDirs: ${fs.dirs.length}`
+  };
+});
+
+test('FS.read() / FS.write()', () => {
+  const fs = Object.create(FS).init();
+  fs.write('/test.txt', 'Hello World');
+  const content = fs.read('/test.txt');
+  return {
+    success: content === 'Hello World',
+    details: `Wrote and read: "${content}"`
+  };
+});
+
+test('FS.list()', () => {
+  const fs = Object.create(FS).init();
+  const items = fs.list('/home/user');
+  return {
+    success: Array.isArray(items),
+    details: `Items in /home/user: ${items.map(i => i.name).join(', ')}`
+  };
+});
+
+test('FS.mkdir() / FS.isDir()', () => {
+  const fs = Object.create(FS).init();
+  fs.mkdir('/home/user/newdir');
+  return {
+    success: fs.isDir('/home/user/newdir'),
+    details: 'Created /home/user/newdir'
+  };
+});
+
+test('FS.rm()', () => {
+  const fs = Object.create(FS).init();
+  fs.write('/temp.txt', 'temp');
+  const deleted = fs.rm('/temp.txt');
+  return {
+    success: deleted && fs.read('/temp.txt') === null,
+    details: 'Created and deleted /temp.txt'
+  };
+});
+
+test('FS.installPackage()', () => {
+  const fs = Object.create(FS).init();
+  fs.installPackage('express');
+  return {
+    success: fs.packages.includes('express'),
+    details: `Packages: ${fs.packages.join(', ')}`
+  };
+});
+
+// ========== SHELL TESTS ==========
+const h2shell = document.createElement('h2');
+h2shell.textContent = '🖥️ Shell Component';
+document.getElementById('tests').appendChild(h2shell);
+
+test('Shell.init()', () => {
+  const fs = Object.create(FS).init();
+  const shell = Object.create(Shell);
+  let output = [];
+  shell.init(fs, (text) => output.push(text));
+  return {
+    success: shell.fs === fs && shell.cwd === '/home/user',
+    details: `CWD: ${shell.cwd}\nUser: ${shell.user}`
+  };
+});
+
+test('Shell.exec("pwd")', () => {
+  const fs = Object.create(FS).init();
+  const shell = Object.create(Shell);
+  let output = [];
+  shell.init(fs, (text) => output.push(text));
+  shell.exec('pwd');
+  return {
+    success: output[0] === '/home/user',
+    details: `Output: ${output.join('')}`
+  };
+});
+
+test('Shell.exec("cd /etc && pwd")', () => {
+  const fs = Object.create(FS).init();
+  const shell = Object.create(Shell);
+  let output = [];
+  shell.init(fs, (text) => output.push(text));
+  shell.exec('cd /etc');
+  shell.exec('pwd');
+  return {
+    success: output.includes('/etc'),
+    details: `CWD after cd: ${shell.cwd}`
+  };
+});
+
+test('Shell.exec("echo hello")', () => {
+  const fs = Object.create(FS).init();
+  const shell = Object.create(Shell);
+  let output = [];
+  shell.init(fs, (text) => output.push(text));
+  shell.exec('echo hello world');
+  return {
+    success: output[0] === 'hello world',
+    details: `Output: ${output[0]}`
+  };
+});
+
+test('Shell.exec("touch test.js && cat test.js")', () => {
+  const fs = Object.create(FS).init();
+  const shell = Object.create(Shell);
+  let output = [];
+  shell.init(fs, (text) => output.push(text));
+  shell.exec('touch test.js');
+  fs.write('/home/user/test.js', 'console.log("hi")');
+  shell.exec('cat test.js');
+  return {
+    success: output.some(o => o.includes('console.log')),
+    details: `File content: ${fs.read('/home/user/test.js')}`
+  };
+});
+
+test('Shell.exec("node -v")', () => {
+  const fs = Object.create(FS).init();
+  const shell = Object.create(Shell);
+  let output = [];
+  shell.init(fs, (text) => output.push(text));
+  shell.exec('node -v');
+  return {
+    success: output[0].startsWith('v'),
+    details: `Node version: ${output[0]}`
+  };
+});
+
+test('Shell.history', () => {
+  const fs = Object.create(FS).init();
+  const shell = Object.create(Shell);
+  shell.init(fs, () => {});
+  shell.exec('pwd');
+  shell.exec('ls');
+  shell.exec('date');
+  return {
+    success: shell.history.length === 3,
+    details: `History: ${shell.history.join(', ')}`
+  };
+});
+
+// ========== API TESTS ==========
+const h2api = document.createElement('h2');
+h2api.textContent = '🔌 API Component';
+document.getElementById('tests').appendChild(h2api);
+
+test('ClaudeAPI.init()', () => {
+  const api = Object.create(ClaudeAPI);
+  api.init({ baseUrl: '/api', apiKey: 'test-key' });
+  return {
+    success: api.baseUrl === '/api' && api.apiKey === 'test-key',
+    details: `Base URL: ${api.baseUrl}`
+  };
+});
+
+test('ClaudeAPI.enableMockMode()', () => {
+  const api = Object.create(ClaudeAPI);
+  api.init({});
+  api.enableMockMode();
+  return {
+    success: api.connected && api.mock,
+    details: 'Mock mode enabled'
+  };
+});
+
+test('ClaudeAPI.chat() [mock]', async () => {
+  const api = Object.create(ClaudeAPI);
+  api.init({});
+  api.enableMockMode();
+  const result = await api.chat('Hello');
+  return {
+    success: result.mock && result.response.includes('Hello'),
+    details: `Response: ${result.response}`
+  };
+});
+
+test('ClaudeAPI.installPackage() [mock]', async () => {
+  const api = Object.create(ClaudeAPI);
+  api.init({});
+  api.enableMockMode();
+  const result = await api.installPackage('lodash');
+  return {
+    success: result.mock && result.package === 'lodash',
+    details: `Installed: ${result.package}@${result.version}`
+  };
+});
+
+// ========== SUMMARY ==========
+setTimeout(() => {
+  const summary = document.getElementById('summary');
+  const total = results.passed + results.failed;
+  const pct = Math.round((results.passed / total) * 100);
+  summary.innerHTML = `
+    <h2 style="margin-top:0">Summary</h2>
+    <div><span class="pass">✓ Passed: ${results.passed}</span></div>
+    <div><span class="fail">✗ Failed: ${results.failed}</span></div>
+    <div><span class="info">Total: ${total} (${pct}% pass rate)</span></div>
+  `;
+}, 100);
+</script>
+</body>
+</html>

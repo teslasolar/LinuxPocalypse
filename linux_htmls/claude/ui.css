@@ -1,0 +1,182 @@
+/* Claude Components - Shared UI Styles */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg-dark: #000;
+  --bg-medium: #0d1117;
+  --bg-light: #161b22;
+  --border: #30363d;
+  --text: #c9d1d9;
+  --text-dim: #8b949e;
+  --accent: #58a6ff;
+  --success: #3fb950;
+  --error: #f85149;
+  --warning: #d29922;
+  --cyan: #39c5cf;
+  --magenta: #bc8cff;
+  --green: #0f0;
+}
+
+body {
+  background: var(--bg-dark);
+  color: var(--green);
+  font-family: 'Courier New', monospace;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Full-screen terminal */
+.terminal-fullscreen {
+  width: 100%;
+  height: 100vh;
+}
+
+/* Split layout */
+.layout-split {
+  display: flex;
+  height: 100vh;
+}
+
+.layout-split .sidebar {
+  width: 220px;
+  background: var(--bg-light);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.layout-split .main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header bar */
+.header-bar {
+  height: 36px;
+  background: var(--bg-light);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 12px;
+}
+
+.header-bar h1 {
+  font-size: 14px;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.header-bar .status {
+  margin-left: auto;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: var(--success);
+  color: #fff;
+}
+
+.header-bar .status.loading { background: var(--warning); }
+.header-bar .status.error { background: var(--error); }
+
+/* Terminal container */
+.terminal-container {
+  flex: 1;
+  background: var(--bg-dark);
+}
+
+/* File list */
+.file-list {
+  padding: 8px 0;
+}
+
+.file-item {
+  padding: 5px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.file-item:hover {
+  background: #21262d;
+}
+
+.file-item.selected {
+  background: rgba(56, 139, 253, 0.2);
+  color: var(--accent);
+}
+
+.file-item.dir { color: var(--accent); }
+
+/* Section headers */
+.section-header {
+  padding: 8px 12px;
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Buttons */
+.btn {
+  background: #21262d;
+  border: none;
+  color: var(--text-dim);
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.btn:hover {
+  background: #30363d;
+  color: #fff;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: #1f6feb;
+}
+
+/* xterm overrides */
+.xterm { height: 100% !important; }
+.xterm-viewport { background: var(--bg-dark) !important; }
+.xterm-screen { height: 100% !important; }
+
+/* Loading overlay */
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.loading-overlay.hidden { display: none; }
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-text {
+  margin-top: 16px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
