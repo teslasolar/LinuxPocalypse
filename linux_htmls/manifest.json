@@ -174,5 +174,13 @@
     "icon": "🚁",
     "color": "#00ffff",
     "tags": ["Swarm", "Intuitive", "Formation", "Easy"]
+  },
+  {
+    "file": "gitfox/level1-corneria.html",
+    "title": "Git Fox - Level 1: Corneria",
+    "description": "Star Fox 64 style rail shooter - fly through Corneria City, shoot enemies, collect rings, barrel roll with L3, bomb with B",
+    "icon": "🦊",
+    "color": "#ff8800",
+    "tags": ["GitFox", "Rail-Shooter", "Arcade", "Level1"]
   }
 ]

@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Git Fox - Level 1: Corneria</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#000;overflow:hidden;font:bold 14px monospace;color:#0f0}
+#c{position:fixed;inset:0}
+.hud{position:fixed;z-index:10;pointer-events:none}
+#shield-bar{top:20px;left:20px;width:200px;height:20px;border:2px solid #0f0;background:#001a00}
+#shield-fill{height:100%;background:linear-gradient(90deg,#f00,#ff0,#0f0);width:100%;transition:width .2s}
+#shield-label{top:22px;left:230px;color:#0f0;font-size:12px}
+#boost-bar{top:50px;left:20px;width:150px;height:12px;border:2px solid #08f;background:#001020}
+#boost-fill{height:100%;background:#08f;width:100%}
+#boost-label{top:50px;left:180px;color:#08f;font-size:11px}
+#score{top:20px;right:20px;font-size:24px;color:#ff0;text-align:right}
+#bombs{top:55px;right:20px;font-size:16px;color:#f80}
+#lives{bottom:20px;left:20px;font-size:20px;color:#0f0}
+#level-title{top:100px;left:50%;transform:translateX(-50%);font-size:28px;color:#0ff;text-shadow:0 0 10px #0ff;opacity:0;transition:opacity 1s}
+#crosshair{top:50%;left:50%;transform:translate(-50%,-50%);width:60px;height:60px}
+#radio{bottom:80px;left:50%;transform:translateX(-50%);background:rgba(0,20,0,.9);border:2px solid #0f0;border-radius:8px;padding:10px 20px;opacity:0;transition:opacity .5s}
+#radio-face{width:50px;height:50px;border:2px solid #0a0;border-radius:50%;background:#001a00;float:left;margin-right:15px;display:flex;align-items:center;justify-content:center;font-size:24px}
+#radio-text{color:#0f0;font-size:14px;max-width:300px}
+#controls{bottom:20px;right:20px;font-size:10px;color:#888;text-align:right}
+.boss-health{top:60px;left:50%;transform:translateX(-50%);width:400px;height:15px;border:2px solid #f00;background:#200;display:none}
+#boss-fill{height:100%;background:#f00;width:100%}
+#game-over{top:50%;left:50%;transform:translate(-50%,-50%);font-size:48px;color:#f00;text-shadow:0 0 20px #f00;display:none}
+#mission-complete{top:50%;left:50%;transform:translate(-50%,-50%);font-size:36px;color:#0f0;text-shadow:0 0 20px #0f0;display:none;text-align:center}
+</style></head><body><canvas id="c"></canvas>
+
+<div class="hud" id="shield-bar"><div id="shield-fill"></div></div>
+<div class="hud" id="shield-label">SHIELD</div>
+
+<div class="hud" id="boost-bar"><div id="boost-fill"></div></div>
+<div class="hud" id="boost-label">BOOST</div>
+
+<div class="hud" id="score">00000</div>
+<div class="hud" id="bombs">BOMBS: 3</div>
+<div class="hud" id="lives">♦ ♦ ♦</div>
+
+<div class="hud" id="level-title">LEVEL 1: CORNERIA</div>
+
+<svg class="hud" id="crosshair" viewBox="0 0 60 60">
+<circle cx="30" cy="30" r="25" stroke="#0f0" stroke-width="2" fill="none" opacity="0.5"/>
+<line x1="30" y1="0" x2="30" y2="20" stroke="#0f0" stroke-width="2"/>
+<line x1="30" y1="40" x2="30" y2="60" stroke="#0f0" stroke-width="2"/>
+<line x1="0" y1="30" x2="20" y2="30" stroke="#0f0" stroke-width="2"/>
+<line x1="40" y1="30" x2="60" y2="30" stroke="#0f0" stroke-width="2"/>
+<circle cx="30" cy="30" r="3" fill="#0f0"/>
+</svg>
+
+<div class="hud" id="radio">
+<div id="radio-face">🦊</div>
+<div id="radio-text">All aircraft report!</div>
+</div>
+
+<div class="hud boss-health"><div id="boss-fill"></div></div>
+
+<div class="hud" id="game-over">GAME OVER</div>
+<div class="hud" id="mission-complete">MISSION COMPLETE<br><span style="font-size:20px">Score: <span id="final-score">0</span></span></div>
+
+<div class="hud" id="controls">
+WASD/LStick: Move | L3: Barrel Roll<br>
+Mouse/RStick: Aim | Click/RB: Fire | B: Bomb
+</div>
+
+<script>
+const T={v3:(x,y,z)=>new THREE.Vector3(x,y,z),rnd:(a,b)=>a+Math.random()*(b-a),clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),lerp:(a,b,t)=>a+(b-a)*t};
+
+const G={
+  // Game state
+  shield:100,
+  boost:100,
+  score:0,
+  bombs:3,
+  lives:3,
+  distance:0,
+  levelLength:3000,
+  gameOver:false,
+  complete:false,
+  barrelRolling:false,
+  barrelRollTimer:0,
+  invincible:0,
+
+  // Objects
+  enemies:[],
+  bullets:[],
+  rings:[],
+  particles:[],
+  buildings:[],
+
+  // Input
+  input:{lx:0,ly:0,rx:0,ry:0,buttons:{}},
+  mouse:{x:0,y:0,locked:false},
+  keys:{},
+  gamepad:null,
+
+  // Ship position (screen space, -1 to 1)
+  shipX:0,
+  shipY:0,
+  shipTargetX:0,
+  shipTargetY:0,
+
+  init(){
+    this.sc=new THREE.Scene();
+    this.ca=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.1,2000);
+    this.rn=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true});
+    this.rn.setSize(innerWidth,innerHeight);
+    this.rn.setClearColor(0x87ceeb);// Sky blue
+
+    // Lighting
+    this.sc.add(new THREE.AmbientLight(0x666688,.6));
+    const sun=new THREE.DirectionalLight(0xffffee,1);
+    sun.position.set(100,200,100);
+    this.sc.add(sun);
+
+    // Player ship (Arwing style)
+    this.ship=this.createShip();
+    this.ship.position.set(0,0,0);
+    this.sc.add(this.ship);
+
+    // Ground
+    const groundGeo=new THREE.PlaneGeometry(500,5000);
+    const groundMat=new THREE.MeshPhongMaterial({color:0x228822});
+    this.ground=new THREE.Mesh(groundGeo,groundMat);
+    this.ground.rotation.x=-Math.PI/2;
+    this.ground.position.z=-2000;
+    this.ground.position.y=-50;
+    this.sc.add(this.ground);
+
+    // Water
+    const water=new THREE.Mesh(
+      new THREE.PlaneGeometry(2000,5000),
+      new THREE.MeshPhongMaterial({color:0x2266aa,transparent:true,opacity:.8})
+    );
+    water.rotation.x=-Math.PI/2;
+    water.position.set(300,-48,-2000);
+    this.sc.add(water);
+
+    // Initial buildings/obstacles
+    this.spawnBuildings(-500,0);
+
+    // Fog
+    this.sc.fog=new THREE.Fog(0x87ceeb,100,800);
+
+    // Camera setup
+    this.ca.position.set(0,10,30);
+    this.ca.lookAt(0,0,-50);
+
+    // Input
+    window.addEventListener('gamepadconnected',e=>this.gamepad=e.gamepad);
+    window.addEventListener('gamepaddisconnected',()=>this.gamepad=null);
+    window.addEventListener('keydown',e=>{
+      this.keys[e.code]=true;
+      if(e.code==='KeyQ'||e.code==='ShiftLeft')this.barrelRoll();
+      if(e.code==='KeyB')this.useBomb();
+    });
+    window.addEventListener('keyup',e=>this.keys[e.code]=false);
+    document.addEventListener('click',()=>{
+      if(!this.mouse.locked)document.body.requestPointerLock();
+      else this.fire();
+    });
+    document.addEventListener('pointerlockchange',()=>{
+      this.mouse.locked=!!document.pointerLockElement;
+    });
+    document.addEventListener('mousemove',e=>{
+      if(this.mouse.locked){
+        this.mouse.x+=e.movementX*.002;
+        this.mouse.y+=e.movementY*.002;
+        this.mouse.x=T.clamp(this.mouse.x,-1,1);
+        this.mouse.y=T.clamp(this.mouse.y,-1,1);
+      }
+    });
+
+    // Show level title
+    setTimeout(()=>{
+      document.getElementById('level-title').style.opacity=1;
+      this.showRadio('🦊','All aircraft report! We\'re heading to Corneria City!');
+    },500);
+    setTimeout(()=>document.getElementById('level-title').style.opacity=0,3000);
+
+    this.animate();
+  },
+
+  createShip(){
+    const g=new THREE.Group();
+
+    // Main body
+    const body=new THREE.Mesh(
+      new THREE.ConeGeometry(1.5,6,4),
+      new THREE.MeshPhongMaterial({color:0xcccccc})
+    );
+    body.rotation.x=Math.PI/2;
+    body.rotation.z=Math.PI/4;
+    g.add(body);
+
+    // Wings
+    const wingGeo=new THREE.BoxGeometry(8,.2,2);
+    const wingMat=new THREE.MeshPhongMaterial({color:0x4444ff});
+    const leftWing=new THREE.Mesh(wingGeo,wingMat);
+    leftWing.position.set(-2,0,1);
+    leftWing.rotation.z=.1;
+    g.add(leftWing);
+
+    const rightWing=new THREE.Mesh(wingGeo,wingMat);
+    rightWing.position.set(2,0,1);
+    rightWing.rotation.z=-.1;
+    g.add(rightWing);
+
+    // Wing tips (red)
+    const tipMat=new THREE.MeshPhongMaterial({color:0xff0000});
+    const leftTip=new THREE.Mesh(new THREE.BoxGeometry(1,.3,.5),tipMat);
+    leftTip.position.set(-5.5,0,1);
+    g.add(leftTip);
+    const rightTip=new THREE.Mesh(new THREE.BoxGeometry(1,.3,.5),tipMat);
+    rightTip.position.set(5.5,0,1);
+    g.add(rightTip);
+
+    // Cockpit
+    const cockpit=new THREE.Mesh(
+      new THREE.SphereGeometry(.8,8,8),
+      new THREE.MeshPhongMaterial({color:0x00ff88,emissive:0x004422})
+    );
+    cockpit.position.z=-1;
+    cockpit.scale.set(1,.5,1);
+    g.add(cockpit);
+
+    // Engines
+    for(let i=-1;i<=1;i+=2){
+      const eng=new THREE.Mesh(
+        new THREE.CylinderGeometry(.3,.5,1.5),
+        new THREE.MeshPhongMaterial({color:0x666666})
+      );
+      eng.rotation.x=Math.PI/2;
+      eng.position.set(i*1.5,-.3,3);
+      g.add(eng);
+
+      // Engine glow
+      const glow=new THREE.Mesh(
+        new THREE.CylinderGeometry(.2,.4,.5),
+        new THREE.MeshBasicMaterial({color:0x00aaff})
+      );
+      glow.rotation.x=Math.PI/2;
+      glow.position.set(i*1.5,-.3,3.8);
+      glow.userData.isGlow=true;
+      g.add(glow);
+    }
+
+    return g;
+  },
+
+  spawnBuildings(startZ,endZ){
+    for(let z=startZ;z>endZ-500;z-=T.rnd(30,80)){
+      const h=T.rnd(30,100);
+      const w=T.rnd(15,40);
+      const building=new THREE.Mesh(
+        new THREE.BoxGeometry(w,h,w),
+        new THREE.MeshPhongMaterial({color:0x556677})
+      );
+      building.position.set(T.rnd(-150,150),-50+h/2,z);
+      this.sc.add(building);
+      this.buildings.push(building);
+
+      // Some buildings have antennas
+      if(Math.random()>.7){
+        const ant=new THREE.Mesh(
+          new THREE.CylinderGeometry(.5,.5,20),
+          new THREE.MeshPhongMaterial({color:0x888888})
+        );
+        ant.position.y=h/2+10;
+        building.add(ant);
+      }
+    }
+  },
+
+  spawnEnemy(type='fighter'){
+    const enemy={type,hp:type==='fighter'?1:type==='tank'?3:10};
+
+    if(type==='fighter'){
+      enemy.mesh=new THREE.Mesh(
+        new THREE.ConeGeometry(1,3,3),
+        new THREE.MeshPhongMaterial({color:0xff4400})
+      );
+      enemy.mesh.rotation.x=Math.PI/2;
+      enemy.mesh.position.set(T.rnd(-40,40),T.rnd(-20,30),this.distance-300);
+      enemy.vx=T.rnd(-.5,.5);
+      enemy.vy=T.rnd(-.3,.3);
+    }else if(type==='tank'){
+      enemy.mesh=new THREE.Mesh(
+        new THREE.BoxGeometry(4,2,5),
+        new THREE.MeshPhongMaterial({color:0x884400})
+      );
+      enemy.mesh.position.set(T.rnd(-80,80),-48,this.distance-T.rnd(200,400));
+      enemy.vx=0;enemy.vy=0;
+    }else if(type==='ring'){
+      // Bonus ring
+      enemy.mesh=new THREE.Mesh(
+        new THREE.TorusGeometry(8,1,8,16),
+        new THREE.MeshPhongMaterial({color:0xffff00,emissive:0x444400})
+      );
+      enemy.mesh.position.set(T.rnd(-30,30),T.rnd(-10,20),this.distance-250);
+      enemy.mesh.rotation.y=Math.PI/2;
+      enemy.isRing=true;
+    }
+
+    this.sc.add(enemy.mesh);
+    this.enemies.push(enemy);
+  },
+
+  fire(){
+    if(this.gameOver||this.complete)return;
+
+    const bullet=new THREE.Mesh(
+      new THREE.SphereGeometry(.3),
+      new THREE.MeshBasicMaterial({color:0x00ff00})
+    );
+    bullet.position.copy(this.ship.position);
+    bullet.position.z-=5;
+
+    // Aim towards crosshair
+    const aimX=this.shipX*30;
+    const aimY=this.shipY*20;
+    bullet.userData={
+      vel:T.v3(aimX*.02,-aimY*.02,-3),
+      life:60
+    };
+
+    this.sc.add(bullet);
+    this.bullets.push(bullet);
+  },
+
+  useBomb(){
+    if(this.bombs<=0||this.gameOver)return;
+    this.bombs--;
+    document.getElementById('bombs').textContent='BOMBS: '+this.bombs;
+
+    // Destroy all enemies on screen
+    this.enemies.forEach(e=>{
+      if(!e.isRing){
+        this.spawnExplosion(e.mesh.position);
+        this.sc.remove(e.mesh);
+        e.dead=true;
+        this.addScore(e.type==='fighter'?10:30);
+      }
+    });
+    this.enemies=this.enemies.filter(e=>!e.dead);
+
+    // Flash effect
+    document.body.style.background='#fff';
+    setTimeout(()=>document.body.style.background='#000',100);
+  },
+
+  barrelRoll(){
+    if(this.barrelRolling||this.boost<20)return;
+    this.barrelRolling=true;
+    this.barrelRollTimer=0;
+    this.boost-=20;
+    this.invincible=30;// Invincible during roll
+  },
+
+  spawnExplosion(pos){
+    for(let i=0;i<15;i++){
+      const p=new THREE.Mesh(
+        new THREE.SphereGeometry(.5),
+        new THREE.MeshBasicMaterial({color:Math.random()>.5?0xff4400:0xffff00})
+      );
+      p.position.copy(pos);
+      p.userData={
+        vel:T.v3(T.rnd(-1,1),T.rnd(-1,1),T.rnd(-1,1)),
+        life:30
+      };
+      this.sc.add(p);
+      this.particles.push(p);
+    }
+  },
+
+  addScore(pts){
+    this.score+=pts;
+    document.getElementById('score').textContent=String(this.score).padStart(5,'0');
+  },
+
+  takeDamage(amt){
+    if(this.invincible>0)return;
+    this.shield-=amt;
+    this.invincible=30;
+    document.getElementById('shield-fill').style.width=this.shield+'%';
+
+    if(this.shield<=0){
+      this.lives--;
+      if(this.lives<=0){
+        this.gameOver=true;
+        document.getElementById('game-over').style.display='block';
+      }else{
+        this.shield=100;
+        document.getElementById('shield-fill').style.width='100%';
+        this.updateLives();
+      }
+    }
+  },
+
+  updateLives(){
+    document.getElementById('lives').textContent='♦ '.repeat(this.lives).trim();
+  },
+
+  showRadio(face,text){
+    const radio=document.getElementById('radio');
+    document.getElementById('radio-face').textContent=face;
+    document.getElementById('radio-text').textContent=text;
+    radio.style.opacity=1;
+    setTimeout(()=>radio.style.opacity=0,4000);
+  },
+
+  pollGamepad(){
+    const gps=navigator.getGamepads();
+    if(gps[0])this.gamepad=gps[0];
+    if(!this.gamepad)return;
+
+    const gp=this.gamepad;
+    const dz=.15;
+
+    this.input.lx=Math.abs(gp.axes[0])<dz?0:gp.axes[0];
+    this.input.ly=Math.abs(gp.axes[1])<dz?0:gp.axes[1];
+    this.input.rx=Math.abs(gp.axes[2])<dz?0:gp.axes[2];
+    this.input.ry=Math.abs(gp.axes[3])<dz?0:gp.axes[3];
+
+    const wasRB=this.input.buttons.rb;
+    const wasL3=this.input.buttons.l3;
+    const wasB=this.input.buttons.b;
+    this.input.buttons.rb=gp.buttons[5]?.pressed;
+    this.input.buttons.l3=gp.buttons[10]?.pressed;
+    this.input.buttons.b=gp.buttons[1]?.pressed;
+
+    if(this.input.buttons.rb&&!wasRB)this.fire();
+    if(this.input.buttons.l3&&!wasL3)this.barrelRoll();
+    if(this.input.buttons.b&&!wasB)this.useBomb();
+  },
+
+  update(){
+    if(this.gameOver||this.complete)return;
+
+    this.pollGamepad();
+
+    // Get input
+    let lx=this.input.lx||(this.keys.KeyA?-1:this.keys.KeyD?1:0);
+    let ly=this.input.ly||(this.keys.KeyW?-1:this.keys.KeyS?1:0);
+
+    // Move ship target
+    this.shipTargetX=T.clamp(this.shipTargetX+lx*.03,-1,1);
+    this.shipTargetY=T.clamp(this.shipTargetY-ly*.03,-1,1);
+
+    // Smooth ship movement
+    this.shipX=T.lerp(this.shipX,this.shipTargetX,.1);
+    this.shipY=T.lerp(this.shipY,this.shipTargetY,.1);
+
+    // Update ship position
+    this.ship.position.x=this.shipX*40;
+    this.ship.position.y=this.shipY*25;
+
+    // Ship tilt based on movement
+    this.ship.rotation.z=T.lerp(this.ship.rotation.z,-lx*.5,.1);
+    this.ship.rotation.x=T.lerp(this.ship.rotation.x,ly*.3,.1);
+
+    // Barrel roll animation
+    if(this.barrelRolling){
+      this.barrelRollTimer+=.2;
+      this.ship.rotation.z=this.barrelRollTimer;
+      if(this.barrelRollTimer>=Math.PI*2){
+        this.barrelRolling=false;
+        this.ship.rotation.z=0;
+      }
+    }
+
+    // Move forward (on rails)
+    this.distance-=2;
+    this.ground.position.z=this.distance-2000;
+
+    // Spawn enemies
+    if(Math.random()<.02)this.spawnEnemy('fighter');
+    if(Math.random()<.005)this.spawnEnemy('tank');
+    if(Math.random()<.008)this.spawnEnemy('ring');
+
+    // Spawn more buildings
+    if(this.buildings.length>0){
+      const lastZ=Math.min(...this.buildings.map(b=>b.position.z));
+      if(lastZ>this.distance-600){
+        this.spawnBuildings(lastZ-50,lastZ-200);
+      }
+    }
+
+    // Update enemies
+    this.enemies.forEach(e=>{
+      if(e.type==='fighter'){
+        e.mesh.position.x+=e.vx;
+        e.mesh.position.y+=e.vy;
+        e.mesh.position.z+=1.5;// Move towards player
+      }
+      if(e.isRing){
+        e.mesh.rotation.z+=.05;
+      }
+
+      // Check collision with player
+      const dist=e.mesh.position.distanceTo(this.ship.position);
+      if(dist<(e.isRing?10:5)){
+        if(e.isRing){
+          this.addScore(100);
+          this.shield=Math.min(100,this.shield+20);
+          document.getElementById('shield-fill').style.width=this.shield+'%';
+          this.showRadio('🦊','Nice! Shield restored!');
+        }else{
+          this.takeDamage(20);
+        }
+        this.sc.remove(e.mesh);
+        e.dead=true;
+      }
+
+      // Remove if behind player
+      if(e.mesh.position.z>this.distance+100){
+        this.sc.remove(e.mesh);
+        e.dead=true;
+      }
+    });
+    this.enemies=this.enemies.filter(e=>!e.dead);
+
+    // Update bullets
+    this.bullets.forEach(b=>{
+      b.position.add(b.userData.vel);
+      b.userData.life--;
+
+      // Hit detection
+      this.enemies.forEach(e=>{
+        if(!e.isRing&&b.position.distanceTo(e.mesh.position)<4){
+          e.hp--;
+          b.userData.life=0;
+          if(e.hp<=0){
+            this.spawnExplosion(e.mesh.position);
+            this.sc.remove(e.mesh);
+            e.dead=true;
+            this.addScore(e.type==='fighter'?10:30);
+          }
+        }
+      });
+
+      if(b.userData.life<=0){
+        this.sc.remove(b);
+        b.dead=true;
+      }
+    });
+    this.bullets=this.bullets.filter(b=>!b.dead);
+
+    // Update particles
+    this.particles.forEach(p=>{
+      p.position.add(p.userData.vel);
+      p.userData.life--;
+      p.scale.setScalar(p.userData.life/30);
+      if(p.userData.life<=0){
+        this.sc.remove(p);
+        p.dead=true;
+      }
+    });
+    this.particles=this.particles.filter(p=>!p.dead);
+
+    // Clean up buildings behind camera
+    this.buildings=this.buildings.filter(b=>{
+      if(b.position.z>this.distance+100){
+        this.sc.remove(b);
+        return false;
+      }
+      return true;
+    });
+
+    // Boost regeneration
+    this.boost=Math.min(100,this.boost+.1);
+    document.getElementById('boost-fill').style.width=this.boost+'%';
+
+    // Invincibility timer
+    if(this.invincible>0)this.invincible--;
+
+    // Engine glow flicker
+    this.ship.children.forEach(c=>{
+      if(c.userData.isGlow){
+        c.scale.z=.8+Math.random()*.4;
+      }
+    });
+
+    // Check level completion
+    if(this.distance<-this.levelLength){
+      this.complete=true;
+      document.getElementById('mission-complete').style.display='block';
+      document.getElementById('final-score').textContent=this.score;
+      this.showRadio('🦊','Mission accomplished! Great flying!');
+    }
+
+    // Radio messages
+    if(this.distance<-500&&!this.msg1){
+      this.msg1=true;
+      this.showRadio('🐰','Enemy fighters incoming!');
+    }
+    if(this.distance<-1500&&!this.msg2){
+      this.msg2=true;
+      this.showRadio('🦅','Watch out for those buildings!');
+    }
+  },
+
+  animate(){
+    requestAnimationFrame(()=>this.animate());
+
+    this.update();
+
+    // Camera follows ship smoothly
+    this.ca.position.x=T.lerp(this.ca.position.x,this.ship.position.x*.3,.05);
+    this.ca.position.y=T.lerp(this.ca.position.y,10+this.ship.position.y*.2,.05);
+
+    // Ship flashes when invincible
+    if(this.invincible>0){
+      this.ship.visible=Math.floor(this.invincible/3)%2===0;
+    }else{
+      this.ship.visible=true;
+    }
+
+    // Auto-fire with RB held
+    if((this.input.buttons.rb||this.keys.Space)&&Math.random()<.2){
+      this.fire();
+    }
+
+    this.rn.render(this.sc,this.ca);
+  }
+};
+
+onload=()=>G.init();
+onresize=()=>{G.rn.setSize(innerWidth,innerHeight);G.ca.aspect=innerWidth/innerHeight;G.ca.updateProjectionMatrix()};
+</script></body></html>
