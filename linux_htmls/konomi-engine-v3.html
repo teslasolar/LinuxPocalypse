@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🌀 KONOMI v3 - φ-FDM Generative Printer + STL Export</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #0a0a0f;
+  --panel: #111118;
+  --border: #222233;
+  --gold: #ffd700;
+  --cyan: #00ffff;
+  --green: #00ff88;
+  --filament: #ff6b35;
+  --dim: #555566;
+}
+body {
+  background: var(--bg);
+  color: #ccc;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  height: 100vh;
+  overflow: hidden;
+}
+.app {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  height: 100vh;
+}
+.panel {
+  background: var(--panel);
+  padding: 16px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+}
+.panel-title {
+  font-size: 11px;
+  color: var(--cyan);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.viewport {
+  position: relative;
+  background: #050508;
+}
+#canvas-container {
+  width: 100%;
+  height: 100%;
+}
+.overlay {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  font-size: 11px;
+  color: var(--dim);
+  pointer-events: none;
+}
+.overlay-right {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  font-size: 11px;
+  color: var(--dim);
+  text-align: right;
+}
+.control-group { margin-bottom: 20px; }
+.control-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 11px;
+}
+.control-label { color: var(--dim); }
+.control-value { color: var(--cyan); font-weight: bold; }
+input[type="range"] {
+  width: 100%;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  -webkit-appearance: none;
+  margin: 6px 0;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--gold);
+  border-radius: 50%;
+  cursor: pointer;
+}
+button {
+  width: 100%;
+  padding: 12px;
+  background: linear-gradient(135deg, var(--gold), #b8960f);
+  border: none;
+  border-radius: 6px;
+  color: #000;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  margin-bottom: 8px;
+  transition: all 0.2s;
+}
+button:hover { transform: scale(1.02); filter: brightness(1.1); }
+button.secondary { background: var(--border); color: var(--cyan); }
+button.export { background: linear-gradient(135deg, var(--green), #00aa55); }
+button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+select {
+  width: 100%;
+  padding: 10px;
+  background: var(--border);
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #fff;
+  font-family: inherit;
+  font-size: 11px;
+  margin-bottom: 8px;
+}
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.stat-box {
+  background: rgba(0,0,0,0.3);
+  padding: 10px;
+  border-radius: 6px;
+  text-align: center;
+}
+.stat-value { font-size: 18px; font-weight: bold; color: var(--gold); }
+.stat-label { font-size: 9px; color: var(--dim); margin-top: 4px; }
+.progress-bar {
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 10px 0;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--filament), var(--gold));
+  transition: width 0.1s;
+}
+.log {
+  background: #000;
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 9px;
+  max-height: 120px;
+  overflow-y: auto;
+  margin-top: 12px;
+}
+.log-line { margin-bottom: 2px; opacity: 0.8; }
+.log-line.phi { color: var(--gold); }
+.log-line.gen { color: var(--green); }
+.log-line.layer { color: var(--cyan); }
+.seed-display {
+  background: #000;
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  color: var(--gold);
+  text-align: center;
+  margin-bottom: 12px;
+  word-break: break-all;
+}
+.phi-display {
+  text-align: center;
+  padding: 12px;
+  background: rgba(255, 215, 0, 0.05);
+  border: 1px solid var(--gold);
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+.phi-symbol { font-size: 24px; color: var(--gold); }
+.phi-value { font-size: 10px; color: var(--dim); margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="panel">
+    <div class="phi-display">
+      <div class="phi-symbol">φ = 1.618033988...</div>
+      <div class="phi-value">Golden Ratio - Origin of All Geometry</div>
+    </div>
+
+    <div class="panel-title">🎲 Generation</div>
+    <div class="control-group">
+      <div class="control-row">
+        <span class="control-label">Algorithm</span>
+      </div>
+      <select id="algo-select">
+        <option value="phi-walk">φ-Random Walk</option>
+        <option value="golden-tree">Golden Tree</option>
+        <option value="fibonacci-coral">Fibonacci Coral</option>
+        <option value="metallic-crystal">Metallic Crystal</option>
+        <option value="irrational-blob">Irrational Blob</option>
+        <option value="phi-maze">φ-Maze Structure</option>
+        <option value="sqrt-lattice">√2/√3 Lattice</option>
+        <option value="chaos-form">Chaos Attractor</option>
+      </select>
+
+      <div class="control-row">
+        <span class="control-label">Complexity</span>
+        <span class="control-value" id="complexity-val">50</span>
+      </div>
+      <input type="range" id="complexity" min="10" max="200" value="50">
+
+      <div class="control-row">
+        <span class="control-label">Layer Height</span>
+        <span class="control-value" id="layer-val">0.4mm</span>
+      </div>
+      <input type="range" id="layer-height" min="0.2" max="1.0" step="0.1" value="0.4">
+
+      <div class="control-row">
+        <span class="control-label">Nozzle Width</span>
+        <span class="control-value" id="nozzle-val">0.4mm</span>
+      </div>
+      <input type="range" id="nozzle-width" min="0.2" max="1.0" step="0.1" value="0.4">
+
+      <div class="control-row">
+        <span class="control-label">Scale</span>
+        <span class="control-value" id="scale-val">1.0x</span>
+      </div>
+      <input type="range" id="scale" min="0.5" max="3.0" step="0.1" value="1.0">
+    </div>
+
+    <div class="panel-title">🌱 Seed</div>
+    <div class="seed-display" id="seed-display">φ^0 = 1</div>
+    <button class="secondary" onclick="randomizeSeed()">🎲 New Seed</button>
+
+    <div class="panel-title">🖨️ Generate</div>
+    <button id="btn-generate" onclick="generate()">▶ GENERATE</button>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progress" style="width:0%"></div>
+    </div>
+    <div style="text-align:center;font-size:10px;color:var(--dim);">
+      <span id="progress-text">Ready</span>
+    </div>
+
+    <div class="panel-title" style="margin-top:16px">📊 Mesh Stats</div>
+    <div class="stat-grid">
+      <div class="stat-box">
+        <div class="stat-value" id="stat-verts">0</div>
+        <div class="stat-label">Vertices</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value" id="stat-tris">0</div>
+        <div class="stat-label">Triangles</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value" id="stat-layers">0</div>
+        <div class="stat-label">Layers</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value" id="stat-length">0m</div>
+        <div class="stat-label">Path Length</div>
+      </div>
+    </div>
+
+    <div class="panel-title">💾 Export</div>
+    <button class="export" id="btn-export" onclick="exportSTL()" disabled>📥 EXPORT STL</button>
+    <div style="font-size:9px;color:var(--dim);text-align:center;">
+      Binary STL format for 3D printing
+    </div>
+
+    <div class="panel-title" style="margin-top:16px">📜 Log</div>
+    <div class="log" id="log"></div>
+  </div>
+
+  <div class="viewport">
+    <div id="canvas-container"></div>
+    <div class="overlay">
+      <div>Vertices: <span id="ov-verts">0</span></div>
+      <div>Triangles: <span id="ov-tris">0</span></div>
+      <div>Z: <span id="ov-z">0.00</span>mm</div>
+    </div>
+    <div class="overlay-right">
+      <div>φ-Seed: <span id="ov-seed">1.0</span></div>
+      <div>Algorithm: <span id="ov-algo">φ-Walk</span></div>
+      <div>Drag to rotate | Scroll to zoom</div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// 🌀 KONOMI v3 - φ-FDM GENERATIVE PRINTER WITH STL EXPORT
+// ═══════════════════════════════════════════════════════════════════
+
+// IRRATIONAL CONSTANTS
+const PHI = 1.6180339887498948482045868343656381177203091798057628621354;
+const PHI_INV = 0.6180339887498948482045868343656381177203091798057628621354;
+const SQRT2 = 1.4142135623730950488016887242097;
+const SQRT3 = 1.7320508075688772935274463415059;
+const SQRT5 = 2.2360679774997896964091736687747632;
+
+// Three.js globals
+let scene, camera, renderer, controls;
+let printMesh = null;
+let buildPlateMesh = null;
+
+// Generation state
+let seed = PHI;
+let generating = false;
+let pathPoints = [];
+
+// ═══════════════════════════════════════════════════════════════════
+// 🎲 φ-BASED RANDOM NUMBER GENERATOR
+// ═══════════════════════════════════════════════════════════════════
+class PhiRandom {
+  constructor(s = PHI) {
+    this.seed = s;
+    this.state = s;
+  }
+
+  next() {
+    // Use φ-based chaos map
+    this.state = (this.state * PHI * 1000) % 1;
+    if (this.state === 0) this.state = PHI_INV;
+    return this.state;
+  }
+
+  range(min, max) {
+    return min + this.next() * (max - min);
+  }
+
+  int(min, max) {
+    return Math.floor(this.range(min, max + 1));
+  }
+
+  choice(arr) {
+    return arr[this.int(0, arr.length - 1)];
+  }
+
+  // φ-weighted random - prefers golden ratio proportions
+  phiWeighted() {
+    const r = this.next();
+    return r < PHI_INV ? r * PHI : r;
+  }
+}
+
+let rng = new PhiRandom(PHI);
+
+// ═══════════════════════════════════════════════════════════════════
+// 🔧 THREE.JS SETUP
+// ═══════════════════════════════════════════════════════════════════
+function initThree() {
+  const container = document.getElementById('canvas-container');
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x050508);
+
+  camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
+  camera.position.set(80, 60, 80);
+  camera.lookAt(0, 20, 0);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  container.appendChild(renderer.domElement);
+
+  // Lights
+  const ambient = new THREE.AmbientLight(0x404040, 0.5);
+  scene.add(ambient);
+
+  const directional = new THREE.DirectionalLight(0xffffff, 1);
+  directional.position.set(50, 100, 50);
+  scene.add(directional);
+
+  const directional2 = new THREE.DirectionalLight(0x8888ff, 0.5);
+  directional2.position.set(-50, 50, -50);
+  scene.add(directional2);
+
+  // Build plate
+  const plateGeom = new THREE.BoxGeometry(100, 2, 100);
+  const plateMat = new THREE.MeshStandardMaterial({
+    color: 0x222233,
+    metalness: 0.3,
+    roughness: 0.8
+  });
+  buildPlateMesh = new THREE.Mesh(plateGeom, plateMat);
+  buildPlateMesh.position.y = -1;
+  scene.add(buildPlateMesh);
+
+  // Grid helper
+  const grid = new THREE.GridHelper(100, 20, 0x444455, 0x222233);
+  grid.position.y = 0.01;
+  scene.add(grid);
+
+  // Origin marker
+  const originGeom = new THREE.SphereGeometry(1, 16, 16);
+  const originMat = new THREE.MeshBasicMaterial({ color: 0xffd700 });
+  const origin = new THREE.Mesh(originGeom, originMat);
+  origin.position.y = 0.5;
+  scene.add(origin);
+
+  // Simple orbit controls
+  initControls();
+
+  window.addEventListener('resize', onResize);
+  animate();
+}
+
+function initControls() {
+  let isDragging = false;
+  let previousMousePosition = { x: 0, y: 0 };
+  let spherical = { theta: Math.PI / 4, phi: Math.PI / 4, radius: 120 };
+
+  const canvas = renderer.domElement;
+
+  canvas.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    previousMousePosition = { x: e.clientX, y: e.clientY };
+  });
+
+  canvas.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+
+    const deltaX = e.clientX - previousMousePosition.x;
+    const deltaY = e.clientY - previousMousePosition.y;
+
+    spherical.theta -= deltaX * 0.01;
+    spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi + deltaY * 0.01));
+
+    updateCamera();
+    previousMousePosition = { x: e.clientX, y: e.clientY };
+  });
+
+  canvas.addEventListener('mouseup', () => isDragging = false);
+  canvas.addEventListener('mouseleave', () => isDragging = false);
+
+  canvas.addEventListener('wheel', (e) => {
+    spherical.radius = Math.max(30, Math.min(300, spherical.radius + e.deltaY * 0.1));
+    updateCamera();
+    e.preventDefault();
+  });
+
+  function updateCamera() {
+    camera.position.x = spherical.radius * Math.sin(spherical.phi) * Math.cos(spherical.theta);
+    camera.position.y = spherical.radius * Math.cos(spherical.phi);
+    camera.position.z = spherical.radius * Math.sin(spherical.phi) * Math.sin(spherical.theta);
+    camera.lookAt(0, 20, 0);
+  }
+
+  updateCamera();
+}
+
+function onResize() {
+  const container = document.getElementById('canvas-container');
+  camera.aspect = container.clientWidth / container.clientHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(container.clientWidth, container.clientHeight);
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  renderer.render(scene, camera);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 🌀 GENERATIVE ALGORITHMS - ALL φ-DRIVEN
+// ═══════════════════════════════════════════════════════════════════
+
+function generatePath(algorithm, complexity, layerHeight, scale) {
+  pathPoints = [];
+  rng = new PhiRandom(seed);
+
+  const numLayers = Math.floor(complexity * PHI);
+  let currentZ = 0;
+
+  log(`Generating ${algorithm} with ${numLayers} layers...`, 'gen');
+
+  switch (algorithm) {
+    case 'phi-walk':
+      generatePhiWalk(numLayers, layerHeight, scale);
+      break;
+    case 'golden-tree':
+      generateGoldenTree(numLayers, layerHeight, scale);
+      break;
+    case 'fibonacci-coral':
+      generateFibonacciCoral(numLayers, layerHeight, scale);
+      break;
+    case 'metallic-crystal':
+      generateMetallicCrystal(numLayers, layerHeight, scale);
+      break;
+    case 'irrational-blob':
+      generateIrrationalBlob(numLayers, layerHeight, scale);
+      break;
+    case 'phi-maze':
+      generatePhiMaze(numLayers, layerHeight, scale);
+      break;
+    case 'sqrt-lattice':
+      generateSqrtLattice(numLayers, layerHeight, scale);
+      break;
+    case 'chaos-form':
+      generateChaosForm(numLayers, layerHeight, scale);
+      break;
+  }
+
+  return pathPoints;
+}
+
+function generatePhiWalk(layers, layerH, scale) {
+  let x = 0, y = 0, z = 0;
+  let angle = 0;
+
+  for (let layer = 0; layer < layers; layer++) {
+    z = layer * layerH;
+    const layerPoints = Math.floor(20 + rng.next() * 30);
+
+    for (let i = 0; i < layerPoints; i++) {
+      // φ-weighted angle change
+      angle += (rng.next() - 0.5) * Math.PI * PHI_INV;
+
+      // Step size based on φ
+      const step = (1 + rng.phiWeighted() * 2) * scale;
+
+      x += Math.cos(angle) * step;
+      y += Math.sin(angle) * step;
+
+      // Constrain to build area
+      const maxR = 40 * scale;
+      const r = Math.sqrt(x * x + y * y);
+      if (r > maxR) {
+        x *= maxR / r;
+        y *= maxR / r;
+        angle += Math.PI; // Turn around
+      }
+
+      pathPoints.push({ x, y, z });
+    }
+
+    // Return to near center occasionally
+    if (rng.next() < PHI_INV) {
+      x *= PHI_INV;
+      y *= PHI_INV;
+      pathPoints.push({ x, y, z });
+    }
+  }
+}
+
+function generateGoldenTree(layers, layerH, scale) {
+  const branches = [];
+  branches.push({ x: 0, y: 0, z: 0, angle: 0, length: 10 * scale });
+
+  for (let layer = 0; layer < layers; layer++) {
+    const z = layer * layerH;
+    const newBranches = [];
+
+    for (const branch of branches) {
+      // Trace branch
+      const steps = Math.floor(branch.length / 2);
+      let bx = branch.x, by = branch.y;
+
+      for (let s = 0; s < steps; s++) {
+        bx += Math.cos(branch.angle) * 2;
+        by += Math.sin(branch.angle) * 2;
+        pathPoints.push({ x: bx, y: by, z });
+      }
+
+      // Branch at φ angle
+      if (rng.next() < 0.7 && branches.length < 50) {
+        const branchAngle = Math.PI / 5; // 36° - golden angle
+        newBranches.push({
+          x: bx, y: by, z,
+          angle: branch.angle + branchAngle,
+          length: branch.length * PHI_INV
+        });
+        newBranches.push({
+          x: bx, y: by, z,
+          angle: branch.angle - branchAngle,
+          length: branch.length * PHI_INV
+        });
+      } else {
+        newBranches.push({
+          x: bx, y: by, z,
+          angle: branch.angle + (rng.next() - 0.5) * 0.3,
+          length: branch.length * 0.9
+        });
+      }
+    }
+
+    branches.length = 0;
+    branches.push(...newBranches.slice(0, 30));
+  }
+}
+
+function generateFibonacciCoral(layers, layerH, scale) {
+  const fibs = [1, 1, 2, 3, 5, 8, 13, 21, 34, 55];
+
+  for (let layer = 0; layer < layers; layer++) {
+    const z = layer * layerH;
+    const fibIdx = layer % fibs.length;
+    const numArms = fibs[fibIdx] % 8 + 3;
+    const radius = (10 + layer * 0.5) * scale * PHI_INV;
+
+    for (let arm = 0; arm < numArms; arm++) {
+      const baseAngle = (arm / numArms) * Math.PI * 2;
+
+      // Coral arm with φ-spiral
+      for (let t = 0; t < 20; t++) {
+        const spiralR = radius * (1 + t * 0.1 * PHI_INV);
+        const spiralAngle = baseAngle + t * PHI_INV * 0.5;
+
+        const wobble = Math.sin(t * PHI) * 2 * rng.next();
+
+        pathPoints.push({
+          x: Math.cos(spiralAngle) * spiralR + wobble,
+          y: Math.sin(spiralAngle) * spiralR + wobble,
+          z
+        });
+      }
+    }
+  }
+}
+
+function generateMetallicCrystal(layers, layerH, scale) {
+  const metals = [PHI, SQRT2 + 1, (3 + Math.sqrt(13)) / 2]; // Gold, Silver, Bronze
+
+  for (let layer = 0; layer < layers; layer++) {
+    const z = layer * layerH;
+    const metal = metals[layer % 3];
+    const sides = Math.floor(metal * 3);
+    const radius = (20 + Math.sin(layer * PHI_INV) * 10) * scale;
+
+    // Crystal facet
+    for (let i = 0; i <= sides; i++) {
+      const angle = (i / sides) * Math.PI * 2 + layer * 0.1;
+      const r = radius * (1 + rng.next() * 0.2 * PHI_INV);
+
+      pathPoints.push({
+        x: Math.cos(angle) * r,
+        y: Math.sin(angle) * r,
+        z
+      });
+    }
+
+    // Internal lattice
+    if (layer % 3 === 0) {
+      for (let i = 0; i < 5; i++) {
+        const angle = rng.next() * Math.PI * 2;
+        const r = rng.next() * radius * PHI_INV;
+        pathPoints.push({ x: Math.cos(angle) * r, y: Math.sin(angle) * r, z });
+        pathPoints.push({ x: 0, y: 0, z });
+      }
+    }
+  }
+}
+
+function generateIrrationalBlob(layers, layerH, scale) {
+  for (let layer = 0; layer < layers; layer++) {
+    const z = layer * layerH;
+    const baseRadius = 25 * scale;
+
+    // Organic blob using multiple irrational frequencies
+    const points = 60;
+    for (let i = 0; i <= points; i++) {
+      const angle = (i / points) * Math.PI * 2;
+
+      // Combine irrational frequencies
+      const r = baseRadius * (
+        1 +
+        0.3 * Math.sin(angle * PHI * 3 + layer * 0.2) +
+        0.2 * Math.sin(angle * SQRT2 * 5 + layer * 0.3) +
+        0.15 * Math.sin(angle * SQRT3 * 7 + layer * 0.1) +
+        0.1 * Math.cos(angle * SQRT5 * 2 + layer * 0.4)
+      );
+
+      // Vertical modulation
+      const zMod = 1 - Math.abs(layer - layers / 2) / (layers / 2) * 0.5;
+
+      pathPoints.push({
+        x: Math.cos(angle) * r * zMod,
+        y: Math.sin(angle) * r * zMod,
+        z
+      });
+    }
+  }
+}
+
+function generatePhiMaze(layers, layerH, scale) {
+  const gridSize = 15;
+  const cellSize = 3 * scale;
+  const visited = new Set();
+
+  let cx = Math.floor(gridSize / 2);
+  let cy = Math.floor(gridSize / 2);
+
+  for (let layer = 0; layer < layers; layer++) {
+    const z = layer * layerH;
+    visited.clear();
+
+    // Random walk maze on this layer
+    cx = Math.floor(gridSize / 2);
+    cy = Math.floor(gridSize / 2);
+
+    for (let step = 0; step < gridSize * gridSize * PHI_INV; step++) {
+      visited.add(`${cx},${cy}`);
+
+      const worldX = (cx - gridSize / 2) * cellSize;
+      const worldY = (cy - gridSize / 2) * cellSize;
+      pathPoints.push({ x: worldX, y: worldY, z });
+
+      // φ-weighted direction choice
+      const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+      const weights = dirs.map(() => rng.phiWeighted());
+      const totalWeight = weights.reduce((a, b) => a + b, 0);
+
+      let r = rng.next() * totalWeight;
+      let chosen = 0;
+      for (let i = 0; i < weights.length; i++) {
+        r -= weights[i];
+        if (r <= 0) { chosen = i; break; }
+      }
+
+      const [dx, dy] = dirs[chosen];
+      const nx = cx + dx;
+      const ny = cy + dy;
+
+      if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
+        cx = nx;
+        cy = ny;
+      }
+    }
+  }
+}
+
+function generateSqrtLattice(layers, layerH, scale) {
+  for (let layer = 0; layer < layers; layer++) {
+    const z = layer * layerH;
+
+    // √2 diagonal lines
+    const spacing = 4 * scale;
+    const size = 30 * scale;
+
+    // Alternate √2 and √3 patterns per layer
+    const ratio = layer % 2 === 0 ? SQRT2 : SQRT3;
+
+    for (let i = -5; i <= 5; i++) {
+      const offset = i * spacing * ratio;
+
+      // Diagonal line
+      for (let t = -size; t <= size; t += 2) {
+        const diag = layer % 2 === 0 ? 1 : -1;
+        pathPoints.push({
+          x: t + offset * PHI_INV,
+          y: t * diag + offset,
+          z
+        });
+      }
+    }
+
+    // Cross pattern
+    if (layer % 3 === 0) {
+      for (let t = -size; t <= size; t += 3) {
+        pathPoints.push({ x: t, y: 0, z });
+      }
+      for (let t = -size; t <= size; t += 3) {
+        pathPoints.push({ x: 0, y: t, z });
+      }
+    }
+  }
+}
+
+function generateChaosForm(layers, layerH, scale) {
+  // Lorenz-like attractor modified with φ
+  let x = 0.1, y = 0, lz = 0;
+  const sigma = 10 * PHI_INV;
+  const rho = 28 * PHI_INV;
+  const beta = 8 / 3 * PHI_INV;
+  const dt = 0.01;
+
+  let currentLayer = 0;
+
+  for (let i = 0; i < layers * 100; i++) {
+    const dx = sigma * (y - x);
+    const dy = x * (rho - lz) - y;
+    const dlz = x * y - beta * lz;
+
+    x += dx * dt;
+    y += dy * dt;
+    lz += dlz * dt;
+
+    // Map to print coordinates
+    const printZ = (i / (layers * 100)) * layers * layerH;
+    const newLayer = Math.floor(printZ / layerH);
+
+    if (newLayer !== currentLayer) {
+      currentLayer = newLayer;
+    }
+
+    pathPoints.push({
+      x: x * scale * 1.5,
+      y: y * scale * 1.5,
+      z: printZ
+    });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 🔧 MESH GENERATION - TUBE ALONG PATH
+// ═══════════════════════════════════════════════════════════════════
+
+function createPrintMesh(path, nozzleWidth, layerHeight) {
+  if (printMesh) {
+    scene.remove(printMesh);
+    printMesh.geometry.dispose();
+    printMesh.material.dispose();
+  }
+
+  if (path.length < 2) return null;
+
+  // Create tube geometry along path
+  const vertices = [];
+  const indices = [];
+  const normals = [];
+
+  const tubeRadius = nozzleWidth / 2;
+  const tubeSegments = 6; // Hexagonal cross-section for flat bottom
+
+  for (let i = 0; i < path.length; i++) {
+    const p = path[i];
+    const pPrev = path[Math.max(0, i - 1)];
+    const pNext = path[Math.min(path.length - 1, i + 1)];
+
+    // Direction vector
+    const dir = {
+      x: pNext.x - pPrev.x,
+      y: pNext.y - pPrev.y,
+      z: pNext.z - pPrev.z
+    };
+
+    const len = Math.sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z) || 1;
+    dir.x /= len;
+    dir.y /= len;
+    dir.z /= len;
+
+    // Perpendicular vectors for tube cross-section
+    let perpX = { x: 0, y: 1, z: 0 };
+    if (Math.abs(dir.y) > 0.9) {
+      perpX = { x: 1, y: 0, z: 0 };
+    }
+
+    // Cross product for perpendicular
+    const perp1 = {
+      x: dir.y * perpX.z - dir.z * perpX.y,
+      y: dir.z * perpX.x - dir.x * perpX.z,
+      z: dir.x * perpX.y - dir.y * perpX.x
+    };
+    const perp1Len = Math.sqrt(perp1.x * perp1.x + perp1.y * perp1.y + perp1.z * perp1.z) || 1;
+    perp1.x /= perp1Len;
+    perp1.y /= perp1Len;
+    perp1.z /= perp1Len;
+
+    const perp2 = {
+      x: dir.y * perp1.z - dir.z * perp1.y,
+      y: dir.z * perp1.x - dir.x * perp1.z,
+      z: dir.x * perp1.y - dir.y * perp1.x
+    };
+
+    // Create ring of vertices
+    for (let j = 0; j < tubeSegments; j++) {
+      const angle = (j / tubeSegments) * Math.PI * 2;
+
+      // Flatten the bottom half for realistic extrusion
+      let rX = tubeRadius * Math.cos(angle);
+      let rY = tubeRadius * Math.sin(angle);
+      if (rY < 0) rY *= layerHeight / nozzleWidth; // Squash bottom
+
+      const vx = p.x + perp1.x * rX + perp2.x * rY;
+      const vy = p.y + perp1.y * rX + perp2.y * rY;
+      const vz = p.z + perp1.z * rX + perp2.z * rY;
+
+      vertices.push(vx, vy + p.z, vz); // Swap Y and Z for Three.js
+
+      // Normal
+      const nx = perp1.x * Math.cos(angle) + perp2.x * Math.sin(angle);
+      const ny = perp1.y * Math.cos(angle) + perp2.y * Math.sin(angle);
+      const nz = perp1.z * Math.cos(angle) + perp2.z * Math.sin(angle);
+      normals.push(nx, ny, nz);
+    }
+
+    // Create triangles connecting to previous ring
+    if (i > 0) {
+      const ringStart = i * tubeSegments;
+      const prevRingStart = (i - 1) * tubeSegments;
+
+      for (let j = 0; j < tubeSegments; j++) {
+        const j2 = (j + 1) % tubeSegments;
+
+        // Two triangles per quad
+        indices.push(
+          prevRingStart + j,
+          ringStart + j,
+          prevRingStart + j2
+        );
+        indices.push(
+          prevRingStart + j2,
+          ringStart + j,
+          ringStart + j2
+        );
+      }
+    }
+  }
+
+  // Create geometry
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+
+  // Material - printed filament look
+  const material = new THREE.MeshStandardMaterial({
+    color: 0xff6b35,
+    metalness: 0.1,
+    roughness: 0.6,
+    flatShading: false
+  });
+
+  printMesh = new THREE.Mesh(geometry, material);
+  scene.add(printMesh);
+
+  return {
+    vertices: vertices.length / 3,
+    triangles: indices.length / 3
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 💾 STL EXPORT
+// ═══════════════════════════════════════════════════════════════════
+
+function exportSTL() {
+  if (!printMesh) {
+    log('No mesh to export!', 'error');
+    return;
+  }
+
+  log('Generating STL...', 'gen');
+
+  const geometry = printMesh.geometry;
+  const positions = geometry.getAttribute('position');
+  const indices = geometry.getIndex();
+
+  // Binary STL format
+  const triangleCount = indices ? indices.count / 3 : positions.count / 9;
+  const bufferSize = 84 + (triangleCount * 50); // Header + triangles
+  const buffer = new ArrayBuffer(bufferSize);
+  const view = new DataView(buffer);
+
+  // Header (80 bytes)
+  const header = 'KONOMI v3 - PHI-FDM Generated STL - Golden Ratio: 1.6180339887';
+  for (let i = 0; i < 80; i++) {
+    view.setUint8(i, i < header.length ? header.charCodeAt(i) : 0);
+  }
+
+  // Triangle count (4 bytes)
+  view.setUint32(80, triangleCount, true);
+
+  let offset = 84;
+
+  // Write triangles
+  for (let i = 0; i < triangleCount; i++) {
+    let i0, i1, i2;
+
+    if (indices) {
+      i0 = indices.getX(i * 3);
+      i1 = indices.getX(i * 3 + 1);
+      i2 = indices.getX(i * 3 + 2);
+    } else {
+      i0 = i * 3;
+      i1 = i * 3 + 1;
+      i2 = i * 3 + 2;
+    }
+
+    // Get vertices
+    const v0 = { x: positions.getX(i0), y: positions.getY(i0), z: positions.getZ(i0) };
+    const v1 = { x: positions.getX(i1), y: positions.getY(i1), z: positions.getZ(i1) };
+    const v2 = { x: positions.getX(i2), y: positions.getY(i2), z: positions.getZ(i2) };
+
+    // Calculate normal
+    const ax = v1.x - v0.x, ay = v1.y - v0.y, az = v1.z - v0.z;
+    const bx = v2.x - v0.x, by = v2.y - v0.y, bz = v2.z - v0.z;
+    const nx = ay * bz - az * by;
+    const ny = az * bx - ax * bz;
+    const nz = ax * by - ay * bx;
+    const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+
+    // Normal (12 bytes)
+    view.setFloat32(offset, nx / len, true); offset += 4;
+    view.setFloat32(offset, ny / len, true); offset += 4;
+    view.setFloat32(offset, nz / len, true); offset += 4;
+
+    // Vertex 1 (12 bytes)
+    view.setFloat32(offset, v0.x, true); offset += 4;
+    view.setFloat32(offset, v0.y, true); offset += 4;
+    view.setFloat32(offset, v0.z, true); offset += 4;
+
+    // Vertex 2 (12 bytes)
+    view.setFloat32(offset, v1.x, true); offset += 4;
+    view.setFloat32(offset, v1.y, true); offset += 4;
+    view.setFloat32(offset, v1.z, true); offset += 4;
+
+    // Vertex 3 (12 bytes)
+    view.setFloat32(offset, v2.x, true); offset += 4;
+    view.setFloat32(offset, v2.y, true); offset += 4;
+    view.setFloat32(offset, v2.z, true); offset += 4;
+
+    // Attribute byte count (2 bytes)
+    view.setUint16(offset, 0, true); offset += 2;
+  }
+
+  // Download
+  const blob = new Blob([buffer], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `konomi-phi-${Date.now()}.stl`;
+  a.click();
+  URL.revokeObjectURL(url);
+
+  log(`Exported ${triangleCount} triangles to STL`, 'phi');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 🎛️ UI CONTROLS
+// ═══════════════════════════════════════════════════════════════════
+
+function randomizeSeed() {
+  seed = Math.pow(PHI, Math.random() * 10);
+  document.getElementById('seed-display').textContent = `φ^${Math.log(seed) / Math.log(PHI).toFixed(3)} = ${seed.toFixed(8)}`;
+  document.getElementById('ov-seed').textContent = seed.toFixed(4);
+  log(`New seed: ${seed.toFixed(8)}`, 'phi');
+}
+
+async function generate() {
+  if (generating) return;
+  generating = true;
+
+  const algo = document.getElementById('algo-select').value;
+  const complexity = parseInt(document.getElementById('complexity').value);
+  const layerH = parseFloat(document.getElementById('layer-height').value);
+  const nozzleW = parseFloat(document.getElementById('nozzle-width').value);
+  const scale = parseFloat(document.getElementById('scale').value);
+
+  document.getElementById('btn-generate').disabled = true;
+  document.getElementById('btn-export').disabled = true;
+  document.getElementById('ov-algo').textContent = algo;
+  document.getElementById('progress-text').textContent = 'Generating path...';
+
+  log(`Starting generation: ${algo}`, 'gen');
+
+  // Generate path
+  await new Promise(r => setTimeout(r, 50));
+  const path = generatePath(algo, complexity, layerH, scale);
+
+  document.getElementById('progress').style.width = '50%';
+  document.getElementById('progress-text').textContent = 'Building mesh...';
+
+  // Create mesh
+  await new Promise(r => setTimeout(r, 50));
+  const stats = createPrintMesh(path, nozzleW, layerH);
+
+  if (stats) {
+    document.getElementById('stat-verts').textContent = stats.vertices.toLocaleString();
+    document.getElementById('stat-tris').textContent = stats.triangles.toLocaleString();
+    document.getElementById('ov-verts').textContent = stats.vertices.toLocaleString();
+    document.getElementById('ov-tris').textContent = stats.triangles.toLocaleString();
+  }
+
+  // Calculate stats
+  const maxZ = path.reduce((max, p) => Math.max(max, p.z), 0);
+  const numLayers = Math.ceil(maxZ / layerH);
+  let pathLength = 0;
+  for (let i = 1; i < path.length; i++) {
+    const dx = path[i].x - path[i - 1].x;
+    const dy = path[i].y - path[i - 1].y;
+    const dz = path[i].z - path[i - 1].z;
+    pathLength += Math.sqrt(dx * dx + dy * dy + dz * dz);
+  }
+
+  document.getElementById('stat-layers').textContent = numLayers;
+  document.getElementById('stat-length').textContent = (pathLength / 1000).toFixed(2) + 'm';
+  document.getElementById('ov-z').textContent = maxZ.toFixed(2);
+
+  document.getElementById('progress').style.width = '100%';
+  document.getElementById('progress-text').textContent = 'Complete!';
+
+  document.getElementById('btn-generate').disabled = false;
+  document.getElementById('btn-export').disabled = false;
+
+  log(`Generated ${path.length} points, ${numLayers} layers`, 'layer');
+  generating = false;
+}
+
+function log(msg, type = 'gen') {
+  const logEl = document.getElementById('log');
+  const line = document.createElement('div');
+  line.className = `log-line ${type}`;
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+// Slider listeners
+document.getElementById('complexity').oninput = function() {
+  document.getElementById('complexity-val').textContent = this.value;
+};
+document.getElementById('layer-height').oninput = function() {
+  document.getElementById('layer-val').textContent = this.value + 'mm';
+};
+document.getElementById('nozzle-width').oninput = function() {
+  document.getElementById('nozzle-val').textContent = this.value + 'mm';
+};
+document.getElementById('scale').oninput = function() {
+  document.getElementById('scale-val').textContent = this.value + 'x';
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// 🚀 INIT
+// ═══════════════════════════════════════════════════════════════════
+
+window.onload = function() {
+  initThree();
+  randomizeSeed();
+  log('🌀 KONOMI v3 initialized', 'phi');
+  log(`φ = ${PHI}`, 'phi');
+  log('Select algorithm and click GENERATE', 'gen');
+};
+</script>
+</body>
+</html>
