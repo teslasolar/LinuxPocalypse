@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🌀 KONOMI v4 - φ-FDM Proper Layer Stacking</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #0a0a0f;
+  --panel: #111118;
+  --border: #222233;
+  --gold: #ffd700;
+  --cyan: #00ffff;
+  --green: #00ff88;
+  --filament: #ff6b35;
+  --dim: #555566;
+}
+body {
+  background: var(--bg);
+  color: #ccc;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  height: 100vh;
+  overflow: hidden;
+}
+.app {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  height: 100vh;
+}
+.panel {
+  background: var(--panel);
+  padding: 14px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+}
+.panel-title {
+  font-size: 10px;
+  color: var(--cyan);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 14px 0 10px 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.panel-title:first-child { margin-top: 0; }
+.viewport {
+  position: relative;
+  background: #050508;
+}
+#canvas-container { width: 100%; height: 100%; }
+.overlay {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  font-size: 10px;
+  color: var(--dim);
+  pointer-events: none;
+  line-height: 1.6;
+}
+.overlay-right {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-size: 10px;
+  color: var(--dim);
+  text-align: right;
+  line-height: 1.6;
+}
+.control-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 11px;
+}
+.control-label { color: var(--dim); }
+.control-value { color: var(--cyan); font-weight: bold; }
+input[type="range"] {
+  width: 100%;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  -webkit-appearance: none;
+  margin: 4px 0 10px 0;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  background: var(--gold);
+  border-radius: 50%;
+  cursor: pointer;
+}
+button {
+  width: 100%;
+  padding: 10px;
+  background: linear-gradient(135deg, var(--gold), #b8960f);
+  border: none;
+  border-radius: 5px;
+  color: #000;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 11px;
+  cursor: pointer;
+  margin-bottom: 6px;
+}
+button:hover { filter: brightness(1.1); }
+button.secondary { background: var(--border); color: var(--cyan); }
+button.export { background: linear-gradient(135deg, var(--green), #00aa55); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+select {
+  width: 100%;
+  padding: 8px;
+  background: var(--border);
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #fff;
+  font-family: inherit;
+  font-size: 10px;
+  margin-bottom: 10px;
+}
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.stat-box {
+  background: rgba(0,0,0,0.3);
+  padding: 8px;
+  border-radius: 4px;
+  text-align: center;
+}
+.stat-value { font-size: 14px; font-weight: bold; color: var(--gold); }
+.stat-label { font-size: 8px; color: var(--dim); margin-top: 2px; }
+.progress-bar {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--filament), var(--gold));
+  transition: width 0.1s;
+}
+.log {
+  background: #000;
+  border-radius: 4px;
+  padding: 6px;
+  font-size: 9px;
+  max-height: 100px;
+  overflow-y: auto;
+}
+.log-line { margin-bottom: 2px; opacity: 0.8; }
+.log-line.phi { color: var(--gold); }
+.log-line.gen { color: var(--green); }
+.log-line.layer { color: var(--cyan); }
+.phi-box {
+  text-align: center;
+  padding: 10px;
+  background: rgba(255,215,0,0.05);
+  border: 1px solid rgba(255,215,0,0.3);
+  border-radius: 5px;
+  margin-bottom: 10px;
+}
+.phi-symbol { font-size: 16px; color: var(--gold); }
+.phi-value { font-size: 9px; color: var(--dim); margin-top: 4px; }
+.layer-vis {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+.layer-block {
+  width: 8px;
+  height: 8px;
+  background: var(--filament);
+  border-radius: 1px;
+  opacity: 0.3;
+}
+.layer-block.done { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="panel">
+    <div class="phi-box">
+      <div class="phi-symbol">φ = 1.6180339887...</div>
+      <div class="phi-value">Proper FDM Layer Stacking</div>
+    </div>
+
+    <div class="panel-title">🎲 Algorithm</div>
+    <select id="algo-select">
+      <option value="phi-walk">φ-Random Walk</option>
+      <option value="golden-spiral">Golden Spiral Stack</option>
+      <option value="fibonacci-tower">Fibonacci Tower</option>
+      <option value="organic-blob">Organic Blob</option>
+      <option value="crystal-growth">Crystal Growth</option>
+      <option value="maze-stack">Maze Stack</option>
+      <option value="wave-form">Metallic Waves</option>
+      <option value="tree-branch">Golden Tree</option>
+    </select>
+
+    <div class="panel-title">🖨️ Print Settings</div>
+    <div class="control-row">
+      <span class="control-label">Layer Height</span>
+      <span class="control-value" id="layer-val">0.2mm</span>
+    </div>
+    <input type="range" id="layer-height" min="0.1" max="0.5" step="0.05" value="0.2">
+
+    <div class="control-row">
+      <span class="control-label">Nozzle Dia</span>
+      <span class="control-value" id="nozzle-val">0.4mm</span>
+    </div>
+    <input type="range" id="nozzle-width" min="0.2" max="0.8" step="0.1" value="0.4">
+
+    <div class="control-row">
+      <span class="control-label">Layers</span>
+      <span class="control-value" id="num-layers-val">30</span>
+    </div>
+    <input type="range" id="num-layers" min="5" max="100" step="5" value="30">
+
+    <div class="control-row">
+      <span class="control-label">Scale</span>
+      <span class="control-value" id="scale-val">1.0x</span>
+    </div>
+    <input type="range" id="scale" min="0.5" max="2.0" step="0.1" value="1.0">
+
+    <div class="panel-title">🌱 Seed</div>
+    <div style="font-size:10px;color:var(--gold);text-align:center;margin-bottom:8px;" id="seed-display">φ² = 2.618...</div>
+    <button class="secondary" onclick="randomizeSeed()">🎲 Random Seed</button>
+
+    <div class="panel-title">▶ Generate</div>
+    <button id="btn-generate" onclick="generate()">GENERATE PRINT</button>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progress" style="width:0%"></div>
+    </div>
+
+    <div class="panel-title">📊 Stats</div>
+    <div class="stat-grid">
+      <div class="stat-box">
+        <div class="stat-value" id="stat-verts">0</div>
+        <div class="stat-label">Vertices</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value" id="stat-tris">0</div>
+        <div class="stat-label">Triangles</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value" id="stat-height">0</div>
+        <div class="stat-label">Height (mm)</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value" id="stat-length">0</div>
+        <div class="stat-label">Path (m)</div>
+      </div>
+    </div>
+
+    <div class="panel-title">📐 Layers</div>
+    <div class="layer-vis" id="layer-vis"></div>
+
+    <div class="panel-title">💾 Export</div>
+    <button class="export" id="btn-export" onclick="exportSTL()" disabled>📥 EXPORT STL</button>
+
+    <div class="panel-title">📜 Log</div>
+    <div class="log" id="log"></div>
+  </div>
+
+  <div class="viewport">
+    <div id="canvas-container"></div>
+    <div class="overlay">
+      <div>Vertices: <span id="ov-verts">0</span></div>
+      <div>Triangles: <span id="ov-tris">0</span></div>
+      <div>Height: <span id="ov-height">0</span>mm</div>
+      <div>Layer: <span id="ov-layer">0</span>/<span id="ov-total">0</span></div>
+    </div>
+    <div class="overlay-right">
+      <div>Drag: Rotate | Scroll: Zoom</div>
+      <div>Nozzle: <span id="ov-nozzle">0.4</span>mm</div>
+      <div>Layer H: <span id="ov-layerh">0.2</span>mm</div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// 🌀 KONOMI v4 - PROPER FDM LAYER STACKING
+// ═══════════════════════════════════════════════════════════════════
+
+const PHI = 1.6180339887498948482045868343656381177203091798057628621354;
+const PHI_INV = 0.6180339887498948482045868343656381177203091798057628621354;
+const SQRT2 = 1.4142135623730950488016887242097;
+const SQRT3 = 1.7320508075688772935274463415059;
+const SQRT5 = 2.2360679774997896964091736687747632;
+
+let scene, camera, renderer;
+let printMesh = null;
+let seed = PHI * PHI;
+let generating = false;
+
+// ═══════════════════════════════════════════════════════════════════
+// φ-RNG
+// ═══════════════════════════════════════════════════════════════════
+class PhiRNG {
+  constructor(s) {
+    this.seed = s;
+    this.state = s;
+  }
+  next() {
+    this.state = (this.state * PHI * 1000) % 1;
+    if (this.state === 0) this.state = PHI_INV;
+    return this.state;
+  }
+  range(min, max) { return min + this.next() * (max - min); }
+  int(min, max) { return Math.floor(this.range(min, max + 1)); }
+  angle() { return this.next() * Math.PI * 2; }
+  phi() { return this.next() < PHI_INV ? this.next() * PHI : this.next(); }
+}
+
+let rng;
+
+// ═══════════════════════════════════════════════════════════════════
+// THREE.JS SETUP
+// ═══════════════════════════════════════════════════════════════════
+function initThree() {
+  const container = document.getElementById('canvas-container');
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x050508);
+
+  camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+  camera.position.set(60, 40, 60);
+  camera.lookAt(0, 10, 0);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  container.appendChild(renderer.domElement);
+
+  // Lighting
+  scene.add(new THREE.AmbientLight(0x404050, 0.6));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+  sun.position.set(30, 50, 30);
+  scene.add(sun);
+  const fill = new THREE.DirectionalLight(0x8888ff, 0.3);
+  fill.position.set(-30, 20, -30);
+  scene.add(fill);
+
+  // Build plate - flat on XZ plane, Y=0 is the surface
+  const plate = new THREE.Mesh(
+    new THREE.BoxGeometry(80, 1, 80),
+    new THREE.MeshStandardMaterial({ color: 0x1a1a2a, metalness: 0.2, roughness: 0.8 })
+  );
+  plate.position.y = -0.5; // Top surface at Y=0
+  scene.add(plate);
+
+  // Grid on plate surface
+  const grid = new THREE.GridHelper(80, 16, 0x333344, 0x222233);
+  grid.position.y = 0.01;
+  scene.add(grid);
+
+  // Origin marker
+  const origin = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.5, 0.5, 0.2, 16),
+    new THREE.MeshBasicMaterial({ color: 0xffd700 })
+  );
+  origin.position.y = 0.1;
+  scene.add(origin);
+
+  initControls();
+  window.addEventListener('resize', onResize);
+  animate();
+}
+
+function initControls() {
+  let dragging = false;
+  let prev = { x: 0, y: 0 };
+  let spherical = { theta: Math.PI / 4, phi: Math.PI / 3, r: 100 };
+
+  const el = renderer.domElement;
+
+  el.addEventListener('mousedown', e => { dragging = true; prev = { x: e.clientX, y: e.clientY }; });
+  el.addEventListener('mouseup', () => dragging = false);
+  el.addEventListener('mouseleave', () => dragging = false);
+
+  el.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    spherical.theta -= (e.clientX - prev.x) * 0.01;
+    spherical.phi = Math.max(0.2, Math.min(Math.PI - 0.2, spherical.phi + (e.clientY - prev.y) * 0.01));
+    prev = { x: e.clientX, y: e.clientY };
+    updateCam();
+  });
+
+  el.addEventListener('wheel', e => {
+    spherical.r = Math.max(20, Math.min(200, spherical.r + e.deltaY * 0.1));
+    updateCam();
+    e.preventDefault();
+  });
+
+  function updateCam() {
+    camera.position.x = spherical.r * Math.sin(spherical.phi) * Math.cos(spherical.theta);
+    camera.position.y = spherical.r * Math.cos(spherical.phi);
+    camera.position.z = spherical.r * Math.sin(spherical.phi) * Math.sin(spherical.theta);
+    camera.lookAt(0, 10, 0);
+  }
+  updateCam();
+}
+
+function onResize() {
+  const c = document.getElementById('canvas-container');
+  camera.aspect = c.clientWidth / c.clientHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(c.clientWidth, c.clientHeight);
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  renderer.render(scene, camera);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PATH GENERATION - Layer by Layer
+// Coordinate system: X,Z = horizontal plane, Y = up (height)
+// ═══════════════════════════════════════════════════════════════════
+
+function generatePath(algo, numLayers, layerH, scale) {
+  rng = new PhiRNG(seed);
+  const layers = []; // Array of layers, each layer is array of {x, z} points
+
+  for (let L = 0; L < numLayers; L++) {
+    const y = L * layerH; // Height of this layer
+    const layerPts = generateLayerPath(algo, L, numLayers, scale);
+    layers.push({ y, points: layerPts });
+    updateLayerVis(L, numLayers);
+  }
+
+  return layers;
+}
+
+function generateLayerPath(algo, layerNum, totalLayers, scale) {
+  const pts = [];
+  const t = layerNum / totalLayers; // 0 to 1 progress
+
+  switch (algo) {
+    case 'phi-walk': {
+      let x = 0, z = 0, angle = rng.angle();
+      const steps = 30 + rng.int(0, 20);
+      for (let i = 0; i < steps; i++) {
+        angle += (rng.next() - 0.5) * Math.PI * PHI_INV;
+        const step = (1 + rng.phi()) * scale;
+        x += Math.cos(angle) * step;
+        z += Math.sin(angle) * step;
+        // Constrain
+        const r = Math.sqrt(x*x + z*z);
+        const maxR = 30 * scale * (1 - t * 0.3);
+        if (r > maxR) { x *= maxR/r; z *= maxR/r; angle += Math.PI; }
+        pts.push({ x, z });
+      }
+      break;
+    }
+
+    case 'golden-spiral': {
+      const turns = 3 - t * 1.5;
+      const maxR = 25 * scale * (1 - t * 0.5);
+      for (let a = 0; a < Math.PI * 2 * turns; a += 0.15) {
+        const r = (a / (Math.PI * 2 * turns)) * maxR;
+        pts.push({ x: Math.cos(a) * r, z: Math.sin(a) * r });
+      }
+      break;
+    }
+
+    case 'fibonacci-tower': {
+      const fibs = [3, 5, 8, 13, 21];
+      const sides = fibs[layerNum % fibs.length];
+      const r = 20 * scale * (1 - t * 0.4);
+      const rot = layerNum * PHI_INV * 0.5;
+      for (let i = 0; i <= sides; i++) {
+        const a = (i / sides) * Math.PI * 2 + rot;
+        pts.push({ x: Math.cos(a) * r, z: Math.sin(a) * r });
+      }
+      break;
+    }
+
+    case 'organic-blob': {
+      const baseR = 22 * scale;
+      const numPts = 50;
+      for (let i = 0; i <= numPts; i++) {
+        const a = (i / numPts) * Math.PI * 2;
+        const r = baseR * (1 - t * 0.5) * (
+          1 +
+          0.25 * Math.sin(a * PHI * 3 + layerNum * 0.3) +
+          0.15 * Math.sin(a * SQRT2 * 5 + layerNum * 0.2) +
+          0.1 * Math.cos(a * SQRT3 * 4 + layerNum * 0.4)
+        );
+        pts.push({ x: Math.cos(a) * r, z: Math.sin(a) * r });
+      }
+      break;
+    }
+
+    case 'crystal-growth': {
+      const sides = 6;
+      const r = 18 * scale * (1 + t * 0.3);
+      const rot = layerNum * 0.1;
+      // Outer hex
+      for (let i = 0; i <= sides; i++) {
+        const a = (i / sides) * Math.PI * 2 + rot;
+        pts.push({ x: Math.cos(a) * r, z: Math.sin(a) * r });
+      }
+      // Inner structure
+      const ir = r * PHI_INV;
+      for (let i = 0; i <= sides; i++) {
+        const a = (i / sides) * Math.PI * 2 + rot + Math.PI / sides;
+        pts.push({ x: Math.cos(a) * ir, z: Math.sin(a) * ir });
+        pts.push({ x: 0, z: 0 });
+      }
+      break;
+    }
+
+    case 'maze-stack': {
+      const gridSize = 8;
+      const cellSize = 4 * scale;
+      let cx = 0, cz = 0;
+      pts.push({ x: 0, z: 0 });
+      for (let s = 0; s < 40; s++) {
+        const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+        const [dx, dz] = dirs[rng.int(0, 3)];
+        cx = Math.max(-gridSize, Math.min(gridSize, cx + dx));
+        cz = Math.max(-gridSize, Math.min(gridSize, cz + dz));
+        pts.push({ x: cx * cellSize, z: cz * cellSize });
+      }
+      break;
+    }
+
+    case 'wave-form': {
+      const metals = [PHI, SQRT2 + 1, (3 + Math.sqrt(13)) / 2];
+      const m = metals[layerNum % 3];
+      for (let x = -25; x <= 25; x += 1.5) {
+        const z = 15 * Math.sin(x / (m * 3)) * (1 - t * 0.3);
+        pts.push({ x: x * scale, z: z * scale });
+      }
+      // Return path
+      for (let x = 25; x >= -25; x -= 1.5) {
+        const z = 15 * Math.sin(x / (m * 3) + Math.PI) * (1 - t * 0.3);
+        pts.push({ x: x * scale, z: z * scale });
+      }
+      break;
+    }
+
+    case 'tree-branch': {
+      const branches = [{ x: 0, z: 0, a: rng.angle(), len: 15 * scale }];
+      for (let b = 0; b < branches.length && b < 20; b++) {
+        const br = branches[b];
+        for (let s = 0; s < br.len; s += 2) {
+          pts.push({
+            x: br.x + Math.cos(br.a) * s,
+            z: br.z + Math.sin(br.a) * s
+          });
+        }
+        if (rng.next() < 0.6 - t * 0.3) {
+          const endX = br.x + Math.cos(br.a) * br.len;
+          const endZ = br.z + Math.sin(br.a) * br.len;
+          branches.push({ x: endX, z: endZ, a: br.a + Math.PI/5, len: br.len * PHI_INV });
+          branches.push({ x: endX, z: endZ, a: br.a - Math.PI/5, len: br.len * PHI_INV });
+        }
+      }
+      break;
+    }
+  }
+
+  return pts;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MESH CREATION - Proper FDM Extrusion Profile
+// Creates flat-bottom ribbons stacked properly
+// ═══════════════════════════════════════════════════════════════════
+
+function createPrintMesh(layers, nozzleW, layerH) {
+  if (printMesh) {
+    scene.remove(printMesh);
+    printMesh.geometry.dispose();
+    printMesh.material.dispose();
+  }
+
+  const verts = [];
+  const indices = [];
+  let vertCount = 0;
+
+  // Extrusion profile: flat bottom, rounded top
+  // Width = nozzleW, Height = layerH
+  const profilePts = 8;
+
+  for (const layer of layers) {
+    const y = layer.y; // Height (Y-up)
+    const pts = layer.points;
+    if (pts.length < 2) continue;
+
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      const pPrev = pts[Math.max(0, i - 1)];
+      const pNext = pts[Math.min(pts.length - 1, i + 1)];
+
+      // Direction along path (in XZ plane)
+      let dx = pNext.x - pPrev.x;
+      let dz = pNext.z - pPrev.z;
+      const len = Math.sqrt(dx * dx + dz * dz) || 1;
+      dx /= len;
+      dz /= len;
+
+      // Perpendicular in XZ plane (left-right of path)
+      const perpX = -dz;
+      const perpZ = dx;
+
+      // Create extrusion profile around this point
+      // Profile: flat bottom at y, curved top at y + layerH
+      const halfW = nozzleW / 2;
+
+      for (let j = 0; j < profilePts; j++) {
+        const t = j / (profilePts - 1); // 0 to 1
+
+        let offX, offY;
+        if (t < 0.25) {
+          // Bottom left corner
+          offX = -halfW;
+          offY = 0;
+        } else if (t < 0.5) {
+          // Left side going up
+          const tt = (t - 0.25) / 0.25;
+          offX = -halfW;
+          offY = tt * layerH;
+        } else if (t < 0.75) {
+          // Top arc
+          const tt = (t - 0.5) / 0.25;
+          const angle = Math.PI * (1 - tt);
+          offX = Math.cos(angle) * halfW;
+          offY = layerH + Math.sin(angle) * layerH * 0.3; // Slight dome
+        } else {
+          // Right side going down
+          const tt = (t - 0.75) / 0.25;
+          offX = halfW;
+          offY = layerH * (1 - tt);
+        }
+
+        // Transform to world coords
+        const wx = p.x + perpX * offX;
+        const wy = y + offY;
+        const wz = p.z + perpZ * offX;
+
+        verts.push(wx, wy, wz);
+      }
+
+      // Create triangles connecting to previous ring
+      if (i > 0) {
+        const curr = vertCount;
+        const prev = vertCount - profilePts;
+
+        for (let j = 0; j < profilePts - 1; j++) {
+          indices.push(prev + j, curr + j, prev + j + 1);
+          indices.push(prev + j + 1, curr + j, curr + j + 1);
+        }
+        // Close the loop
+        indices.push(prev + profilePts - 1, curr + profilePts - 1, prev);
+        indices.push(prev, curr + profilePts - 1, curr);
+      }
+
+      vertCount += profilePts;
+    }
+  }
+
+  if (verts.length === 0) return null;
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  geom.setIndex(indices);
+  geom.computeVertexNormals();
+
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0xff6b35,
+    metalness: 0.1,
+    roughness: 0.5,
+    side: THREE.DoubleSide
+  });
+
+  printMesh = new THREE.Mesh(geom, mat);
+  scene.add(printMesh);
+
+  return {
+    vertices: verts.length / 3,
+    triangles: indices.length / 3
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// STL EXPORT
+// ═══════════════════════════════════════════════════════════════════
+
+function exportSTL() {
+  if (!printMesh) return;
+
+  log('Generating STL...', 'gen');
+
+  const geom = printMesh.geometry;
+  const pos = geom.getAttribute('position');
+  const idx = geom.getIndex();
+
+  const triCount = idx ? idx.count / 3 : pos.count / 9;
+  const buf = new ArrayBuffer(84 + triCount * 50);
+  const view = new DataView(buf);
+
+  // Header
+  const hdr = 'KONOMI v4 PHI-FDM STL';
+  for (let i = 0; i < 80; i++) view.setUint8(i, i < hdr.length ? hdr.charCodeAt(i) : 0);
+  view.setUint32(80, triCount, true);
+
+  let off = 84;
+  for (let i = 0; i < triCount; i++) {
+    const i0 = idx ? idx.getX(i*3) : i*3;
+    const i1 = idx ? idx.getX(i*3+1) : i*3+1;
+    const i2 = idx ? idx.getX(i*3+2) : i*3+2;
+
+    const v0 = [pos.getX(i0), pos.getY(i0), pos.getZ(i0)];
+    const v1 = [pos.getX(i1), pos.getY(i1), pos.getZ(i1)];
+    const v2 = [pos.getX(i2), pos.getY(i2), pos.getZ(i2)];
+
+    // Normal
+    const ax = v1[0]-v0[0], ay = v1[1]-v0[1], az = v1[2]-v0[2];
+    const bx = v2[0]-v0[0], by = v2[1]-v0[1], bz = v2[2]-v0[2];
+    let nx = ay*bz - az*by, ny = az*bx - ax*bz, nz = ax*by - ay*bx;
+    const nl = Math.sqrt(nx*nx+ny*ny+nz*nz) || 1;
+    nx/=nl; ny/=nl; nz/=nl;
+
+    view.setFloat32(off, nx, true); off+=4;
+    view.setFloat32(off, ny, true); off+=4;
+    view.setFloat32(off, nz, true); off+=4;
+
+    for (const v of [v0, v1, v2]) {
+      view.setFloat32(off, v[0], true); off+=4;
+      view.setFloat32(off, v[1], true); off+=4;
+      view.setFloat32(off, v[2], true); off+=4;
+    }
+    view.setUint16(off, 0, true); off+=2;
+  }
+
+  const blob = new Blob([buf], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `konomi-v4-${Date.now()}.stl`;
+  a.click();
+  URL.revokeObjectURL(url);
+
+  log(`Exported ${triCount} triangles`, 'phi');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// UI
+// ═══════════════════════════════════════════════════════════════════
+
+function randomizeSeed() {
+  seed = Math.pow(PHI, 1 + Math.random() * 5);
+  document.getElementById('seed-display').textContent = `φ^${(Math.log(seed)/Math.log(PHI)).toFixed(2)} = ${seed.toFixed(6)}`;
+  log(`Seed: ${seed.toFixed(6)}`, 'phi');
+}
+
+function updateLayerVis(current, total) {
+  const vis = document.getElementById('layer-vis');
+  if (current === 0) {
+    vis.innerHTML = '';
+    for (let i = 0; i < total; i++) {
+      const b = document.createElement('div');
+      b.className = 'layer-block';
+      b.id = `lb-${i}`;
+      vis.appendChild(b);
+    }
+  }
+  const el = document.getElementById(`lb-${current}`);
+  if (el) el.classList.add('done');
+}
+
+async function generate() {
+  if (generating) return;
+  generating = true;
+
+  const algo = document.getElementById('algo-select').value;
+  const layerH = parseFloat(document.getElementById('layer-height').value);
+  const nozzleW = parseFloat(document.getElementById('nozzle-width').value);
+  const numLayers = parseInt(document.getElementById('num-layers').value);
+  const scale = parseFloat(document.getElementById('scale').value);
+
+  document.getElementById('btn-generate').disabled = true;
+  document.getElementById('btn-export').disabled = true;
+
+  log(`Generating: ${algo}`, 'gen');
+
+  await new Promise(r => setTimeout(r, 10));
+
+  // Generate layer paths
+  const layers = generatePath(algo, numLayers, layerH, scale);
+
+  document.getElementById('progress').style.width = '50%';
+  await new Promise(r => setTimeout(r, 10));
+
+  // Create mesh
+  const stats = createPrintMesh(layers, nozzleW, layerH);
+
+  if (stats) {
+    document.getElementById('stat-verts').textContent = stats.vertices.toLocaleString();
+    document.getElementById('stat-tris').textContent = stats.triangles.toLocaleString();
+    document.getElementById('ov-verts').textContent = stats.vertices;
+    document.getElementById('ov-tris').textContent = stats.triangles;
+  }
+
+  const height = numLayers * layerH;
+  document.getElementById('stat-height').textContent = height.toFixed(1);
+  document.getElementById('ov-height').textContent = height.toFixed(1);
+  document.getElementById('ov-layer').textContent = numLayers;
+  document.getElementById('ov-total').textContent = numLayers;
+  document.getElementById('ov-nozzle').textContent = nozzleW;
+  document.getElementById('ov-layerh').textContent = layerH;
+
+  // Path length
+  let pathLen = 0;
+  for (const layer of layers) {
+    for (let i = 1; i < layer.points.length; i++) {
+      const dx = layer.points[i].x - layer.points[i-1].x;
+      const dz = layer.points[i].z - layer.points[i-1].z;
+      pathLen += Math.sqrt(dx*dx + dz*dz);
+    }
+  }
+  document.getElementById('stat-length').textContent = (pathLen/1000).toFixed(2);
+
+  document.getElementById('progress').style.width = '100%';
+  document.getElementById('btn-generate').disabled = false;
+  document.getElementById('btn-export').disabled = false;
+
+  log(`Done: ${numLayers} layers, ${height.toFixed(1)}mm`, 'layer');
+  generating = false;
+}
+
+function log(msg, type = 'gen') {
+  const el = document.getElementById('log');
+  const line = document.createElement('div');
+  line.className = `log-line ${type}`;
+  line.textContent = msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+// Slider listeners
+document.getElementById('layer-height').oninput = function() {
+  document.getElementById('layer-val').textContent = this.value + 'mm';
+};
+document.getElementById('nozzle-width').oninput = function() {
+  document.getElementById('nozzle-val').textContent = this.value + 'mm';
+};
+document.getElementById('num-layers').oninput = function() {
+  document.getElementById('num-layers-val').textContent = this.value;
+};
+document.getElementById('scale').oninput = function() {
+  document.getElementById('scale-val').textContent = this.value + 'x';
+};
+
+// Init
+window.onload = function() {
+  initThree();
+  randomizeSeed();
+  log('KONOMI v4 ready', 'phi');
+  log('Proper layer stacking enabled', 'gen');
+};
+</script>
+</body>
+</html>
