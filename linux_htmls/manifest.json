@@ -94,5 +94,13 @@
     "icon": "👁️",
     "color": "#00ffff",
     "tags": ["Vision", "CV", "Interactive", "Perception"]
+  },
+  {
+    "file": "code-cosmos.html",
+    "title": "Code Cosmos",
+    "description": "3D repository explorer with file nodes, dependency links, directory clusters, and 6 repo templates (webapp, API, CLI, library, monorepo, microservices)",
+    "icon": "🌌",
+    "color": "#0088ff",
+    "tags": ["Code", "Repo", "3D", "Dependencies"]
   }
 ]

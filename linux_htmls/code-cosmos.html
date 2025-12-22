@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Code Cosmos - 3D Repository Explorer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#000;overflow:hidden;font:11px monospace;color:#0ff}
+#c{position:fixed;inset:0}
+.p{position:absolute;background:rgba(0,10,20,.92);border:1px solid #0af;border-radius:6px;padding:10px;z-index:10}
+button{background:linear-gradient(135deg,#06a,#048);color:#0ff;border:1px solid #0af;padding:5px 10px;margin:2px;border-radius:4px;cursor:pointer;font-size:10px}
+button:hover{background:#0af;color:#000}
+.row{display:flex;gap:5px;margin:4px 0;flex-wrap:wrap}
+.stat{background:#001525;border:1px solid #068;border-radius:4px;padding:5px 8px;text-align:center;min-width:60px}
+.val{font-size:14px;font-weight:bold}
+.lbl{font-size:8px;opacity:.7}
+input,select{background:#001525;color:#0ff;border:1px solid #068;padding:5px;border-radius:4px;font-size:10px;width:100%}
+.file-list{max-height:150px;overflow-y:auto;font-size:9px;background:#000;padding:5px;border-radius:4px;margin-top:5px}
+.file-item{padding:3px 5px;cursor:pointer;border-radius:3px;display:flex;align-items:center;gap:5px}
+.file-item:hover{background:#0af3}
+.legend{display:flex;gap:8px;flex-wrap:wrap;font-size:9px;margin-top:5px}
+.leg-item{display:flex;align-items:center;gap:3px}
+.leg-dot{width:10px;height:10px;border-radius:50%}
+#tooltip{position:fixed;background:rgba(0,20,40,.95);border:1px solid #0af;padding:8px 12px;border-radius:6px;pointer-events:none;display:none;z-index:100;max-width:300px}
+</style></head><body><canvas id="c"></canvas>
+<div id="tooltip"></div>
+
+<div class="p" style="top:8px;left:8px;width:220px">
+<div style="color:#0ff;text-align:center;font-size:14px;margin-bottom:8px">🌌 CODE COSMOS</div>
+<div class="row">
+<div class="stat"><div class="val" id="files">0</div><div class="lbl">Files</div></div>
+<div class="stat"><div class="val" id="dirs">0</div><div class="lbl">Dirs</div></div>
+<div class="stat"><div class="val" id="lines">0</div><div class="lbl">Lines</div></div>
+</div>
+<div class="row">
+<div class="stat" style="border-color:#f80"><div class="val" id="deps">0</div><div class="lbl">Links</div></div>
+<div class="stat" style="border-color:#0f0"><div class="val" id="selected">-</div><div class="lbl">Selected</div></div>
+</div>
+</div>
+
+<div class="p" style="top:8px;right:8px;width:240px">
+<div style="color:#f80;text-align:center;font-size:11px;margin-bottom:5px">📁 GENERATE REPO</div>
+<div class="row">
+<select id="repo-type" style="flex:1">
+<option value="webapp">Web App</option>
+<option value="api">REST API</option>
+<option value="cli">CLI Tool</option>
+<option value="library">Library</option>
+<option value="monorepo">Monorepo</option>
+<option value="microservices">Microservices</option>
+</select>
+<button onclick="S.generate()">🔄 Generate</button>
+</div>
+<div class="row">
+<button onclick="S.addFiles(10)">+10 Files</button>
+<button onclick="S.addDeps(5)">+5 Links</button>
+<button onclick="S.clear()">🗑️ Clear</button>
+</div>
+<div class="legend">
+<div class="leg-item"><div class="leg-dot" style="background:#00ff00"></div>JS</div>
+<div class="leg-item"><div class="leg-dot" style="background:#3178c6"></div>TS</div>
+<div class="leg-item"><div class="leg-dot" style="background:#f7df1e"></div>JSON</div>
+<div class="leg-item"><div class="leg-dot" style="background:#e34c26"></div>HTML</div>
+<div class="leg-item"><div class="leg-dot" style="background:#563d7c"></div>CSS</div>
+<div class="leg-item"><div class="leg-dot" style="background:#3572A5"></div>PY</div>
+<div class="leg-item"><div class="leg-dot" style="background:#f34b7d"></div>CPP</div>
+<div class="leg-item"><div class="leg-dot" style="background:#888"></div>MD</div>
+</div>
+</div>
+
+<div class="p" style="bottom:8px;left:8px;width:220px">
+<div style="color:#0f0;text-align:center;font-size:11px;margin-bottom:5px">📄 FILE TREE</div>
+<div class="file-list" id="file-tree"></div>
+</div>
+
+<div class="p" style="bottom:8px;right:8px;width:200px">
+<div style="color:#f0f;text-align:center;font-size:11px;margin-bottom:5px">🔍 VIEW</div>
+<div class="row">
+<button onclick="S.viewMode='orbit';S.updateView()">🌀 Orbit</button>
+<button onclick="S.viewMode='top';S.updateView()">⬆️ Top</button>
+<button onclick="S.viewMode='side';S.updateView()">➡️ Side</button>
+</div>
+<div class="row">
+<button onclick="S.showDeps=!S.showDeps">🔗 Toggle Links</button>
+<button onclick="S.showLabels=!S.showLabels">🏷️ Labels</button>
+</div>
+<div class="row">
+<button onclick="S.explode()">💥 Explode</button>
+<button onclick="S.cluster()">🧲 Cluster</button>
+</div>
+</div>
+
+<script>
+const T={v3:(x,y,z)=>new THREE.Vector3(x,y,z),rnd:(a,b)=>a+Math.random()*(b-a),pick:a=>a[Math.floor(Math.random()*a.length)]};
+
+const FILE_TYPES={
+  js:{color:0x00ff00,ext:'.js',size:1},
+  ts:{color:0x3178c6,ext:'.ts',size:1.1},
+  json:{color:0xf7df1e,ext:'.json',size:.7},
+  html:{color:0xe34c26,ext:'.html',size:.9},
+  css:{color:0x563d7c,ext:'.css',size:.8},
+  py:{color:0x3572A5,ext:'.py',size:1},
+  cpp:{color:0xf34b7d,ext:'.cpp',size:1.2},
+  md:{color:0x888888,ext:'.md',size:.6},
+  yaml:{color:0xcb171e,ext:'.yaml',size:.5},
+  sh:{color:0x89e051,ext:'.sh',size:.5}
+};
+
+const REPO_TEMPLATES={
+  webapp:{
+    dirs:['src','src/components','src/pages','src/utils','src/hooks','public','tests'],
+    files:[
+      {name:'index',type:'html',dir:'public'},
+      {name:'App',type:'js',dir:'src'},
+      {name:'index',type:'js',dir:'src'},
+      {name:'Header',type:'js',dir:'src/components'},
+      {name:'Footer',type:'js',dir:'src/components'},
+      {name:'Button',type:'js',dir:'src/components'},
+      {name:'Home',type:'js',dir:'src/pages'},
+      {name:'About',type:'js',dir:'src/pages'},
+      {name:'api',type:'js',dir:'src/utils'},
+      {name:'helpers',type:'js',dir:'src/utils'},
+      {name:'useAuth',type:'js',dir:'src/hooks'},
+      {name:'package',type:'json',dir:''},
+      {name:'README',type:'md',dir:''},
+      {name:'styles',type:'css',dir:'src'}
+    ]
+  },
+  api:{
+    dirs:['src','src/routes','src/controllers','src/models','src/middleware','config','tests'],
+    files:[
+      {name:'server',type:'js',dir:'src'},
+      {name:'app',type:'js',dir:'src'},
+      {name:'users',type:'js',dir:'src/routes'},
+      {name:'auth',type:'js',dir:'src/routes'},
+      {name:'products',type:'js',dir:'src/routes'},
+      {name:'userController',type:'js',dir:'src/controllers'},
+      {name:'authController',type:'js',dir:'src/controllers'},
+      {name:'User',type:'js',dir:'src/models'},
+      {name:'Product',type:'js',dir:'src/models'},
+      {name:'authMiddleware',type:'js',dir:'src/middleware'},
+      {name:'database',type:'json',dir:'config'},
+      {name:'package',type:'json',dir:''},
+      {name:'README',type:'md',dir:''}
+    ]
+  },
+  cli:{
+    dirs:['src','src/commands','src/utils','bin'],
+    files:[
+      {name:'index',type:'js',dir:'src'},
+      {name:'cli',type:'js',dir:'bin'},
+      {name:'init',type:'js',dir:'src/commands'},
+      {name:'build',type:'js',dir:'src/commands'},
+      {name:'deploy',type:'js',dir:'src/commands'},
+      {name:'logger',type:'js',dir:'src/utils'},
+      {name:'config',type:'js',dir:'src/utils'},
+      {name:'package',type:'json',dir:''},
+      {name:'README',type:'md',dir:''}
+    ]
+  },
+  library:{
+    dirs:['src','src/core','src/helpers','dist','types','tests'],
+    files:[
+      {name:'index',type:'ts',dir:'src'},
+      {name:'main',type:'ts',dir:'src/core'},
+      {name:'parser',type:'ts',dir:'src/core'},
+      {name:'validator',type:'ts',dir:'src/core'},
+      {name:'utils',type:'ts',dir:'src/helpers'},
+      {name:'types',type:'ts',dir:'types'},
+      {name:'index.d',type:'ts',dir:'types'},
+      {name:'package',type:'json',dir:''},
+      {name:'tsconfig',type:'json',dir:''},
+      {name:'README',type:'md',dir:''}
+    ]
+  },
+  monorepo:{
+    dirs:['packages','packages/core','packages/cli','packages/web','packages/shared','scripts'],
+    files:[
+      {name:'index',type:'ts',dir:'packages/core'},
+      {name:'utils',type:'ts',dir:'packages/core'},
+      {name:'cli',type:'ts',dir:'packages/cli'},
+      {name:'commands',type:'ts',dir:'packages/cli'},
+      {name:'App',type:'ts',dir:'packages/web'},
+      {name:'components',type:'ts',dir:'packages/web'},
+      {name:'types',type:'ts',dir:'packages/shared'},
+      {name:'constants',type:'ts',dir:'packages/shared'},
+      {name:'build',type:'sh',dir:'scripts'},
+      {name:'package',type:'json',dir:''},
+      {name:'lerna',type:'json',dir:''},
+      {name:'README',type:'md',dir:''}
+    ]
+  },
+  microservices:{
+    dirs:['gateway','users','products','orders','shared','docker'],
+    files:[
+      {name:'server',type:'js',dir:'gateway'},
+      {name:'routes',type:'js',dir:'gateway'},
+      {name:'index',type:'js',dir:'users'},
+      {name:'model',type:'js',dir:'users'},
+      {name:'index',type:'js',dir:'products'},
+      {name:'model',type:'js',dir:'products'},
+      {name:'index',type:'js',dir:'orders'},
+      {name:'model',type:'js',dir:'orders'},
+      {name:'types',type:'ts',dir:'shared'},
+      {name:'utils',type:'ts',dir:'shared'},
+      {name:'docker-compose',type:'yaml',dir:''},
+      {name:'package',type:'json',dir:''},
+      {name:'README',type:'md',dir:''}
+    ]
+  }
+};
+
+const S={
+  files:[],dirs:[],deps:[],
+  showDeps:true,showLabels:true,
+  viewMode:'orbit',
+  selected:null,
+  raycaster:new THREE.Raycaster(),
+  mouse:new THREE.Vector2(),
+
+  init(){
+    this.sc=new THREE.Scene();
+    this.ca=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.1,1000);
+    this.rn=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true});
+    this.rn.setSize(innerWidth,innerHeight);
+    this.rn.setClearColor(0x000510);
+    this.ca.position.set(80,60,80);
+    this.ca.lookAt(0,0,0);
+
+    // Lights
+    this.sc.add(new THREE.AmbientLight(0x303040));
+    const dl=new THREE.DirectionalLight(0xffffff,.6);dl.position.set(50,100,50);
+    this.sc.add(dl);
+    [0x0088ff,0x00ff88,0xff8800].forEach((c,i)=>{
+      const pl=new THREE.PointLight(c,.4,100);
+      pl.position.set(Math.cos(i*2)*40,20,Math.sin(i*2)*40);
+      this.sc.add(pl);
+    });
+
+    // Grid
+    this.sc.add(new THREE.GridHelper(200,40,0x003366,0x001833));
+    this.sc.fog=new THREE.FogExp2(0x000510,.004);
+
+    // Deps group
+    this.depsGroup=new THREE.Group();
+    this.sc.add(this.depsGroup);
+
+    // Labels group
+    this.labelsGroup=new THREE.Group();
+    this.sc.add(this.labelsGroup);
+
+    // Events
+    window.addEventListener('mousemove',e=>this.onMouse(e));
+    window.addEventListener('click',e=>this.onClick(e));
+
+    this.generate();
+    this.animate();
+  },
+
+  generate(){
+    this.clear();
+    const type=document.getElementById('repo-type').value;
+    const tpl=REPO_TEMPLATES[type];
+
+    // Create directories
+    tpl.dirs.forEach((d,i)=>{
+      const depth=d.split('/').length-1;
+      const angle=(i/tpl.dirs.length)*Math.PI*2;
+      const radius=20+depth*15;
+      this.dirs.push({
+        name:d,
+        x:Math.cos(angle)*radius,
+        y:depth*8,
+        z:Math.sin(angle)*radius
+      });
+    });
+
+    // Create files
+    tpl.files.forEach((f,i)=>{
+      const ft=FILE_TYPES[f.type];
+      const dir=this.dirs.find(d=>d.name===f.dir)||{x:0,y:0,z:0,name:''};
+
+      const mesh=new THREE.Mesh(
+        new THREE.IcosahedronGeometry(ft.size*2,0),
+        new THREE.MeshPhongMaterial({color:ft.color,emissive:ft.color,emissiveIntensity:.2})
+      );
+
+      const angle=Math.random()*Math.PI*2;
+      const r=T.rnd(5,12);
+      mesh.position.set(
+        dir.x+Math.cos(angle)*r,
+        dir.y+T.rnd(-3,3),
+        dir.z+Math.sin(angle)*r
+      );
+
+      mesh.userData={
+        name:f.name+ft.ext,
+        type:f.type,
+        dir:f.dir||'root',
+        lines:Math.floor(T.rnd(20,500)),
+        idx:this.files.length
+      };
+
+      this.sc.add(mesh);
+      this.files.push({mesh,...mesh.userData,ft});
+    });
+
+    // Generate dependencies
+    this.generateDeps();
+    this.updateUI();
+    this.updateFileTree();
+  },
+
+  generateDeps(){
+    this.deps=[];
+    this.depsGroup.clear();
+
+    // Create logical dependencies
+    const jsFiles=this.files.filter(f=>f.type==='js'||f.type==='ts');
+    jsFiles.forEach(f=>{
+      const numDeps=Math.floor(Math.random()*3);
+      for(let i=0;i<numDeps;i++){
+        const target=T.pick(jsFiles);
+        if(target!==f&&!this.deps.find(d=>d.from===f&&d.to===target)){
+          this.deps.push({from:f,to:target});
+          this.createDepLine(f,target);
+        }
+      }
+    });
+  },
+
+  createDepLine(from,to){
+    const pts=[from.mesh.position.clone(),to.mesh.position.clone()];
+    const mid=pts[0].clone().add(pts[1]).multiplyScalar(.5);
+    mid.y+=10;
+
+    const curve=new THREE.QuadraticBezierCurve3(pts[0],mid,pts[1]);
+    const geo=new THREE.TubeGeometry(curve,20,.15,8);
+    const mat=new THREE.MeshBasicMaterial({color:0x0088ff,transparent:true,opacity:.3});
+    const tube=new THREE.Mesh(geo,mat);
+    tube.userData={from,to};
+    this.depsGroup.add(tube);
+  },
+
+  addFiles(n){
+    const types=Object.keys(FILE_TYPES);
+    for(let i=0;i<n;i++){
+      const type=T.pick(types);
+      const ft=FILE_TYPES[type];
+      const mesh=new THREE.Mesh(
+        new THREE.IcosahedronGeometry(ft.size*2,0),
+        new THREE.MeshPhongMaterial({color:ft.color,emissive:ft.color,emissiveIntensity:.2})
+      );
+
+      const angle=Math.random()*Math.PI*2;
+      const r=T.rnd(20,60);
+      mesh.position.set(Math.cos(angle)*r,T.rnd(-5,25),Math.sin(angle)*r);
+      mesh.userData={
+        name:'file'+this.files.length+ft.ext,
+        type,dir:'generated',
+        lines:Math.floor(T.rnd(20,500)),
+        idx:this.files.length
+      };
+
+      this.sc.add(mesh);
+      this.files.push({mesh,...mesh.userData,ft});
+    }
+    this.updateUI();
+    this.updateFileTree();
+  },
+
+  addDeps(n){
+    for(let i=0;i<n;i++){
+      if(this.files.length<2)return;
+      const from=T.pick(this.files);
+      const to=T.pick(this.files);
+      if(from!==to&&!this.deps.find(d=>d.from===from&&d.to===to)){
+        this.deps.push({from,to});
+        this.createDepLine(from,to);
+      }
+    }
+    this.updateUI();
+  },
+
+  clear(){
+    this.files.forEach(f=>this.sc.remove(f.mesh));
+    this.files=[];
+    this.dirs=[];
+    this.deps=[];
+    this.depsGroup.clear();
+    this.labelsGroup.clear();
+    this.updateUI();
+    this.updateFileTree();
+  },
+
+  explode(){
+    this.files.forEach(f=>{
+      const dir=f.mesh.position.clone().normalize();
+      f.mesh.position.add(dir.multiplyScalar(20));
+    });
+    this.updateDepLines();
+  },
+
+  cluster(){
+    this.files.forEach(f=>{
+      f.mesh.position.multiplyScalar(.7);
+    });
+    this.updateDepLines();
+  },
+
+  updateDepLines(){
+    this.depsGroup.clear();
+    this.deps.forEach(d=>this.createDepLine(d.from,d.to));
+  },
+
+  updateView(){
+    // View will adjust in animate
+  },
+
+  onMouse(e){
+    this.mouse.x=(e.clientX/innerWidth)*2-1;
+    this.mouse.y=-(e.clientY/innerHeight)*2+1;
+
+    this.raycaster.setFromCamera(this.mouse,this.ca);
+    const meshes=this.files.map(f=>f.mesh);
+    const hits=this.raycaster.intersectObjects(meshes);
+
+    const tip=document.getElementById('tooltip');
+    if(hits.length>0){
+      const f=this.files.find(f=>f.mesh===hits[0].object);
+      if(f){
+        tip.style.display='block';
+        tip.style.left=e.clientX+15+'px';
+        tip.style.top=e.clientY+15+'px';
+        tip.innerHTML=`<div style="color:#${f.ft.color.toString(16).padStart(6,'0')};font-size:12px;font-weight:bold">${f.name}</div>
+<div style="color:#888;font-size:10px">📁 ${f.dir}</div>
+<div style="color:#0f0;font-size:10px">📝 ${f.lines} lines</div>
+<div style="color:#08f;font-size:10px">🔗 ${this.deps.filter(d=>d.from===f||d.to===f).length} connections</div>`;
+      }
+    }else{
+      tip.style.display='none';
+    }
+  },
+
+  onClick(e){
+    this.raycaster.setFromCamera(this.mouse,this.ca);
+    const meshes=this.files.map(f=>f.mesh);
+    const hits=this.raycaster.intersectObjects(meshes);
+
+    // Reset all
+    this.files.forEach(f=>{
+      f.mesh.material.emissiveIntensity=.2;
+      f.mesh.scale.setScalar(1);
+    });
+    this.depsGroup.children.forEach(c=>c.material.opacity=.3);
+
+    if(hits.length>0){
+      const f=this.files.find(f=>f.mesh===hits[0].object);
+      if(f){
+        this.selected=f;
+        f.mesh.material.emissiveIntensity=.8;
+        f.mesh.scale.setScalar(1.5);
+
+        // Highlight connected deps
+        this.depsGroup.children.forEach(c=>{
+          if(c.userData.from===f||c.userData.to===f){
+            c.material.opacity=.8;
+            c.material.color.setHex(0x00ff00);
+          }
+        });
+
+        document.getElementById('selected').textContent=f.name.substring(0,8);
+      }
+    }else{
+      this.selected=null;
+      document.getElementById('selected').textContent='-';
+    }
+  },
+
+  updateFileTree(){
+    const tree=document.getElementById('file-tree');
+    const grouped={};
+    this.files.forEach(f=>{
+      const dir=f.dir||'root';
+      if(!grouped[dir])grouped[dir]=[];
+      grouped[dir].push(f);
+    });
+
+    let html='';
+    Object.keys(grouped).sort().forEach(dir=>{
+      html+=`<div style="color:#f80;margin-top:4px">📁 ${dir||'/'}</div>`;
+      grouped[dir].forEach(f=>{
+        const col='#'+f.ft.color.toString(16).padStart(6,'0');
+        html+=`<div class="file-item" onclick="S.focusFile(${f.idx})" style="padding-left:12px">
+<span style="color:${col}">●</span> ${f.name}</div>`;
+      });
+    });
+    tree.innerHTML=html;
+  },
+
+  focusFile(idx){
+    const f=this.files[idx];
+    if(f){
+      // Simulate click
+      this.selected=f;
+      this.files.forEach(f=>f.mesh.material.emissiveIntensity=.2);
+      f.mesh.material.emissiveIntensity=.8;
+      f.mesh.scale.setScalar(1.5);
+      document.getElementById('selected').textContent=f.name.substring(0,8);
+    }
+  },
+
+  updateUI(){
+    document.getElementById('files').textContent=this.files.length;
+    document.getElementById('dirs').textContent=this.dirs.length;
+    document.getElementById('lines').textContent=this.files.reduce((a,f)=>a+f.lines,0);
+    document.getElementById('deps').textContent=this.deps.length;
+  },
+
+  animate(){
+    requestAnimationFrame(()=>this.animate());
+    const t=Date.now()*.001;
+
+    // Camera movement based on view mode
+    if(this.viewMode==='orbit'){
+      const r=100+Math.sin(t*.2)*20;
+      this.ca.position.x=Math.cos(t*.1)*r;
+      this.ca.position.z=Math.sin(t*.1)*r;
+      this.ca.position.y=50+Math.sin(t*.15)*20;
+    }else if(this.viewMode==='top'){
+      this.ca.position.set(0,120,0.01);
+    }else if(this.viewMode==='side'){
+      this.ca.position.set(120,30,0);
+    }
+    this.ca.lookAt(0,10,0);
+
+    // Animate files
+    this.files.forEach((f,i)=>{
+      f.mesh.rotation.y+=.01;
+      f.mesh.position.y+=Math.sin(t*2+i)*.02;
+    });
+
+    // Show/hide deps
+    this.depsGroup.visible=this.showDeps;
+
+    // Animate selected
+    if(this.selected){
+      this.selected.mesh.rotation.y+=.05;
+    }
+
+    this.rn.render(this.sc,this.ca);
+  }
+};
+
+onload=()=>S.init();
+onresize=()=>{S.rn.setSize(innerWidth,innerHeight);S.ca.aspect=innerWidth/innerHeight;S.ca.updateProjectionMatrix()};
+</script></body></html>
