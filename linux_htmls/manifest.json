@@ -62,5 +62,13 @@
     "icon": "🌌",
     "color": "#8888ff",
     "tags": ["Space", "Gravity", "Orbits", "Physics"]
+  },
+  {
+    "file": "voxel-automata.html",
+    "title": "Voxel Automata",
+    "description": "Minecraft-style voxel world with terrain generation, automation circuits (wires, switches, pistons), and builder bots",
+    "icon": "🧱",
+    "color": "#44aa44",
+    "tags": ["Voxel", "Minecraft", "Circuits", "Bots"]
   }
 ]

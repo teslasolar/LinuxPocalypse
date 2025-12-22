@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Voxel Automata</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#1a1a1a;overflow:hidden;font:9px monospace;color:#8f8}
+#c{position:fixed;inset:0}.p{position:absolute;background:rgba(20,30,20,.95);border:1px solid;border-radius:6px;padding:10px;z-index:10;backdrop-filter:blur(5px)}
+.t{background:#0a100a;color:#4f4;padding:6px;height:60px;overflow-y:auto;font-size:8px;border:1px solid #4f42;border-radius:3px}
+button{background:linear-gradient(135deg,#4a4,#282);color:#fff;border:0;padding:5px 8px;margin:2px;font-size:8px;border-radius:3px;cursor:pointer;font-weight:bold}
+button:hover{filter:brightness(1.3)}
+button.sel{box-shadow:0 0 8px #0f0}
+.r{background:linear-gradient(135deg,#a44,#622)}.b{background:linear-gradient(135deg,#44a,#226)}.y{background:linear-gradient(135deg,#aa4,#662)}
+.gr{display:grid;grid-template-columns:repeat(auto-fit,minmax(32px,1fr));gap:2px;margin:4px 0}
+.s{padding:3px;text-align:center;border:1px solid;border-radius:2px;background:#0002;font-size:8px}
+.bar{height:4px;background:#111;border-radius:2px;margin:2px 0}.fill{height:100%;border-radius:2px}
+</style></head><body><canvas id="c"></canvas>
+
+<div class="p" style="top:8px;left:8px;border-color:#4f4;width:220px">
+<div style="color:#4f4;text-align:center;font-size:11px">🧱 VOXEL AUTOMATA</div>
+<div id="stats"></div>
+<div id="power"></div>
+</div>
+
+<div class="p" style="top:8px;right:8px;border-color:#fa0;width:260px">
+<div style="color:#fa0;font-size:10px">🎨 BLOCKS</div>
+<div class="gr" id="blocks"></div>
+<div style="margin-top:6px;color:#f44;font-size:9px">⚡ CIRCUITS</div>
+<div class="gr" id="circuits"></div>
+<div style="margin-top:6px">
+<button class="b" onclick="V.genTerrain()">🌍Gen</button>
+<button class="y" onclick="V.spawnBot()">🤖Bot</button>
+<button onclick="V.pulse()">⚡Pulse</button>
+<button class="r" onclick="V.clear()">🗑️Clear</button>
+</div>
+<div id="log" class="t"></div>
+</div>
+
+<div class="p" style="bottom:8px;left:8px;border-color:#0ff;width:220px">
+<div style="color:#0ff;font-size:10px">🤖 BOTS</div>
+<div id="bots"></div>
+</div>
+
+<div class="p" style="bottom:8px;right:8px;border-color:#f0f;width:220px">
+<div style="color:#f0f;font-size:10px">⚡ CIRCUIT STATE</div>
+<div id="circuit"></div>
+</div>
+
+<script>
+const T={
+  τ:Math.PI*2,π:Math.PI,
+  rng:(a=0,b=1)=>a+(b-a)*Math.random(),
+  rngInt:(a,b)=>Math.floor(T.rng(a,b+1)),
+  v3:(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z),
+  $:id=>document.getElementById(id),
+  html:(id,h)=>T.$(id).innerHTML=h,
+  log:(id,m)=>{const e=T.$(id);e.textContent+=m+'\n';e.scrollTop=e.scrollHeight}
+};
+
+// Block types: [name, color, solid, power, icon]
+const BLOCKS={
+  // Terrain
+  grass:['Grass',0x44aa44,true,0,'🌿'],
+  dirt:['Dirt',0x885533,true,0,'🟫'],
+  stone:['Stone',0x888888,true,0,'🪨'],
+  ore:['Ore',0x44aaaa,true,0,'💎'],
+  wood:['Wood',0x996633,true,0,'🪵'],
+  leaves:['Leaves',0x22aa22,true,0,'🍃'],
+  water:['Water',0x2244aa,false,0,'💧'],
+  lava:['Lava',0xff4400,false,0,'🔥'],
+  sand:['Sand',0xddcc88,true,0,'🟨'],
+  glass:['Glass',0xaaddff,true,0,'🔲'],
+  // Circuits
+  wire:['Wire',0xff0000,true,0,'🔴'],
+  switch:['Switch',0x00ff00,true,1,'🔘'],
+  lamp:['Lamp',0xffff00,true,0,'💡'],
+  piston:['Piston',0x886644,true,0,'⬆️'],
+  repeater:['Repeater',0xff00ff,true,0,'🔁'],
+  sensor:['Sensor',0x00ffff,true,0,'👁️']
+};
+
+const CIRCUITS=['wire','switch','lamp','piston','repeater','sensor'];
+
+const V={
+  grid:new Map(), // x,y,z -> block
+  bots:[],
+  selected:'grass',
+  worldSize:24,
+  blockCount:0,
+  poweredCount:0,
+  botId:0,
+
+  W:{
+    scene:null,camera:null,renderer:null,
+    meshes:new Map(),
+
+    init(){
+      this.scene=new THREE.Scene();
+      this.camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.1,500);
+      this.renderer=new THREE.WebGLRenderer({canvas:T.$('c'),antialias:true});
+      this.renderer.setSize(innerWidth,innerHeight);
+      this.renderer.setClearColor(0x87ceeb); // Sky blue
+      this.camera.position.set(30,25,30);
+      this.camera.lookAt(12,5,12);
+
+      // Lighting
+      this.scene.add(new THREE.AmbientLight(0x606060,.6));
+      const sun=new THREE.DirectionalLight(0xffffff,.8);
+      sun.position.set(30,50,30);
+      sun.castShadow=true;
+      this.scene.add(sun);
+
+      // Fog for depth
+      this.scene.fog=new THREE.Fog(0x87ceeb,50,150);
+
+      this.animate();
+    },
+
+    createBlock(type,x,y,z){
+      const def=BLOCKS[type];
+      const geo=new THREE.BoxGeometry(.95,.95,.95);
+      const mat=new THREE.MeshPhongMaterial({
+        color:def[1],
+        transparent:!def[2]||type==='glass',
+        opacity:def[2]?1:.6,
+        emissive:type==='lava'?0xff2200:(type==='lamp'?0xffff00:0),
+        emissiveIntensity:type==='lava'?.5:(type==='lamp'?.3:0)
+      });
+
+      const mesh=new THREE.Mesh(geo,mat);
+      mesh.position.set(x,y,z);
+      mesh.castShadow=true;
+      mesh.receiveShadow=true;
+      this.scene.add(mesh);
+      return mesh;
+    },
+
+    createBot(x,y,z){
+      const group=new THREE.Group();
+
+      // Body
+      const body=new THREE.Mesh(
+        new THREE.BoxGeometry(.6,.8,.4),
+        new THREE.MeshPhongMaterial({color:0x4488ff,emissive:0x2244aa,emissiveIntensity:.3})
+      );
+      group.add(body);
+
+      // Head
+      const head=new THREE.Mesh(
+        new THREE.BoxGeometry(.4,.4,.4),
+        new THREE.MeshPhongMaterial({color:0x44aaff})
+      );
+      head.position.y=.6;
+      group.add(head);
+
+      // Eyes
+      const eyeMat=new THREE.MeshBasicMaterial({color:0x00ff00});
+      [-0.1,0.1].forEach(ox=>{
+        const eye=new THREE.Mesh(new THREE.BoxGeometry(.08,.08,.1),eyeMat);
+        eye.position.set(ox,.65,.2);
+        group.add(eye);
+      });
+
+      group.position.set(x,y,z);
+      this.scene.add(group);
+      return group;
+    },
+
+    removeBlock(key){
+      const mesh=this.meshes.get(key);
+      if(mesh){
+        this.scene.remove(mesh);
+        this.meshes.delete(key);
+      }
+    },
+
+    updateBlockPower(mesh,powered){
+      if(mesh&&mesh.material){
+        mesh.material.emissive.setHex(powered?0xff4400:0);
+        mesh.material.emissiveIntensity=powered?.5:0;
+      }
+    },
+
+    animate(){
+      requestAnimationFrame(()=>this.animate());
+      const t=Date.now()*.001;
+
+      // Camera orbit
+      const r=45;
+      this.camera.position.x=12+Math.cos(t*.1)*r;
+      this.camera.position.z=12+Math.sin(t*.1)*r;
+      this.camera.position.y=20+Math.sin(t*.15)*8;
+      this.camera.lookAt(12,5,12);
+
+      // Animate bots
+      V.bots.forEach((b,i)=>{
+        if(b.mesh){
+          b.mesh.position.y=b.y+Math.sin(t*3+i)*.1+.5;
+          b.mesh.rotation.y=t+i;
+        }
+      });
+
+      this.renderer.render(this.scene,this.camera);
+    }
+  },
+
+  key(x,y,z){return`${x},${y},${z}`},
+
+  place(type,x,y,z){
+    const k=this.key(x,y,z);
+    if(this.grid.has(k))return false;
+
+    const mesh=this.W.createBlock(type,x,y,z);
+    this.grid.set(k,{type,x,y,z,mesh,powered:false});
+    this.W.meshes.set(k,mesh);
+    this.blockCount++;
+
+    // Auto-power check
+    if(CIRCUITS.includes(type)){
+      this.propagatePower();
+    }
+
+    return true;
+  },
+
+  remove(x,y,z){
+    const k=this.key(x,y,z);
+    if(!this.grid.has(k))return;
+    this.W.removeBlock(k);
+    this.grid.delete(k);
+    this.blockCount--;
+    this.propagatePower();
+  },
+
+  propagatePower(){
+    // Reset power
+    this.grid.forEach(b=>b.powered=false);
+    this.poweredCount=0;
+
+    // Find power sources (switches)
+    const sources=[];
+    this.grid.forEach(b=>{
+      if(b.type==='switch'){
+        b.powered=true;
+        sources.push(b);
+      }
+    });
+
+    // BFS propagation
+    const visited=new Set();
+    const queue=[...sources];
+
+    while(queue.length){
+      const block=queue.shift();
+      const k=this.key(block.x,block.y,block.z);
+      if(visited.has(k))continue;
+      visited.add(k);
+
+      block.powered=true;
+      this.poweredCount++;
+      this.W.updateBlockPower(block.mesh,true);
+
+      // Check neighbors
+      [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]].forEach(([dx,dy,dz])=>{
+        const nk=this.key(block.x+dx,block.y+dy,block.z+dz);
+        const neighbor=this.grid.get(nk);
+        if(neighbor&&CIRCUITS.includes(neighbor.type)&&!visited.has(nk)){
+          // Lamps light up, wires propagate
+          if(neighbor.type==='wire'||neighbor.type==='lamp'||neighbor.type==='repeater'){
+            queue.push(neighbor);
+          }
+          // Pistons activate
+          if(neighbor.type==='piston'&&block.powered){
+            this.activatePiston(neighbor);
+          }
+        }
+      });
+    }
+
+    this.updateUI();
+  },
+
+  activatePiston(piston){
+    // Push block above
+    const above=this.grid.get(this.key(piston.x,piston.y+1,piston.z));
+    const target=this.key(piston.x,piston.y+2,piston.z);
+    if(above&&!this.grid.has(target)){
+      // Move block up
+      this.remove(above.x,above.y,above.z);
+      this.place(above.type,piston.x,piston.y+2,piston.z);
+      T.log('log','⬆️ Piston pushed!');
+    }
+  },
+
+  genTerrain(){
+    this.clear();
+    const size=this.worldSize;
+
+    // Generate heightmap
+    for(let x=0;x<size;x++){
+      for(let z=0;z<size;z++){
+        // Simple noise
+        const h=Math.floor(3+Math.sin(x*.3)*2+Math.cos(z*.3)*2+Math.random()*2);
+
+        for(let y=0;y<h;y++){
+          let type='stone';
+          if(y===h-1)type='grass';
+          else if(y>=h-3)type='dirt';
+          else if(Math.random()<.1)type='ore';
+          this.place(type,x,y,z);
+        }
+
+        // Trees
+        if(Math.random()<.05&&h>3){
+          const th=T.rngInt(3,5);
+          for(let ty=0;ty<th;ty++)this.place('wood',x,h+ty,z);
+          // Leaves
+          for(let lx=-1;lx<=1;lx++){
+            for(let lz=-1;lz<=1;lz++){
+              for(let ly=0;ly<=1;ly++){
+                if(Math.random()>.3)this.place('leaves',x+lx,h+th+ly,z+lz);
+              }
+            }
+          }
+        }
+
+        // Water pools
+        if(h<4&&Math.random()<.3){
+          this.place('water',x,3,z);
+        }
+      }
+    }
+
+    T.log('log',`🌍 Generated ${this.blockCount} blocks`);
+    this.updateUI();
+  },
+
+  spawnBot(){
+    const x=T.rngInt(2,this.worldSize-2);
+    const z=T.rngInt(2,this.worldSize-2);
+
+    // Find ground level
+    let y=20;
+    while(y>0&&!this.grid.has(this.key(x,y-1,z)))y--;
+
+    const mesh=this.W.createBot(x,y,z);
+    const bot={
+      id:++this.botId,
+      mesh,x,y,z,
+      inventory:{},
+      task:'build',
+      target:null
+    };
+
+    this.bots.push(bot);
+    T.log('log',`🤖 Bot#${bot.id} spawned`);
+    this.updateUI();
+    return bot;
+  },
+
+  botTick(){
+    this.bots.forEach(bot=>{
+      // Random movement
+      if(Math.random()<.3){
+        const dx=T.rngInt(-1,1);
+        const dz=T.rngInt(-1,1);
+        const nx=bot.x+dx;
+        const nz=bot.z+dz;
+
+        // Check bounds and find ground
+        if(nx>=0&&nx<this.worldSize&&nz>=0&&nz<this.worldSize){
+          let ny=bot.y;
+          // Check for ground or step up
+          if(!this.grid.has(this.key(nx,ny,nz))){
+            while(ny>0&&!this.grid.has(this.key(nx,ny-1,nz)))ny--;
+          }else if(!this.grid.has(this.key(nx,ny+1,nz))){
+            ny++;
+          }
+
+          bot.x=nx;bot.y=ny;bot.z=nz;
+          if(bot.mesh){
+            bot.mesh.position.x=nx;
+            bot.mesh.position.z=nz;
+          }
+        }
+      }
+
+      // Random build
+      if(Math.random()<.1){
+        const types=['stone','wood','wire','lamp'];
+        const type=types[T.rngInt(0,types.length-1)];
+        const bx=bot.x+T.rngInt(-1,1);
+        const bz=bot.z+T.rngInt(-1,1);
+        const by=bot.y+T.rngInt(0,2);
+        if(by<15&&this.place(type,bx,by,bz)){
+          T.log('log',`🤖#${bot.id} +${BLOCKS[type][4]}`);
+        }
+      }
+
+      // Build circuits sometimes
+      if(Math.random()<.05){
+        const circuit=CIRCUITS[T.rngInt(0,CIRCUITS.length-1)];
+        if(this.place(circuit,bot.x,bot.y+1,bot.z)){
+          T.log('log',`🤖#${bot.id} ⚡${BLOCKS[circuit][4]}`);
+        }
+      }
+    });
+  },
+
+  pulse(){
+    // Activate all switches briefly
+    T.log('log','⚡ Power pulse!');
+    this.propagatePower();
+  },
+
+  clear(){
+    this.grid.forEach((b,k)=>this.W.removeBlock(k));
+    this.grid.clear();
+    this.bots.forEach(b=>this.W.scene.remove(b.mesh));
+    this.bots=[];
+    this.blockCount=0;
+    this.poweredCount=0;
+    T.log('log','🗑️ World cleared');
+    this.updateUI();
+  },
+
+  updateUI(){
+    T.html('stats',`
+      <div class="gr">
+        <div class="s" style="border-color:#4f4">🧱${this.blockCount}</div>
+        <div class="s" style="border-color:#f44">⚡${this.poweredCount}</div>
+        <div class="s" style="border-color:#44f">🤖${this.bots.length}</div>
+      </div>
+    `);
+
+    T.html('power',`
+      <div style="font-size:8px">Power flow:</div>
+      <div class="bar"><div class="fill" style="width:${this.blockCount?this.poweredCount/this.blockCount*100:0}%;background:#f44"></div></div>
+    `);
+
+    // Block buttons
+    const terrainBlocks=Object.entries(BLOCKS).filter(([k])=>!CIRCUITS.includes(k));
+    T.html('blocks',terrainBlocks.map(([k,v])=>
+      `<button class="${this.selected===k?'sel':''}" onclick="V.selected='${k}';V.updateUI()">${v[4]}</button>`
+    ).join(''));
+
+    T.html('circuits',CIRCUITS.map(k=>
+      `<button class="${this.selected===k?'sel':''}" onclick="V.selected='${k}';V.updateUI()">${BLOCKS[k][4]}</button>`
+    ).join(''));
+
+    // Bots
+    T.html('bots',this.bots.map(b=>
+      `<div style="font-size:8px">🤖#${b.id} (${b.x},${b.y},${b.z})</div>`
+    ).join('')||'<div style="color:#555">No bots</div>');
+
+    // Circuit state
+    const circuitBlocks=[...this.grid.values()].filter(b=>CIRCUITS.includes(b.type));
+    T.html('circuit',`
+      <div style="font-size:8px">Wires: ${circuitBlocks.filter(b=>b.type==='wire').length}</div>
+      <div style="font-size:8px">Switches: ${circuitBlocks.filter(b=>b.type==='switch').length}</div>
+      <div style="font-size:8px">Lamps: ${circuitBlocks.filter(b=>b.type==='lamp'&&b.powered).length}/${circuitBlocks.filter(b=>b.type==='lamp').length}</div>
+      <div style="font-size:8px">Pistons: ${circuitBlocks.filter(b=>b.type==='piston').length}</div>
+    `);
+  },
+
+  init(){
+    this.W.init();
+    T.log('log','🧱 Voxel Automata v1');
+    T.log('log','Generate terrain, spawn bots!');
+
+    // Generate initial world
+    setTimeout(()=>this.genTerrain(),200);
+    setTimeout(()=>this.spawnBot(),1000);
+
+    // Bot AI tick
+    setInterval(()=>this.botTick(),500);
+    this.updateUI();
+  }
+};
+
+onload=()=>setTimeout(()=>V.init(),100);
+onresize=()=>{V.W.renderer.setSize(innerWidth,innerHeight);V.W.camera.aspect=innerWidth/innerHeight;V.W.camera.updateProjectionMatrix()};
+</script></body></html>
