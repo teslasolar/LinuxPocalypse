@@ -1,11 +1,11 @@
 [
   {
-    "file": "kappa-cubelinux-v5.html",
-    "title": "κ.CubeLinux v5",
-    "description": "SCADA Assembly simulation with φ/κ dynamics, Three.js 3D visualization, and industrial control systems",
+    "file": "kappa-cubelinux-v8.html",
+    "title": "κ.CubeLinux v8",
+    "description": "3D HMI Worlds with immersive modal environments for each SCADA component - databases, APIs, PLCs, and AI neural cores",
     "icon": "🌀",
     "color": "#ffd700",
-    "tags": ["3D", "SCADA", "Three.js", "Simulation"]
+    "tags": ["3D", "SCADA", "HMI", "Immersive"]
   },
   {
     "file": "neural-genesis.html",

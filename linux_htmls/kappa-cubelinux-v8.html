@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>κ.CubeLinux v8 - 3D HMI Worlds</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#000;overflow:hidden;font:11px monospace;color:#0f0}
+#c{position:fixed;inset:0;z-index:0}
+.p{position:absolute;background:rgba(0,15,30,.95);border:2px solid;border-radius:8px;padding:10px;z-index:10}
+.t{background:#000;color:#0f0;padding:6px;height:60px;overflow-y:auto;white-space:pre-wrap;font-size:9px;border:1px solid #0f0;border-radius:3px}
+button{background:linear-gradient(135deg,#0ff,#09f);color:#000;border:0;padding:6px 10px;margin:2px;font-size:9px;border-radius:4px;cursor:pointer;font-weight:bold}
+button:hover{transform:scale(1.05)}.ib{background:linear-gradient(135deg,#f60,#c50);color:#fff}
+.g{display:grid;grid-template-columns:repeat(4,1fr);gap:3px;margin:5px 0}
+.s{padding:4px;text-align:center;border:1px solid;border-radius:3px;background:rgba(0,0,0,.6)}
+.bar{height:6px;background:#111;border-radius:3px;margin:3px 0}.fill{height:100%;border-radius:3px}
+.φ{color:#ffd700;text-shadow:0 0 5px #ffd700}
+#modal{display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.9)}
+#modal.open{display:block}
+#modal-header{position:absolute;top:0;left:0;right:0;height:50px;background:rgba(0,20,40,.95);border-bottom:2px solid;display:flex;align-items:center;justify-content:space-between;padding:0 15px;z-index:10}
+#modal-title{font-size:14px;font-weight:bold}
+#modal-close{background:#f00;color:#fff;border:0;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:18px}
+#hmi-canvas{position:absolute;top:50px;left:0;width:100%;height:calc(100% - 180px)}
+#hmi-controls{position:absolute;bottom:100px;left:0;right:0;height:80px;background:rgba(0,20,40,.95);border-top:2px solid;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:5px;padding:10px}
+#hmi-log{position:absolute;bottom:0;left:0;right:0;height:100px;background:#000;border-top:2px solid #0f0;padding:8px;overflow-y:auto;font-size:10px;color:#0f0}
+.hmi-stat{background:#000;border:2px solid;border-radius:6px;padding:8px 15px;text-align:center;min-width:80px}
+.hmi-val{font-size:18px;font-weight:bold}
+.hmi-lbl{font-size:9px;opacity:.7}
+.node-btn{padding:6px 10px;margin:2px;border-radius:4px;font-size:10px;cursor:pointer;border:2px solid}
+#hmi-panel{max-height:180px;overflow-y:auto}
+</style></head><body><canvas id="c"></canvas>
+
+<div id="modal">
+<div id="modal-header"><div id="modal-title"></div><button id="modal-close" onclick="S.closeModal()">×</button></div>
+<canvas id="hmi-canvas"></canvas>
+<div id="hmi-controls"></div>
+<div id="hmi-log"></div>
+</div>
+
+<div class="p" style="top:8px;left:8px;border-color:#ffd700;width:220px">
+<div class="φ" style="text-align:center;font-size:12px">🌀 κ.DYNAMICS v8</div>
+<div id="kd"></div>
+</div>
+
+<div class="p" style="top:8px;left:240px;border-color:#0f0;width:180px">
+<div style="color:#0f0;text-align:center;font-size:11px;margin-bottom:5px">🖥️ OPEN HMI</div>
+<div id="hmi-panel"></div>
+</div>
+
+<div class="p" style="top:8px;right:8px;border-color:#f60;width:280px">
+<div style="color:#f60;text-align:center;font-size:11px">🏭 SCADA</div>
+<div id="im"></div>
+<div id="at" class="t"></div>
+<div class="g">
+<button class="ib" onclick="S.d('ig')">🏭Ig</button><button class="ib" onclick="S.d('pl')">⚙️Pl</button>
+<button class="ib" onclick="S.d('hm')">🖥️Hm</button><button class="ib" onclick="S.d('rt')">🤖Rt</button>
+<button onclick="S.d('db')">💾Db</button><button onclick="S.d('ap')">🌐Ap</button>
+<button onclick="S.d('ms')">⚙️µS</button><button onclick="S.d('cq')">📬Mq</button>
+</div>
+<div class="g">
+<button onclick="S.w()">⚡Ld</button><button onclick="S.k()">💥φ!</button>
+<button onclick="S.sync()">🌀Sy</button><button id="ab" onclick="S.auto=!S.auto">🤖A</button>
+</div>
+</div>
+
+<div class="p" style="bottom:8px;left:8px;border-color:#0ff;width:280px">
+<div style="color:#0ff">💻 METRICS</div><div id="sm"></div>
+</div>
+
+<script>
+const φ=(1+Math.sqrt(5))/2,κ=1/φ,α=φ*φ;
+const K={φ,κ,α,drift:x=>-α*(x-κ)*(1-x)*x,couple(a){const k=Object.keys(a),n={};k.forEach(i=>{let f=-α*(a[i]-κ)*(1-a[i])*a[i],c=0;k.forEach(j=>{if(j!=i)c+=κ*Math.sin(a[j]-a[i])});n[i]=Math.max(.01,Math.min(.99,a[i]+(f+c)*.05))});return n},ok:x=>Math.abs(x-κ)<.02};
+
+const CT={
+  db:[0,0,0x00aaff,80,['ap','ms'],'Database'],
+  ap:[1,0,0xff8800,120,['ms','cq'],'API Gateway'],
+  ms:[2,0,0x88ff00,100,['cq','ig'],'Microservice'],
+  cq:[3,0,0x00ffff,90,['ig','pl'],'Message Queue'],
+  ig:[0,1,0xff6600,400,['pl','hm'],'Ignition Gateway'],
+  pl:[1,1,0x44aa00,320,['hm','rt'],'PLC Controller'],
+  hm:[2,1,0x0099ff,280,['rt'],'HMI Station'],
+  rt:[3,1,0xff00aa,350,[],'RT-AI Engine']
+};
+const icons={db:'💾',ap:'🌐',ms:'⚙️',cq:'📬',ig:'🏭',pl:'⚙️',hm:'🖥️',rt:'🤖'};
+
+// 3D HMI World Templates
+const HMI3D={
+  db:{
+    name:'Database Control Room',
+    build(sc,c){
+      // Server racks
+      for(let i=0;i<5;i++){
+        const rack=new THREE.Mesh(new THREE.BoxGeometry(8,20,5),new THREE.MeshPhongMaterial({color:0x00aaff,emissive:0x004466}));
+        rack.position.set(-20+i*10,10,-15);
+        sc.add(rack);
+        // Blinking lights
+        for(let j=0;j<4;j++){
+          const light=new THREE.Mesh(new THREE.SphereGeometry(.3),new THREE.MeshBasicMaterial({color:Math.random()>.5?0x00ff00:0xff0000}));
+          light.position.set(-20+i*10+2,5+j*4,-12);
+          light.isLight=true;
+          sc.add(light);
+        }
+      }
+      // Data streams
+      for(let i=0;i<20;i++){
+        const stream=new THREE.Mesh(new THREE.CylinderGeometry(.1,.1,30),new THREE.MeshBasicMaterial({color:0x00ffff,transparent:true,opacity:.5}));
+        stream.position.set(-25+Math.random()*50,15,-5);
+        stream.rotation.x=Math.PI/2;
+        stream.isStream=true;
+        stream.speed=.5+Math.random();
+        sc.add(stream);
+      }
+      // Floor grid
+      const grid=new THREE.GridHelper(60,20,0x00aaff,0x003366);
+      sc.add(grid);
+    },
+    stats:c=>[{v:c.pr.to*10,l:'Queries/s',c:'#0af'},{v:(c.pr.ev/10).toFixed(1)+'GB',l:'Storage',c:'#0f0'},{v:Math.round(95+Math.random()*4)+'%',l:'Uptime',c:'#ff0'}],
+    actions:[{n:'▶ Query',p:20},{n:'💾 Backup',p:30},{n:'⚡ Optimize',p:25}]
+  },
+
+  ap:{
+    name:'API Gateway Hub',
+    build(sc,c){
+      // Central hub
+      const hub=new THREE.Mesh(new THREE.TorusGeometry(10,3,16,32),new THREE.MeshPhongMaterial({color:0xff8800,emissive:0x442200}));
+      hub.rotation.x=Math.PI/2;hub.position.y=15;
+      sc.add(hub);
+      // Orbiting requests
+      for(let i=0;i<12;i++){
+        const req=new THREE.Mesh(new THREE.SphereGeometry(1),new THREE.MeshBasicMaterial({color:0xffff00}));
+        req.orbit={r:15+Math.random()*5,s:.02+Math.random()*.02,a:i*Math.PI/6};
+        req.position.y=15;
+        sc.add(req);
+      }
+      // Endpoint towers
+      for(let i=0;i<6;i++){
+        const a=i*Math.PI/3;
+        const tower=new THREE.Mesh(new THREE.CylinderGeometry(2,2,15),new THREE.MeshPhongMaterial({color:0x00ff88}));
+        tower.position.set(Math.cos(a)*25,7.5,Math.sin(a)*25);
+        sc.add(tower);
+      }
+      sc.add(new THREE.GridHelper(60,20,0xff8800,0x442200));
+    },
+    stats:c=>[{v:c.pr.to*100,l:'Req/min',c:'#f80'},{v:Math.round(10+Math.random()*5)+'ms',l:'Latency',c:'#0f0'},{v:c.pr.ev,l:'Endpoints',c:'#0ff'}],
+    actions:[{n:'➕ Route',p:15},{n:'🗑️ Cache',p:20}]
+  },
+
+  ig:{
+    name:'Ignition Control Center',
+    build(sc,c){
+      // Main reactor
+      const reactor=new THREE.Mesh(new THREE.DodecahedronGeometry(12),new THREE.MeshPhongMaterial({color:0xff6600,emissive:0x441100,wireframe:false}));
+      reactor.position.y=15;reactor.isReactor=true;
+      sc.add(reactor);
+      // Energy rings
+      for(let i=0;i<3;i++){
+        const ring=new THREE.Mesh(new THREE.TorusGeometry(15+i*5,1,8,32),new THREE.MeshBasicMaterial({color:0xff6600,transparent:true,opacity:.5}));
+        ring.position.y=15;ring.rotation.x=Math.PI/2;ring.isRing=true;ring.speed=.01+i*.005;
+        sc.add(ring);
+      }
+      // Control panels
+      for(let i=0;i<4;i++){
+        const a=i*Math.PI/2;
+        const panel=new THREE.Mesh(new THREE.BoxGeometry(10,8,1),new THREE.MeshPhongMaterial({color:0x003333,emissive:0x001111}));
+        panel.position.set(Math.cos(a)*30,5,Math.sin(a)*30);
+        panel.lookAt(0,5,0);
+        sc.add(panel);
+        // Screen glow
+        const screen=new THREE.Mesh(new THREE.PlaneGeometry(8,5),new THREE.MeshBasicMaterial({color:0x00ff00,transparent:true,opacity:.8}));
+        screen.position.set(Math.cos(a)*29,5,Math.sin(a)*29);
+        screen.lookAt(0,5,0);
+        sc.add(screen);
+      }
+      // Tag particles
+      for(let i=0;i<50;i++){
+        const tag=new THREE.Mesh(new THREE.BoxGeometry(.5,.5,.5),new THREE.MeshBasicMaterial({color:0xffff00}));
+        tag.position.set((Math.random()-.5)*50,Math.random()*30,(Math.random()-.5)*50);
+        tag.isTag=true;tag.vel={x:(Math.random()-.5)*.2,y:(Math.random()-.5)*.2,z:(Math.random()-.5)*.2};
+        sc.add(tag);
+      }
+      sc.add(new THREE.GridHelper(80,20,0xff6600,0x331100));
+    },
+    stats:c=>[{v:c.pr.to,l:'Tags',c:'#f60'},{v:c.pr.ev,l:'Events',c:'#0f0'},{v:((S.st.κ.h+S.st.κ.a+S.st.κ.s)/3*100).toFixed(0)+'%',l:'κ-Sync',c:'#ffd700'}],
+    actions:[{n:'🔍 Scan',p:50},{n:'🚨 Alarms',p:40},{n:'📊 History',p:45},{n:'▶ Script',p:60}]
+  },
+
+  pl:{
+    name:'PLC Factory Floor',
+    build(sc,c){
+      // Conveyor belts
+      for(let i=0;i<3;i++){
+        const belt=new THREE.Mesh(new THREE.BoxGeometry(60,1,4),new THREE.MeshPhongMaterial({color:0x444444}));
+        belt.position.set(0,1,-15+i*15);
+        sc.add(belt);
+        // Moving items
+        for(let j=0;j<5;j++){
+          const item=new THREE.Mesh(new THREE.BoxGeometry(3,3,3),new THREE.MeshPhongMaterial({color:0x44aa00}));
+          item.position.set(-25+j*12,3.5,-15+i*15);
+          item.isBelt=i;item.isItem=true;
+          sc.add(item);
+        }
+      }
+      // Robot arms
+      for(let i=0;i<4;i++){
+        const base=new THREE.Mesh(new THREE.CylinderGeometry(2,2,3),new THREE.MeshPhongMaterial({color:0xffaa00}));
+        base.position.set(-20+i*15,1.5,0);
+        sc.add(base);
+        const arm=new THREE.Mesh(new THREE.BoxGeometry(1,10,1),new THREE.MeshPhongMaterial({color:0xffaa00}));
+        arm.position.set(-20+i*15,8,0);arm.isArm=true;arm.phase=i;
+        sc.add(arm);
+      }
+      // I/O cabinet
+      const cabinet=new THREE.Mesh(new THREE.BoxGeometry(8,15,5),new THREE.MeshPhongMaterial({color:0x666666}));
+      cabinet.position.set(35,7.5,0);
+      sc.add(cabinet);
+      sc.add(new THREE.GridHelper(80,20,0x44aa00,0x113300));
+    },
+    stats:c=>[{v:100+Math.round(c.pr.to/2),l:'I/O Pts',c:'#4a0'},{v:Math.round(5+Math.random()*3)+'ms',l:'Scan',c:'#ff0'},{v:c.pr.ev>50?'RUN':'STOP',l:'Status',c:c.pr.ev>50?'#0f0':'#f00'}],
+    actions:[{n:'▶ Start',p:40},{n:'⏹ Stop',p:10},{n:'📝 Program',p:50}]
+  },
+
+  hm:{
+    name:'HMI Visualization Lab',
+    build(sc,c){
+      // Giant screens
+      for(let i=0;i<3;i++){
+        const screen=new THREE.Mesh(new THREE.PlaneGeometry(20,12),new THREE.MeshBasicMaterial({color:0x001133}));
+        screen.position.set(-25+i*25,10,-20);
+        sc.add(screen);
+        // Screen content
+        const content=new THREE.Mesh(new THREE.PlaneGeometry(18,10),new THREE.MeshBasicMaterial({color:0x0099ff,transparent:true,opacity:.8}));
+        content.position.set(-25+i*25,10,-19.5);
+        content.isScreen=true;content.idx=i;
+        sc.add(content);
+      }
+      // Holographic display
+      const holo=new THREE.Mesh(new THREE.CylinderGeometry(8,8,15,32,1,true),new THREE.MeshBasicMaterial({color:0x00ffff,transparent:true,opacity:.3,side:THREE.DoubleSide}));
+      holo.position.set(0,7.5,10);holo.isHolo=true;
+      sc.add(holo);
+      // Floating widgets
+      for(let i=0;i<8;i++){
+        const widget=new THREE.Mesh(new THREE.BoxGeometry(4,3,.5),new THREE.MeshPhongMaterial({color:0x0066cc,emissive:0x003366}));
+        widget.position.set((Math.random()-.5)*30,5+Math.random()*15,(Math.random()-.5)*20);
+        widget.isWidget=true;
+        sc.add(widget);
+      }
+      sc.add(new THREE.GridHelper(60,20,0x0099ff,0x003366));
+    },
+    stats:c=>[{v:c.pr.to,l:'Screens',c:'#09f'},{v:c.pr.ev,l:'Widgets',c:'#0f0'},{v:Math.round(70+Math.random()*25)+'%',l:'Load',c:'#f0f'}],
+    actions:[{n:'🖼️ Screen',p:30},{n:'📦 Widget',p:25},{n:'🔗 Bind',p:35}]
+  },
+
+  rt:{
+    name:'AI Neural Core',
+    build(sc,c){
+      // Brain mesh
+      const brain=new THREE.Mesh(new THREE.IcosahedronGeometry(10,2),new THREE.MeshPhongMaterial({color:0xff00aa,emissive:0x440044,wireframe:true}));
+      brain.position.y=15;brain.isBrain=true;
+      sc.add(brain);
+      // Neural connections
+      for(let i=0;i<30;i++){
+        const n1={x:(Math.random()-.5)*40,y:5+Math.random()*25,z:(Math.random()-.5)*40};
+        const n2={x:(Math.random()-.5)*40,y:5+Math.random()*25,z:(Math.random()-.5)*40};
+        const pts=[new THREE.Vector3(n1.x,n1.y,n1.z),new THREE.Vector3((n1.x+n2.x)/2,Math.max(n1.y,n2.y)+5,(n1.z+n2.z)/2),new THREE.Vector3(n2.x,n2.y,n2.z)];
+        const curve=new THREE.QuadraticBezierCurve3(...pts);
+        const geo=new THREE.TubeGeometry(curve,10,.1,4);
+        const tube=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:0xff00ff,transparent:true,opacity:.4}));
+        sc.add(tube);
+      }
+      // Inference pulses
+      for(let i=0;i<20;i++){
+        const pulse=new THREE.Mesh(new THREE.SphereGeometry(.5),new THREE.MeshBasicMaterial({color:0x00ffff}));
+        pulse.position.set((Math.random()-.5)*40,5+Math.random()*25,(Math.random()-.5)*40);
+        pulse.isPulse=true;pulse.vel={x:(Math.random()-.5),y:(Math.random()-.5),z:(Math.random()-.5)};
+        sc.add(pulse);
+      }
+      // φ symbol
+      const loader=new THREE.Mesh(new THREE.TorusGeometry(5,1,8,32),new THREE.MeshBasicMaterial({color:0xffd700}));
+      loader.position.set(0,35,0);loader.rotation.x=Math.PI/2;loader.isPhi=true;
+      sc.add(loader);
+      sc.add(new THREE.GridHelper(60,20,0xff00aa,0x330033));
+    },
+    stats:c=>[{v:c.pr.to,l:'Models',c:'#f0a'},{v:c.pr.ev,l:'Infer',c:'#0ff'},{v:((S.st.κ.h+S.st.κ.a+S.st.κ.s)/3).toFixed(3),l:'κ',c:'#ffd700'}],
+    actions:[{n:'🧠 Train',p:60},{n:'⚡ Infer',p:40},{n:'🌀 φ-Opt',p:80,special:'phi'}]
+  },
+
+  ms:{
+    name:'Microservice Cluster',
+    build(sc,c){
+      // Service pods
+      for(let i=0;i<12;i++){
+        const a=i*Math.PI/6;
+        const r=15+Math.floor(i/6)*10;
+        const pod=new THREE.Mesh(new THREE.DodecahedronGeometry(3),new THREE.MeshPhongMaterial({color:0x88ff00,emissive:0x224400}));
+        pod.position.set(Math.cos(a)*r,5+Math.random()*10,Math.sin(a)*r);
+        pod.isPod=true;
+        sc.add(pod);
+      }
+      // Load balancer
+      const lb=new THREE.Mesh(new THREE.OctahedronGeometry(5),new THREE.MeshPhongMaterial({color:0xffff00,emissive:0x444400}));
+      lb.position.y=20;lb.isLB=true;
+      sc.add(lb);
+      // Connection lines
+      for(let i=0;i<12;i++){
+        const a=i*Math.PI/6;
+        const r=15+Math.floor(i/6)*10;
+        const geo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,20,0),new THREE.Vector3(Math.cos(a)*r,5+Math.random()*10,Math.sin(a)*r)]);
+        const line=new THREE.Line(geo,new THREE.LineBasicMaterial({color:0x88ff00,transparent:true,opacity:.5}));
+        sc.add(line);
+      }
+      sc.add(new THREE.GridHelper(50,20,0x88ff00,0x224400));
+    },
+    stats:c=>[{v:c.pr.to*50,l:'Calls',c:'#8f0'},{v:Math.round(95+Math.random()*4)+'%',l:'Health',c:'#0f0'}],
+    actions:[{n:'🔄 Restart',p:25},{n:'📈 Scale',p:30}]
+  },
+
+  cq:{
+    name:'Message Queue Stream',
+    build(sc,c){
+      // Queue pipes
+      for(let i=0;i<3;i++){
+        const pipe=new THREE.Mesh(new THREE.CylinderGeometry(3,3,50,16),new THREE.MeshPhongMaterial({color:0x00ffff,emissive:0x004444,transparent:true,opacity:.7}));
+        pipe.rotation.z=Math.PI/2;pipe.position.set(0,5+i*8,0);
+        sc.add(pipe);
+        // Messages flowing
+        for(let j=0;j<8;j++){
+          const msg=new THREE.Mesh(new THREE.BoxGeometry(2,1.5,1.5),new THREE.MeshBasicMaterial({color:0xffff00}));
+          msg.position.set(-20+j*5,5+i*8,0);msg.isMsg=true;msg.pipe=i;msg.speed=.3+Math.random()*.2;
+          sc.add(msg);
+        }
+      }
+      // Consumer nodes
+      for(let i=0;i<4;i++){
+        const node=new THREE.Mesh(new THREE.ConeGeometry(3,5,6),new THREE.MeshPhongMaterial({color:0x00ff88}));
+        node.position.set(30,5+i*6,0);node.rotation.z=-Math.PI/2;
+        sc.add(node);
+      }
+      // Producer
+      const prod=new THREE.Mesh(new THREE.BoxGeometry(8,20,8),new THREE.MeshPhongMaterial({color:0xff8800}));
+      prod.position.set(-30,10,0);
+      sc.add(prod);
+      sc.add(new THREE.GridHelper(70,20,0x00ffff,0x004444));
+    },
+    stats:c=>[{v:c.pr.to*20,l:'Messages',c:'#0ff'},{v:c.pr.ev,l:'Consumers',c:'#0f0'}],
+    actions:[{n:'🗑️ Purge',p:15},{n:'📤 Publish',p:20}]
+  }
+};
+
+const S={
+  st:{cm:new Map(),ac:{},p:0,lv:0,tc:{},cc:0,κ:{h:.3,a:.5,s:.4},slots:{}},
+  auto:0,hmi:{sc:null,ca:null,rn:null,af:null,comp:null},
+  lv:[{l:0,n:'Boot',t:0},{l:1,n:'ISA-101',t:300},{l:2,n:'ISA-88',t:800},{l:3,n:'ISA-95',t:1500},{l:4,n:'SCADA',t:3e3},{l:5,n:'IndAI',t:5e3}],
+
+  openModal(id){
+    const c=this.st.cm.get(id);if(!c)return;
+    const tpl=HMI3D[c.t];if(!tpl)return;
+    const col='#'+CT[c.t][2].toString(16).padStart(6,'0');
+
+    document.getElementById('modal-header').style.borderColor=col;
+    document.getElementById('modal-title').innerHTML=`<span style="color:${col}">${icons[c.t]} ${c.id}</span> - ${tpl.name}`;
+    document.getElementById('hmi-controls').style.borderColor=col;
+
+    // Build controls
+    const stats=tpl.stats(c);
+    let html=stats.map(s=>`<div class="hmi-stat" style="border-color:${s.c}"><div class="hmi-val" style="color:${s.c}">${s.v}</div><div class="hmi-lbl">${s.l}</div></div>`).join('');
+    html+=tpl.actions.map(a=>`<button class="ib" style="padding:10px 15px;font-size:11px" onclick="S.act('${c.id}','${a.n}',${a.p}${a.special?`,'${a.special}'`:''})">${a.n}</button>`).join('');
+    document.getElementById('hmi-controls').innerHTML=html;
+
+    document.getElementById('modal').classList.add('open');
+    this.initHMI(c,tpl);
+  },
+
+  initHMI(c,tpl){
+    const canvas=document.getElementById('hmi-canvas');
+    const w=window.innerWidth;
+    const h=window.innerHeight-180;
+
+    this.hmi.sc=new THREE.Scene();
+    this.hmi.ca=new THREE.PerspectiveCamera(60,w/h,.1,500);
+    this.hmi.rn=new THREE.WebGLRenderer({canvas,antialias:true});
+    this.hmi.rn.setSize(w,h);
+    this.hmi.rn.setClearColor(0x000510);
+    this.hmi.ca.position.set(40,30,40);
+    this.hmi.ca.lookAt(0,10,0);
+    this.hmi.comp=c;
+    this.hmi.logInterval=null;
+
+    // Lighting
+    this.hmi.sc.add(new THREE.AmbientLight(0x404050));
+    const dl=new THREE.DirectionalLight(0xffffff,.8);dl.position.set(30,50,30);
+    this.hmi.sc.add(dl);
+    const col=CT[c.t][2];
+    const pl=new THREE.PointLight(col,1,100);pl.position.set(0,20,0);
+    this.hmi.sc.add(pl);
+
+    // Build scene
+    tpl.build(this.hmi.sc,c);
+
+    // Fog
+    this.hmi.sc.fog=new THREE.FogExp2(0x000510,.008);
+
+    // Clear and start log
+    document.getElementById('hmi-log').innerHTML='';
+    this.hmiLog(`[SYSTEM] ${tpl.name} initialized`);
+    this.hmiLog(`[SYSTEM] Component ${c.id} online`);
+    this.startLogs(c,tpl);
+
+    // Start animation
+    if(this.hmi.af)cancelAnimationFrame(this.hmi.af);
+    this.animateHMI();
+  },
+
+  startLogs(c,tpl){
+    const logs={
+      db:['[QUERY] SELECT * FROM users LIMIT 100','[QUERY] INSERT INTO logs VALUES (...)','[BACKUP] Checkpoint created','[INDEX] Rebuilding idx_users_email','[CONN] New connection from 10.0.0.45','[QUERY] UPDATE sessions SET active=1','[GC] Freed 128MB memory'],
+      ap:['[REQ] GET /api/v1/users 200 12ms','[REQ] POST /api/v1/data 201 45ms','[RATE] Client 10.0.0.12 throttled','[CACHE] Hit ratio: 94.2%','[REQ] GET /api/v1/status 200 3ms','[AUTH] Token validated for user_123','[REQ] DELETE /api/v1/cache 204 8ms'],
+      ig:['[TAG] Temperature_01 = 72.4°F','[TAG] Pressure_03 = 14.7 PSI','[ALARM] High temp warning Tank_02','[SCRIPT] Running daily_report.py','[TAG] FlowRate_01 = 125.3 GPM','[HIST] Archived 10000 samples','[OPC] Connected to PLC_Main'],
+      pl:['[I/O] DI:0001 = ON','[I/O] DO:0005 = OFF','[SCAN] Cycle time: 4.2ms','[PROG] Rung 145 executed','[I/O] AI:0002 = 4.82mA','[FAULT] Drive_01 overcurrent','[I/O] DO:0012 = ON'],
+      hm:['[SCREEN] Overview loaded','[WIDGET] Trend_01 updated','[NAV] User navigated to Alarms','[BIND] Tag Motor_Speed bound','[TOUCH] Button Start pressed','[SCREEN] Refreshed in 45ms','[WIDGET] Gauge_03 value: 78%'],
+      rt:['[MODEL] Inference latency: 12ms','[TRAIN] Epoch 45/100 loss: 0.023','[PRED] Anomaly detected: 0.94','[GPU] Utilization: 78%','[MODEL] Loaded model_v2.3','[INFER] Batch processed: 128','[OPT] Learning rate: 0.001'],
+      ms:['[HTTP] Request handled in 8ms','[HEALTH] All checks passed','[SCALE] Instance count: 3','[LOG] Processing event_queue','[HTTP] 200 OK /health','[METRIC] CPU: 45% MEM: 62%','[QUEUE] 12 pending jobs'],
+      cq:['[MSG] Published to topic_01','[CONSUME] Worker_03 acked msg','[QUEUE] Depth: 145 messages','[MSG] Routed to exchange_main','[DLQ] 2 messages moved','[CONSUME] Batch: 50 msgs/sec','[PUB] Message size: 2.4KB']
+    };
+
+    const typeLog=logs[c.t]||logs.db;
+    this.hmi.logInterval=setInterval(()=>{
+      const msg=typeLog[Math.floor(Math.random()*typeLog.length)];
+      this.hmiLog(msg);
+    },800);
+  },
+
+  hmiLog(msg){
+    const l=document.getElementById('hmi-log');
+    if(l){
+      const time=new Date().toLocaleTimeString();
+      l.innerHTML+=`<div><span style="color:#666">${time}</span> ${msg}</div>`;
+      l.scrollTop=l.scrollHeight;
+      // Keep last 50 lines
+      while(l.children.length>50)l.removeChild(l.firstChild);
+    }
+  },
+
+  animateHMI(){
+    this.hmi.af=requestAnimationFrame(()=>this.animateHMI());
+    const tm=Date.now()*.001;
+
+    this.hmi.sc.children.forEach(obj=>{
+      if(obj.isReactor)obj.rotation.y+=.01;
+      if(obj.isRing){obj.rotation.z+=obj.speed;obj.rotation.x=Math.sin(tm)*.2}
+      if(obj.isTag){obj.position.x+=obj.vel.x;obj.position.y+=obj.vel.y;obj.position.z+=obj.vel.z;if(Math.abs(obj.position.x)>25)obj.vel.x*=-1;if(obj.position.y<2||obj.position.y>28)obj.vel.y*=-1;if(Math.abs(obj.position.z)>25)obj.vel.z*=-1}
+      if(obj.orbit){obj.orbit.a+=obj.orbit.s;obj.position.x=Math.cos(obj.orbit.a)*obj.orbit.r;obj.position.z=Math.sin(obj.orbit.a)*obj.orbit.r}
+      if(obj.isArm){obj.rotation.z=Math.sin(tm*2+obj.phase)*.5}
+      if(obj.isItem){obj.position.x+=.1;if(obj.position.x>30)obj.position.x=-30}
+      if(obj.isHolo){obj.rotation.y+=.02;obj.scale.y=1+Math.sin(tm*3)*.1}
+      if(obj.isWidget){obj.position.y+=Math.sin(tm+obj.position.x)*.02;obj.rotation.y+=.01}
+      if(obj.isBrain){obj.rotation.y+=.005;obj.rotation.x=Math.sin(tm*.5)*.1}
+      if(obj.isPulse){obj.position.x+=obj.vel.x;obj.position.y+=obj.vel.y;obj.position.z+=obj.vel.z;if(Math.abs(obj.position.x)>20||Math.abs(obj.position.z)>20||obj.position.y<2||obj.position.y>30){obj.vel.x*=-1;obj.vel.y*=-1;obj.vel.z*=-1}}
+      if(obj.isPhi){obj.rotation.y+=.03}
+      if(obj.isPod){obj.rotation.y+=.02}
+      if(obj.isLB){obj.rotation.y+=.01;obj.rotation.x=Math.sin(tm)*.2}
+      if(obj.isMsg){obj.position.x+=obj.speed;if(obj.position.x>25)obj.position.x=-25}
+      if(obj.isLight&&obj.material){obj.material.color.setHex(Math.random()>.95?(obj.material.color.getHex()===0x00ff00?0xff0000:0x00ff00):obj.material.color.getHex())}
+      if(obj.isStream){obj.position.z+=obj.speed;if(obj.position.z>20)obj.position.z=-20}
+    });
+
+    // Camera orbit
+    const r=50+Math.sin(tm*.2)*10;
+    this.hmi.ca.position.x=Math.cos(tm*.1)*r;
+    this.hmi.ca.position.z=Math.sin(tm*.1)*r;
+    this.hmi.ca.position.y=25+Math.sin(tm*.15)*10;
+    this.hmi.ca.lookAt(0,10,0);
+
+    this.hmi.rn.render(this.hmi.sc,this.hmi.ca);
+  },
+
+  closeModal(){
+    document.getElementById('modal').classList.remove('open');
+    if(this.hmi.af)cancelAnimationFrame(this.hmi.af);
+    if(this.hmi.logInterval)clearInterval(this.hmi.logInterval);
+    this.hmi.sc=null;
+  },
+
+  act(id,action,pts,special){
+    const c=this.st.cm.get(id);if(!c)return;
+    c.pr.to+=Math.round(pts/3);c.pr.ev+=Math.round(pts/4);
+    this.st.p+=pts;
+    if(special==='phi'){
+      this.st.κ.a+=(κ-this.st.κ.a)*.2;
+      this.st.κ.h+=(κ-this.st.κ.h)*.15;
+      this.st.κ.s+=(κ-this.st.κ.s)*.15;
+      this.hmiLog(`<span style="color:#ffd700">[φ-OPT] κ converging → ${κ.toFixed(4)}</span>`);
+    }else{
+      this.hmiLog(`<span style="color:#0f0">[ACTION] ${action} executed +${pts}pts</span>`);
+    }
+    this.lg(`✓${action}+${pts}`);
+    this.ck();
+    // Refresh stats
+    if(this.hmi.comp&&this.hmi.comp.id===id){
+      const tpl=HMI3D[c.t];
+      const stats=tpl.stats(c);
+      document.querySelectorAll('.hmi-stat').forEach((el,i)=>{
+        if(stats[i])el.querySelector('.hmi-val').textContent=stats[i].v;
+      });
+    }
+  },
+
+  W:{
+    sc:null,ca:null,rn:null,cp:[],lines:[],
+    init(){
+      this.sc=new THREE.Scene();
+      this.ca=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.1,1e3);
+      this.rn=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:1});
+      this.rn.setSize(innerWidth,innerHeight);
+      this.rn.setClearColor(0x000510,1);
+      this.ca.position.set(100,70,100);
+      this.sc.add(new THREE.AmbientLight(0x303040,.8));
+      const dl=new THREE.DirectionalLight(0xffffff,.8);dl.position.set(60,100,60);this.sc.add(dl);
+      [0xff6600,0x00ff88,0x0088ff,0xff0088].forEach((c,i)=>{const p=new THREE.PointLight(c,.6,120);p.position.set(-50+i*35,25,0);this.sc.add(p)});
+      this.sc.add(new THREE.GridHelper(160,20,0x003366,0x001833));
+      this.sc.fog=new THREE.FogExp2(0x000510,.005);
+      this.an();
+    },
+    cr(t,p,id){
+      const[lane,layer,col,pts]=CT[t];
+      const sz=pts>200?6:4;
+      const geos={db:new THREE.CylinderGeometry(sz,sz,sz*1.8,6),ap:new THREE.OctahedronGeometry(sz),ms:new THREE.TetrahedronGeometry(sz),cq:new THREE.BoxGeometry(sz,sz*1.5,sz),ig:new THREE.DodecahedronGeometry(sz*1.2),pl:new THREE.TorusKnotGeometry(sz*.5,sz*.2,48,8),hm:new THREE.ConeGeometry(sz,sz*1.8,6),rt:new THREE.IcosahedronGeometry(sz)};
+      const me=new THREE.Mesh(geos[t],new THREE.MeshPhongMaterial({color:col,emissive:col,emissiveIntensity:.3}));
+      me.position.set(...p);this.sc.add(me);
+      this.cp.push({me,t,id,κ:.4+Math.random()*.2});
+      return me;
+    },
+    an(){
+      requestAnimationFrame(()=>this.an());
+      const tm=Date.now()*.001;
+      this.cp.forEach((c,i)=>{c.κ+=K.drift(c.κ)*.02;c.κ=Math.max(.2,Math.min(.8,c.κ));c.me.material.emissiveIntensity=.2+c.κ*.3});
+      const r=110+Math.sin(tm*.3)*15;
+      this.ca.position.x=Math.cos(tm*.07)*r;this.ca.position.z=Math.sin(tm*.07)*r;this.ca.position.y=60+Math.sin(tm*.1)*10;
+      this.ca.lookAt(0,15,0);this.rn.render(this.sc,this.ca);
+    }
+  },
+
+  d(t){
+    const[lane,layer]=CT[t];
+    const key=`${lane}_${layer}`;
+    S.st.slots[key]=(S.st.slots[key]||0)+1;
+    const slot=S.st.slots[key]-1;
+    const x=-40+lane*25,y=6+layer*30,z=-50+slot*22;
+    const id=`${t}${++this.st.cc}`;
+    this.st.cm.set(id,{id,t,me:this.W.cr(t,[x,y,z],id),pr:{to:0,ev:0}});
+    this.st.tc[t]=(this.st.tc[t]||0)+1;
+    this.st.p+=CT[t][3];
+    this.lg(`+${icons[t]}${id}+${CT[t][3]}`);
+    this.ck();
+  },
+
+  sync(){this.st.κ=K.couple(this.st.κ);const m=(this.st.κ.h+this.st.κ.a+this.st.κ.s)/3;this.st.p+=K.ok(m)?50:5;this.lg(K.ok(m)?`🌀SYNC!`:`→κ`);this.ck()},
+  w(){const n=[...this.st.cm.values()].filter(c=>CT[c.t][3]>200).length;if(n){this.st.p+=n*15;this.lg(`⚡${n}×15`)}this.ck()},
+  k(){this.st.p+=Math.round(200*κ);Object.keys(this.st.κ).forEach(k=>this.st.κ[k]+=(κ-this.st.κ[k])*.4);this.lg(`💥φ!`);this.ck()},
+
+  ck(){
+    for(let i=this.lv.length-1;i>=0;i--)if(this.st.p>=this.lv[i].t&&this.st.lv<this.lv[i].l){this.st.lv=this.lv[i].l;this.lg(`📈${this.lv[i].n}`);break}
+    this.ui();
+  },
+
+  lg(m){const t=document.getElementById('at');if(t){t.textContent+=m+'\n';t.scrollTop=t.scrollHeight}},
+
+  ui(){
+    const $=id=>document.getElementById(id);
+    const m=(this.st.κ.h+this.st.κ.a+this.st.κ.s)/3,cl=this.lv[this.st.lv],nl=this.lv[this.st.lv+1],pr=nl?(this.st.p-cl.t)/(nl.t-cl.t)*100:100;
+
+    if($('kd'))$('kd').innerHTML=`<div class="φ">φ=${φ.toFixed(3)} κ*=${κ.toFixed(3)}</div>
+<div style="font-size:9px">H<span style="color:#f66">${this.st.κ.h.toFixed(2)}</span> A<span style="color:#4dc">${this.st.κ.a.toFixed(2)}</span> S<span style="color:#fe6">${this.st.κ.s.toFixed(2)}</span></div>
+<div class="bar"><div class="fill" style="width:${m*100}%;background:linear-gradient(90deg,#f00,#ff0,#0f0)"></div></div>
+<div class="φ">${cl.n}|${this.st.p}/${nl?nl.t:'MAX'}</div>
+<div class="bar"><div class="fill" style="width:${pr}%;background:#0f0"></div></div>`;
+
+    if($('hmi-panel'))$('hmi-panel').innerHTML=[...this.st.cm.values()].map(c=>
+      `<button class="node-btn" style="background:#${CT[c.t][2].toString(16).padStart(6,'0')}30;border-color:#${CT[c.t][2].toString(16).padStart(6,'0')};color:#${CT[c.t][2].toString(16).padStart(6,'0')}" onclick="S.openModal('${c.id}')">${icons[c.t]}${c.id}</button>`
+    ).join('');
+
+    const scs=[...this.st.cm.values()].filter(c=>CT[c.t][3]>200);
+    if($('im'))$('im').innerHTML=scs.length?`<div class="g"><div class="s" style="border-color:#f60">SC:${scs.length}</div><div class="s" style="border-color:#0f0">T:${scs.reduce((a,c)=>a+c.pr.to,0)}</div><div class="s" style="border-color:#0ff">E:${scs.reduce((a,c)=>a+c.pr.ev,0)}</div><div class="s" style="border-color:#ffd700">${K.ok(m)?'κ✓':'◐'}</div></div>`:'';
+
+    if($('sm'))$('sm').innerHTML=`φPts:<b class="φ">${this.st.p}</b> | Nodes:${this.st.cm.size} | Lv:${this.st.lv} | Auto:${this.auto?'ON':'OFF'}`;
+    if($('ab'))$('ab').style.background=this.auto?'#0f0':'#f00';
+  },
+
+  tick(){
+    this.st.κ=K.couple(this.st.κ);
+    if(K.ok((this.st.κ.h+this.st.κ.a+this.st.κ.s)/3))this.st.p+=Math.round(15*φ);
+    [...this.st.cm.values()].filter(c=>CT[c.t][3]>200).forEach(c=>{c.pr.to+=2;c.pr.ev+=1;this.st.p+=2});
+    if(this.auto&&this.st.cm.size<30)this.d(['ig','pl','hm','rt','db','ap','ms','cq'][Math.floor(Math.random()*8)]);
+    this.ck();
+  },
+
+  init(){
+    this.W.init();
+    this.lg('κ.CubeLinux v8');
+    this.lg('Click HMI buttons!');
+    setTimeout(()=>{this.ui();this.d('db');setTimeout(()=>this.d('ig'),500);setTimeout(()=>this.d('hm'),1e3)},100);
+    setInterval(()=>this.tick(),1500);
+  }
+};
+
+onload=()=>S.init();
+onresize=()=>{S.W.rn.setSize(innerWidth,innerHeight);S.W.ca.aspect=innerWidth/innerHeight;S.W.ca.updateProjectionMatrix()};
+</script></body></html>
