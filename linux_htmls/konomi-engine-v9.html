@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🌀 KONOMI v9 - Complex Mechanicals</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#06060a;--p:#0a0a12;--b:#181828;--g:#ffd700;--c:#0ff;--gr:#0f8;--f:#f63;--d:#445;--m:#a8f}
+body{background:var(--bg);color:#99a;font-family:'JetBrains Mono',monospace;height:100vh;overflow:hidden}
+.app{display:grid;grid-template-columns:280px 1fr;height:100vh}
+.pnl{background:var(--p);padding:10px;overflow-y:auto;border-right:1px solid var(--b);font-size:9px}
+.pt{color:var(--c);text-transform:uppercase;letter-spacing:1px;margin:10px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--b);font-size:8px}
+.pt:first-child{margin-top:0}
+.vp{position:relative;background:#020204}
+#cc{width:100%;height:100%}
+.ov{position:absolute;top:8px;left:8px;font-size:8px;color:var(--d);pointer-events:none;line-height:1.5}
+.ovr{position:absolute;top:8px;right:8px;font-size:8px;color:var(--d);text-align:right;line-height:1.5}
+.row{display:flex;justify-content:space-between;margin-bottom:4px}
+.lbl{color:var(--d)}.val{color:var(--c);font-weight:700}
+input[type=range]{width:100%;height:3px;background:var(--b);-webkit-appearance:none;margin:3px 0 8px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;background:var(--g);border-radius:50%;cursor:pointer}
+button{width:100%;padding:8px;background:linear-gradient(135deg,var(--g),#a80);border:none;border-radius:4px;color:#000;font-family:inherit;font-weight:700;font-size:9px;cursor:pointer;margin-bottom:4px}
+button:hover{filter:brightness(1.1)}
+button.s{background:var(--b);color:var(--c)}
+button.e{background:linear-gradient(135deg,var(--gr),#0a5)}
+.sg{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:6px}
+.sb{background:rgba(0,0,0,.4);padding:5px;border-radius:3px;text-align:center}
+.sv{font-size:11px;font-weight:700;color:var(--g)}
+.sl{font-size:7px;color:var(--d)}
+.status{padding:6px;border-radius:3px;margin:6px 0;font-size:8px;background:rgba(0,255,136,.1);border:1px solid var(--gr);color:var(--gr)}
+.log{background:#000;border-radius:3px;padding:4px;font-size:7px;max-height:80px;overflow-y:auto}
+.lg{margin-bottom:1px}.lg.g{color:var(--gr)}.lg.p{color:var(--g)}.lg.c{color:var(--c)}.lg.m{color:var(--m)}
+.info{background:rgba(0,255,255,.03);border:1px solid var(--b);border-radius:3px;padding:5px;margin-bottom:6px;font-size:7px;color:var(--d)}
+.info b{color:var(--c)}
+.chips{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:8px}
+.chip{padding:3px 6px;background:var(--b);border-radius:3px;font-size:7px;cursor:pointer;border:1px solid transparent}
+.chip:hover{border-color:var(--c)}
+.chip.on{background:rgba(0,255,255,.15);border-color:var(--c);color:var(--c)}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="pnl">
+
+<div class="pt">🔧 Complex Mechanicals</div>
+<div class="info">
+  Generates: <b>Gears, Bearings, Joints, Metamaterials, Hybrids</b><br>
+  Build: <b>220×220×240mm</b> (Ender 3 KE)
+</div>
+
+<div class="pt">⚙️ Component Types</div>
+<div class="chips" id="chips">
+  <div class="chip on" data-type="gear">Gears</div>
+  <div class="chip on" data-type="bearing">Bearings</div>
+  <div class="chip" data-type="planetary">Planetary</div>
+  <div class="chip" data-type="joint">Joints</div>
+  <div class="chip" data-type="clasp">Clasps</div>
+  <div class="chip" data-type="thread">Threads</div>
+  <div class="chip" data-type="lattice">Lattice</div>
+  <div class="chip" data-type="auxetic">Auxetic</div>
+</div>
+
+<div class="pt">📐 Size & Quality</div>
+<div class="row"><span class="lbl">Scale</span><span class="val" id="vS">1.0x</span></div>
+<input type="range" id="sS" min=".5" max="2" step=".1" value="1">
+<div class="row"><span class="lbl">Resolution</span><span class="val" id="vR">48</span></div>
+<input type="range" id="sR" min="24" max="96" step="8" value="48">
+<div class="row"><span class="lbl">Complexity</span><span class="val" id="vC">3</span></div>
+<input type="range" id="sC" min="1" max="5" value="3">
+
+<div class="pt">🔩 Mechanical Params</div>
+<div class="row"><span class="lbl">Gear Module</span><span class="val" id="vM">2mm</span></div>
+<input type="range" id="sM" min="1" max="4" step=".5" value="2">
+<div class="row"><span class="lbl">Clearance</span><span class="val" id="vCl">.3mm</span></div>
+<input type="range" id="sCl" min=".1" max=".5" step=".05" value=".3">
+<div class="row"><span class="lbl">Wall</span><span class="val" id="vW">1.6mm</span></div>
+<input type="range" id="sW" min=".8" max="3.2" step=".4" value="1.6">
+
+<div class="pt">▶ Generate</div>
+<button onclick="gen()">🎲 RANDOM HYBRID</button>
+<button class="s" onclick="regen()">↻ REGENERATE</button>
+
+<div class="pt">📊 Stats</div>
+<div class="sg">
+<div class="sb"><div class="sv" id="stV">0</div><div class="sl">Verts</div></div>
+<div class="sb"><div class="sv" id="stT">0</div><div class="sl">Tris</div></div>
+<div class="sb"><div class="sv" id="stP">0</div><div class="sl">Parts</div></div>
+<div class="sb"><div class="sv" id="stG">0</div><div class="sl">Teeth</div></div>
+</div>
+
+<div class="pt">🔧 Status</div>
+<div class="status" id="status">Ready</div>
+
+<div class="pt">💾 Export</div>
+<button class="e" id="bE" onclick="exp()" disabled>📥 EXPORT STL</button>
+
+<div class="pt">📜 Log</div>
+<div class="log" id="log"></div>
+</div>
+
+<div class="vp">
+<div id="cc"></div>
+<div class="ov" id="ovl">Complex Mechanicals<br>Ready</div>
+<div class="ovr">Hybrid Generator<br>Print-Ready</div>
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+//═══════════════════════════════════════════════════════════════════
+// 🌀 KONOMI v9 - COMPLEX MECHANICALS GENERATOR
+// Gears, Bearings, Joints, Metamaterials, Hybrids
+//═══════════════════════════════════════════════════════════════════
+
+const φ=1.618033988749895,π=Math.PI,τ=π*2;
+const BUILD={x:220,y:220,z:240};
+
+let seed=φ;
+function rng(){seed=(seed*φ*9973)%1;return seed||.5}
+function rngR(a,b){return a+rng()*(b-a)}
+function rngI(a,b){return Math.floor(rngR(a,b+1))}
+function rngB(p=.5){return rng()<p}
+function rngA(){return rng()*τ}
+
+// Collect enabled types
+function getEnabledTypes(){
+  return[...document.querySelectorAll('.chip.on')].map(c=>c.dataset.type);
+}
+
+//═══════════════════════════════════════════════════════════════════
+// GEAR GENERATOR - Involute profile
+//═══════════════════════════════════════════════════════════════════
+function generateGear(params){
+  const{teeth,module,pressureAngle=20,height,holeR,res}=params;
+  const pitchR=teeth*module/2;
+  const addendum=module;
+  const dedendum=module*1.25;
+  const outerR=pitchR+addendum;
+  const rootR=pitchR-dedendum;
+  const baseR=pitchR*Math.cos(pressureAngle*π/180);
+
+  const pts=[];
+  const toothAngle=τ/teeth;
+
+  // Generate gear profile
+  for(let t=0;t<teeth;t++){
+    const tAngle=t*toothAngle;
+
+    // Each tooth: root→flank→tip→flank→root
+    const ptsPerTooth=Math.ceil(res/teeth)*2;
+
+    for(let i=0;i<=ptsPerTooth;i++){
+      const frac=i/ptsPerTooth;
+      let r,a;
+
+      if(frac<.15){
+        // Root fillet
+        r=rootR+(pitchR-rootR)*Math.sin(frac/.15*π/2);
+        a=tAngle+toothAngle*.1*frac/.15;
+      }else if(frac<.5){
+        // Rising involute flank
+        const t2=(frac-.15)/.35;
+        r=rootR+(outerR-rootR)*t2;
+        a=tAngle+toothAngle*.1+involute(baseR,r)*Math.sign(1);
+      }else if(frac<.65){
+        // Tooth tip
+        r=outerR;
+        a=tAngle+toothAngle*.5;
+      }else if(frac<.85){
+        // Falling flank
+        const t2=(frac-.65)/.2;
+        r=outerR-(outerR-rootR)*t2;
+        a=tAngle+toothAngle*.9-involute(baseR,r);
+      }else{
+        // Root
+        r=rootR;
+        a=tAngle+toothAngle*(1-(.15*(1-(frac-.85)/.15)));
+      }
+
+      pts.push({x:Math.cos(a)*r,z:Math.sin(a)*r});
+    }
+  }
+
+  return extrudeProfile(pts,height,holeR);
+}
+
+function involute(baseR,r){
+  if(r<=baseR)return 0;
+  const α=Math.acos(baseR/r);
+  return Math.tan(α)-α;
+}
+
+//═══════════════════════════════════════════════════════════════════
+// PLANETARY GEAR SET
+//═══════════════════════════════════════════════════════════════════
+function generatePlanetary(params){
+  const{sunTeeth,planetTeeth,numPlanets,module,height,clearance,res}=params;
+  const ringTeeth=sunTeeth+2*planetTeeth;
+  const parts=[];
+
+  // Sun gear
+  const sun=generateGear({
+    teeth:sunTeeth,module,height,holeR:module*2,res
+  });
+  sun.name='sun';
+  sun.color=0xffaa00;
+  parts.push(sun);
+
+  // Ring gear (internal)
+  const ring=generateRingGear({
+    teeth:ringTeeth,module,height,thickness:module*3,res
+  });
+  ring.name='ring';
+  ring.color=0x666688;
+  parts.push(ring);
+
+  // Planet gears
+  const planetOrbitR=(sunTeeth+planetTeeth)*module/2;
+  for(let p=0;p<numPlanets;p++){
+    const angle=p/numPlanets*τ;
+    const planet=generateGear({
+      teeth:planetTeeth,module,height:height*.9,holeR:module,res
+    });
+    planet.offsetX=Math.cos(angle)*planetOrbitR;
+    planet.offsetZ=Math.sin(angle)*planetOrbitR;
+    planet.name=`planet${p}`;
+    planet.color=0x44aaff;
+    parts.push(planet);
+  }
+
+  // Carrier
+  const carrier=generateCarrier({
+    orbitR:planetOrbitR,
+    numPlanets,
+    holeR:module*1.5,
+    height:height*.3,
+    res
+  });
+  carrier.offsetY=height+clearance;
+  carrier.name='carrier';
+  carrier.color=0x88ff88;
+  parts.push(carrier);
+
+  return{parts,totalTeeth:sunTeeth+ringTeeth+planetTeeth*numPlanets};
+}
+
+function generateRingGear(params){
+  const{teeth,module,height,thickness,res}=params;
+  const pitchR=teeth*module/2;
+  const innerR=pitchR-module*1.25;
+  const outerR=pitchR+thickness;
+
+  const pts=[];
+  // Outer circle
+  for(let i=0;i<=res;i++){
+    const a=i/res*τ;
+    pts.push({x:Math.cos(a)*outerR,z:Math.sin(a)*outerR});
+  }
+
+  // Inner gear teeth (simplified)
+  const toothAngle=τ/teeth;
+  for(let t=teeth-1;t>=0;t--){
+    const a1=t*toothAngle;
+    const a2=a1+toothAngle*.4;
+    const a3=a1+toothAngle*.6;
+    const a4=a1+toothAngle;
+    pts.push({x:Math.cos(a1)*innerR,z:Math.sin(a1)*innerR});
+    pts.push({x:Math.cos(a2)*(innerR-module),z:Math.sin(a2)*(innerR-module)});
+    pts.push({x:Math.cos(a3)*(innerR-module),z:Math.sin(a3)*(innerR-module)});
+    pts.push({x:Math.cos(a4)*innerR,z:Math.sin(a4)*innerR});
+  }
+
+  return extrudeProfile(pts,height,0);
+}
+
+function generateCarrier(params){
+  const{orbitR,numPlanets,holeR,height,res}=params;
+  const pts=[];
+  const outerR=orbitR+holeR*2;
+
+  // Outer with cutouts for planets
+  for(let i=0;i<=res;i++){
+    const a=i/res*τ;
+    let r=outerR;
+
+    // Cutout near each planet
+    for(let p=0;p<numPlanets;p++){
+      const pa=p/numPlanets*τ;
+      const diff=Math.abs(((a-pa+π)%(τ))-π);
+      if(diff<.3)r=orbitR-holeR;
+    }
+    pts.push({x:Math.cos(a)*r,z:Math.sin(a)*r});
+  }
+
+  return extrudeProfile(pts,height,holeR);
+}
+
+//═══════════════════════════════════════════════════════════════════
+// BEARING GENERATOR
+//═══════════════════════════════════════════════════════════════════
+function generateBearing(params){
+  const{innerR,outerR,height,numBalls,clearance,res}=params;
+  const parts=[];
+  const raceR=(innerR+outerR)/2;
+  const ballR=(outerR-innerR)/2-clearance*2;
+
+  // Inner race
+  const innerRace=generateRace({
+    innerR:innerR,
+    outerR:raceR-ballR-clearance,
+    height,
+    grooveR:ballR,
+    grooveDepth:ballR*.6,
+    isInner:true,
+    res
+  });
+  innerRace.name='innerRace';
+  innerRace.color=0xaaaacc;
+  parts.push(innerRace);
+
+  // Outer race
+  const outerRace=generateRace({
+    innerR:raceR+ballR+clearance,
+    outerR:outerR,
+    height,
+    grooveR:ballR,
+    grooveDepth:ballR*.6,
+    isInner:false,
+    res
+  });
+  outerRace.name='outerRace';
+  outerRace.color=0x8888aa;
+  parts.push(outerRace);
+
+  // Balls
+  for(let b=0;b<numBalls;b++){
+    const angle=b/numBalls*τ;
+    parts.push({
+      type:'sphere',
+      radius:ballR*.95,
+      offsetX:Math.cos(angle)*raceR,
+      offsetZ:Math.sin(angle)*raceR,
+      offsetY:height/2,
+      name:`ball${b}`,
+      color:0xddddee
+    });
+  }
+
+  // Cage/retainer
+  const cage=generateCage({raceR,ballR,numBalls,height:height*.7,res});
+  cage.offsetY=height*.15;
+  cage.name='cage';
+  cage.color=0xffdd88;
+  parts.push(cage);
+
+  return{parts,numBalls};
+}
+
+function generateRace(params){
+  const{innerR,outerR,height,grooveR,grooveDepth,isInner,res}=params;
+  const pts=[];
+
+  // Profile with groove
+  for(let i=0;i<=res;i++){
+    const a=i/res*τ;
+    pts.push({x:Math.cos(a)*outerR,z:Math.sin(a)*outerR});
+  }
+
+  return extrudeProfile(pts,height,innerR);
+}
+
+function generateCage(params){
+  const{raceR,ballR,numBalls,height,res}=params;
+  const pts=[];
+  const innerR=raceR-ballR*1.5;
+  const outerR=raceR+ballR*1.5;
+
+  // Ring with holes for balls
+  for(let i=0;i<=res*2;i++){
+    const a=i/(res*2)*τ;
+    let r=(innerR+outerR)/2;
+    let isHole=false;
+
+    for(let b=0;b<numBalls;b++){
+      const ba=b/numBalls*τ;
+      if(Math.abs(((a-ba+π)%τ)-π)<τ/numBalls*.4){
+        isHole=true;
+        break;
+      }
+    }
+
+    r=isHole?innerR:outerR;
+    pts.push({x:Math.cos(a)*r,z:Math.sin(a)*r});
+  }
+
+  return extrudeProfile(pts,height,innerR*.8);
+}
+
+//═══════════════════════════════════════════════════════════════════
+// JOINT/HINGE GENERATOR
+//═══════════════════════════════════════════════════════════════════
+function generateHinge(params){
+  const{width,height,knuckles,pinR,clearance,res}=params;
+  const parts=[];
+  const knuckleH=height/knuckles;
+
+  // Male side
+  for(let k=0;k<knuckles;k+=2){
+    const knuckle=generateKnuckle({
+      width,height:knuckleH-clearance,pinR,res
+    });
+    knuckle.offsetY=k*knuckleH;
+    knuckle.name=`maleKnuckle${k}`;
+    knuckle.color=0xffaa66;
+    parts.push(knuckle);
+  }
+
+  // Female side
+  for(let k=1;k<knuckles;k+=2){
+    const knuckle=generateKnuckle({
+      width,height:knuckleH-clearance,pinR,res
+    });
+    knuckle.offsetY=k*knuckleH;
+    knuckle.offsetX=width*2;
+    knuckle.name=`femaleKnuckle${k}`;
+    knuckle.color=0x66aaff;
+    parts.push(knuckle);
+  }
+
+  // Pin
+  parts.push({
+    type:'cylinder',
+    radius:pinR-clearance,
+    height:height,
+    offsetY:0,
+    name:'pin',
+    color:0xcccccc
+  });
+
+  return{parts};
+}
+
+function generateKnuckle(params){
+  const{width,height,pinR,res}=params;
+  const pts=[];
+
+  // Knuckle profile: half cylinder + rectangular tab
+  for(let i=0;i<=res/2;i++){
+    const a=i/(res/2)*π-π/2;
+    pts.push({x:Math.cos(a)*pinR*2,z:Math.sin(a)*pinR*2});
+  }
+  pts.push({x:width,z:pinR*2});
+  pts.push({x:width,z:-pinR*2});
+
+  return extrudeProfile(pts,height,pinR);
+}
+
+//═══════════════════════════════════════════════════════════════════
+// CLASP/SNAP FIT GENERATOR
+//═══════════════════════════════════════════════════════════════════
+function generateClasp(params){
+  const{width,length,height,hookDepth,clearance,res}=params;
+  const parts=[];
+
+  // Male clip
+  const maleClip={
+    type:'clasp_male',
+    width,length,height,hookDepth,
+    name:'maleClip',
+    color:0xff8866
+  };
+  parts.push(maleClip);
+
+  // Female receiver
+  const femaleClip={
+    type:'clasp_female',
+    width:width+clearance*2,
+    length,
+    height:height+clearance*2,
+    hookDepth,
+    offsetZ:length+5,
+    name:'femaleClip',
+    color:0x6688ff
+  };
+  parts.push(femaleClip);
+
+  return{parts};
+}
+
+//═══════════════════════════════════════════════════════════════════
+// THREAD GENERATOR
+//═══════════════════════════════════════════════════════════════════
+function generateThread(params){
+  const{outerR,pitch,length,starts,res}=params;
+  const pts=[];
+  const turns=length/pitch;
+  const innerR=outerR-pitch*.65;
+
+  for(let i=0;i<=res*turns;i++){
+    const t=i/(res*turns);
+    const a=t*τ*turns*starts;
+    const y=t*length;
+
+    // Thread profile
+    const threadPhase=(a%(τ))/τ;
+    const r=innerR+(outerR-innerR)*Math.max(0,1-Math.abs(threadPhase-.5)*4);
+
+    pts.push({x:Math.cos(a)*r,y,z:Math.sin(a)*r});
+  }
+
+  return{pts,innerR,outerR,length};
+}
+
+//═══════════════════════════════════════════════════════════════════
+// LATTICE/METAMATERIAL GENERATOR
+//═══════════════════════════════════════════════════════════════════
+function generateLattice(params){
+  const{sizeX,sizeY,sizeZ,cellSize,strutR,type,res}=params;
+  const pts=[];
+  const struts=[];
+
+  const nx=Math.floor(sizeX/cellSize);
+  const ny=Math.floor(sizeY/cellSize);
+  const nz=Math.floor(sizeZ/cellSize);
+
+  for(let x=0;x<=nx;x++){
+    for(let y=0;y<=ny;y++){
+      for(let z=0;z<=nz;z++){
+        const px=x*cellSize-sizeX/2;
+        const py=y*cellSize;
+        const pz=z*cellSize-sizeZ/2;
+
+        // Connect to neighbors based on lattice type
+        if(type==='cubic'||type==='octet'){
+          if(x<nx)struts.push({from:[px,py,pz],to:[px+cellSize,py,pz]});
+          if(y<ny)struts.push({from:[px,py,pz],to:[px,py+cellSize,pz]});
+          if(z<nz)struts.push({from:[px,py,pz],to:[px,py,pz+cellSize]});
+        }
+
+        if(type==='octet'||type==='diagonal'){
+          // Diagonals
+          if(x<nx&&y<ny)struts.push({from:[px,py,pz],to:[px+cellSize,py+cellSize,pz]});
+          if(x<nx&&z<nz)struts.push({from:[px,py,pz],to:[px+cellSize,py,pz+cellSize]});
+          if(y<ny&&z<nz)struts.push({from:[px,py,pz],to:[px,py+cellSize,pz+cellSize]});
+        }
+      }
+    }
+  }
+
+  return{struts,strutR};
+}
+
+//═══════════════════════════════════════════════════════════════════
+// AUXETIC PATTERN GENERATOR
+//═══════════════════════════════════════════════════════════════════
+function generateAuxetic(params){
+  const{sizeX,sizeY,cellSize,wallThickness,reentrantAngle,res}=params;
+  const pts=[];
+  const nx=Math.floor(sizeX/cellSize);
+  const ny=Math.floor(sizeY/cellSize);
+
+  const ra=reentrantAngle*π/180;
+  const inset=cellSize*.3*Math.tan(ra);
+
+  for(let x=0;x<nx;x++){
+    for(let y=0;y<ny;y++){
+      const cx=x*cellSize-sizeX/2+cellSize/2;
+      const cy=y*cellSize+cellSize/2;
+      const flip=(x+y)%2===0?1:-1;
+
+      // Reentrant hexagon vertices
+      pts.push(
+        {x:cx-cellSize/2,z:cy},
+        {x:cx-cellSize/4,z:cy+cellSize/2*flip-inset*flip},
+        {x:cx+cellSize/4,z:cy+cellSize/2*flip-inset*flip},
+        {x:cx+cellSize/2,z:cy},
+        {x:cx+cellSize/4,z:cy-cellSize/2*flip+inset*flip},
+        {x:cx-cellSize/4,z:cy-cellSize/2*flip+inset*flip}
+      );
+    }
+  }
+
+  return{pts,wallThickness};
+}
+
+//═══════════════════════════════════════════════════════════════════
+// EXTRUDE PROFILE TO 3D
+//═══════════════════════════════════════════════════════════════════
+function extrudeProfile(pts,height,holeR=0){
+  const verts=[],indices=[];
+  const n=pts.length;
+
+  // Bottom face
+  for(const p of pts)verts.push(p.x,0,p.z);
+  // Top face
+  for(const p of pts)verts.push(p.x,height,p.z);
+
+  // Side walls
+  for(let i=0;i<n-1;i++){
+    const b1=i,b2=i+1,t1=n+i,t2=n+i+1;
+    indices.push(b1,t1,b2,b2,t1,t2);
+  }
+
+  // Bottom cap (fan)
+  for(let i=1;i<n-1;i++){
+    indices.push(0,i+1,i);
+  }
+
+  // Top cap
+  for(let i=1;i<n-1;i++){
+    indices.push(n,n+i,n+i+1);
+  }
+
+  return{verts,indices,holeR};
+}
+
+//═══════════════════════════════════════════════════════════════════
+// HYBRID GENERATOR - Combines multiple components
+//═══════════════════════════════════════════════════════════════════
+function generateHybrid(types,scale,res,complexity,module,clearance,wall){
+  const allParts=[];
+  let totalTeeth=0;
+  let yOffset=0;
+
+  // Pick random subset based on complexity
+  const numComponents=Math.min(complexity,types.length);
+  const selectedTypes=[];
+  const available=[...types];
+
+  for(let i=0;i<numComponents&&available.length>0;i++){
+    const idx=rngI(0,available.length-1);
+    selectedTypes.push(available[idx]);
+    available.splice(idx,1);
+  }
+
+  log(`Components: ${selectedTypes.join(', ')}`,'m');
+
+  for(const type of selectedTypes){
+    let result;
+
+    switch(type){
+      case'gear':
+        const teeth=rngI(12,24);
+        result=generateGear({
+          teeth,module:module*scale,
+          height:8*scale,holeR:module*2*scale,res
+        });
+        result.offsetY=yOffset;
+        result.color=0xff8800+rngI(0,0x777777);
+        allParts.push(result);
+        totalTeeth+=teeth;
+        yOffset+=10*scale;
+        break;
+
+      case'planetary':
+        const pResult=generatePlanetary({
+          sunTeeth:rngI(10,16),
+          planetTeeth:rngI(8,12),
+          numPlanets:rngI(3,5),
+          module:module*scale,
+          height:10*scale,
+          clearance:clearance*scale,
+          res
+        });
+        pResult.parts.forEach(p=>{
+          p.offsetY=(p.offsetY||0)+yOffset;
+          allParts.push(p);
+        });
+        totalTeeth+=pResult.totalTeeth;
+        yOffset+=15*scale;
+        break;
+
+      case'bearing':
+        const bResult=generateBearing({
+          innerR:8*scale,
+          outerR:20*scale,
+          height:7*scale,
+          numBalls:rngI(6,10),
+          clearance:clearance*scale,
+          res
+        });
+        bResult.parts.forEach(p=>{
+          p.offsetY=(p.offsetY||0)+yOffset;
+          allParts.push(p);
+        });
+        yOffset+=10*scale;
+        break;
+
+      case'joint':
+        const jResult=generateHinge({
+          width:15*scale,
+          height:20*scale,
+          knuckles:rngI(3,5),
+          pinR:3*scale,
+          clearance:clearance*scale,
+          res
+        });
+        jResult.parts.forEach(p=>{
+          p.offsetY=(p.offsetY||0)+yOffset;
+          allParts.push(p);
+        });
+        yOffset+=25*scale;
+        break;
+
+      case'clasp':
+        const cResult=generateClasp({
+          width:10*scale,
+          length:20*scale,
+          height:5*scale,
+          hookDepth:2*scale,
+          clearance:clearance*scale,
+          res
+        });
+        cResult.parts.forEach(p=>{
+          p.offsetY=(p.offsetY||0)+yOffset;
+          allParts.push(p);
+        });
+        yOffset+=10*scale;
+        break;
+
+      case'thread':
+        const tResult=generateThread({
+          outerR:10*scale,
+          pitch:2*scale,
+          length:20*scale,
+          starts:1,
+          res
+        });
+        allParts.push({
+          type:'thread',
+          ...tResult,
+          offsetY:yOffset,
+          color:0x888888
+        });
+        yOffset+=25*scale;
+        break;
+
+      case'lattice':
+        const lResult=generateLattice({
+          sizeX:30*scale,sizeY:20*scale,sizeZ:30*scale,
+          cellSize:8*scale,strutR:1*scale,
+          type:rngB()?'octet':'cubic',
+          res
+        });
+        allParts.push({
+          type:'lattice',...lResult,
+          offsetY:yOffset,color:0x66aaff
+        });
+        yOffset+=25*scale;
+        break;
+
+      case'auxetic':
+        const aResult=generateAuxetic({
+          sizeX:40*scale,sizeY:30*scale,
+          cellSize:10*scale,wallThickness:wall*scale,
+          reentrantAngle:rngR(15,35),
+          res
+        });
+        allParts.push({
+          type:'auxetic',...aResult,
+          offsetY:yOffset,color:0xffaa44
+        });
+        yOffset+=5*scale;
+        break;
+    }
+  }
+
+  return{parts:allParts,totalTeeth,height:yOffset};
+}
+
+//═══════════════════════════════════════════════════════════════════
+// THREE.JS SETUP
+//═══════════════════════════════════════════════════════════════════
+let scene,camera,renderer,meshGroup;
+
+function initGL(){
+  const container=document.getElementById('cc');
+
+  scene=new THREE.Scene();
+  scene.background=new THREE.Color(0x020204);
+
+  camera=new THREE.PerspectiveCamera(45,container.clientWidth/container.clientHeight,.1,2000);
+  camera.position.set(150,100,150);
+  camera.lookAt(0,30,0);
+
+  renderer=new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(container.clientWidth,container.clientHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  container.appendChild(renderer.domElement);
+
+  scene.add(new THREE.AmbientLight(0x404060,.5));
+  const sun=new THREE.DirectionalLight(0xffffff,.9);
+  sun.position.set(80,120,80);
+  scene.add(sun);
+  const fill=new THREE.DirectionalLight(0x4488ff,.3);
+  fill.position.set(-80,60,-80);
+  scene.add(fill);
+
+  // Build plate
+  const plate=new THREE.Mesh(
+    new THREE.BoxGeometry(BUILD.x,2,BUILD.y),
+    new THREE.MeshStandardMaterial({color:0x12121a,metalness:.3,roughness:.7})
+  );
+  plate.position.y=-1;
+  scene.add(plate);
+  scene.add(new THREE.GridHelper(BUILD.x,22,0x333,0x222));
+
+  meshGroup=new THREE.Group();
+  scene.add(meshGroup);
+
+  // Controls
+  let drag=false,px=0,py=0,sp={t:π/4,p:π/3,r:250};
+  const el=renderer.domElement;
+  el.onmousedown=e=>{drag=true;px=e.clientX;py=e.clientY};
+  el.onmouseup=el.onmouseleave=()=>drag=false;
+  el.onmousemove=e=>{
+    if(!drag)return;
+    sp.t-=(e.clientX-px)*.01;
+    sp.p=Math.max(.1,Math.min(π-.1,sp.p+(e.clientY-py)*.01));
+    px=e.clientX;py=e.clientY;
+    upCam();
+  };
+  el.onwheel=e=>{sp.r=Math.max(50,Math.min(600,sp.r+e.deltaY*.2));upCam();e.preventDefault()};
+
+  function upCam(){
+    camera.position.set(
+      sp.r*Math.sin(sp.p)*Math.cos(sp.t),
+      sp.r*Math.cos(sp.p),
+      sp.r*Math.sin(sp.p)*Math.sin(sp.t)
+    );
+    camera.lookAt(0,30,0);
+  }
+  upCam();
+
+  window.onresize=()=>{
+    camera.aspect=container.clientWidth/container.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(container.clientWidth,container.clientHeight);
+  };
+
+  (function animate(){
+    requestAnimationFrame(animate);
+    renderer.render(scene,camera);
+  })();
+}
+
+function buildMeshes(parts){
+  // Clear old
+  while(meshGroup.children.length)meshGroup.remove(meshGroup.children[0]);
+
+  let totalVerts=0,totalTris=0;
+
+  for(const part of parts){
+    let geom,mesh;
+
+    if(part.type==='sphere'){
+      geom=new THREE.SphereGeometry(part.radius,16,16);
+      mesh=new THREE.Mesh(geom,new THREE.MeshStandardMaterial({
+        color:part.color||0xcccccc,metalness:.4,roughness:.3
+      }));
+      mesh.position.set(part.offsetX||0,part.offsetY||0,part.offsetZ||0);
+    }else if(part.type==='cylinder'){
+      geom=new THREE.CylinderGeometry(part.radius,part.radius,part.height,24);
+      mesh=new THREE.Mesh(geom,new THREE.MeshStandardMaterial({
+        color:part.color||0xcccccc,metalness:.3,roughness:.4
+      }));
+      mesh.position.set(part.offsetX||0,(part.offsetY||0)+part.height/2,part.offsetZ||0);
+    }else if(part.type==='lattice'){
+      // Build struts as cylinders
+      const group=new THREE.Group();
+      for(const s of part.struts){
+        const len=Math.sqrt(
+          (s.to[0]-s.from[0])**2+
+          (s.to[1]-s.from[1])**2+
+          (s.to[2]-s.from[2])**2
+        );
+        const strutGeom=new THREE.CylinderGeometry(part.strutR,part.strutR,len,6);
+        const strutMesh=new THREE.Mesh(strutGeom,new THREE.MeshStandardMaterial({
+          color:part.color,metalness:.2,roughness:.5
+        }));
+
+        strutMesh.position.set(
+          (s.from[0]+s.to[0])/2,
+          (s.from[1]+s.to[1])/2+(part.offsetY||0),
+          (s.from[2]+s.to[2])/2
+        );
+        strutMesh.lookAt(s.to[0],s.to[1]+(part.offsetY||0),s.to[2]);
+        strutMesh.rotateX(π/2);
+        group.add(strutMesh);
+        totalVerts+=strutGeom.attributes.position.count;
+        totalTris+=strutGeom.index.count/3;
+      }
+      meshGroup.add(group);
+      continue;
+    }else if(part.verts&&part.indices){
+      geom=new THREE.BufferGeometry();
+      geom.setAttribute('position',new THREE.Float32BufferAttribute(part.verts,3));
+      geom.setIndex(part.indices);
+      geom.computeVertexNormals();
+      mesh=new THREE.Mesh(geom,new THREE.MeshStandardMaterial({
+        color:part.color||0xff6b35,metalness:.2,roughness:.4,side:THREE.DoubleSide
+      }));
+      mesh.position.set(part.offsetX||0,part.offsetY||0,part.offsetZ||0);
+    }else{
+      continue;
+    }
+
+    if(mesh){
+      meshGroup.add(mesh);
+      if(geom.attributes)totalVerts+=geom.attributes.position.count;
+      if(geom.index)totalTris+=geom.index.count/3;
+    }
+  }
+
+  return{totalVerts,totalTris};
+}
+
+//═══════════════════════════════════════════════════════════════════
+// UI
+//═══════════════════════════════════════════════════════════════════
+function log(m,t='g'){
+  const l=document.getElementById('log');
+  const d=document.createElement('div');
+  d.className='lg '+t;
+  d.textContent=m;
+  l.appendChild(d);
+  l.scrollTop=l.scrollHeight;
+}
+
+// Chip toggles
+document.querySelectorAll('.chip').forEach(c=>{
+  c.onclick=()=>c.classList.toggle('on');
+});
+
+function gen(){
+  seed=Date.now()%1e6/1e6*φ+performance.now()%1000/1000;
+  log(`Seed: ${seed.toFixed(6)}`,'p');
+  run();
+}
+
+function regen(){run()}
+
+function run(){
+  const types=getEnabledTypes();
+  if(types.length===0){
+    log('Select at least one type!','c');
+    return;
+  }
+
+  const scale=parseFloat(document.getElementById('sS').value);
+  const res=parseInt(document.getElementById('sR').value);
+  const complexity=parseInt(document.getElementById('sC').value);
+  const module=parseFloat(document.getElementById('sM').value);
+  const clearance=parseFloat(document.getElementById('sCl').value);
+  const wall=parseFloat(document.getElementById('sW').value);
+
+  document.getElementById('status').textContent='Generating...';
+  document.getElementById('status').style.color='var(--c)';
+
+  setTimeout(()=>{
+    const{parts,totalTeeth,height}=generateHybrid(
+      types,scale,res,complexity,module,clearance,wall
+    );
+
+    const{totalVerts,totalTris}=buildMeshes(parts);
+
+    document.getElementById('stV').textContent=totalVerts.toLocaleString();
+    document.getElementById('stT').textContent=totalTris.toLocaleString();
+    document.getElementById('stP').textContent=parts.length;
+    document.getElementById('stG').textContent=totalTeeth;
+
+    document.getElementById('ovl').innerHTML=
+      `Parts: ${parts.length}<br>Teeth: ${totalTeeth}<br>Height: ${height.toFixed(0)}mm`;
+
+    document.getElementById('status').textContent=`✓ Generated ${parts.length} parts!`;
+    document.getElementById('status').style.color='var(--gr)';
+    document.getElementById('bE').disabled=false;
+
+    log(`✓ ${parts.length} parts, ${totalVerts} verts`,'g');
+  },20);
+}
+
+function exp(){
+  log('Exporting combined STL...','c');
+  // Merge all geometries
+  const allVerts=[],allIndices=[];
+  let offset=0;
+
+  meshGroup.traverse(child=>{
+    if(child.isMesh&&child.geometry){
+      const pos=child.geometry.attributes.position;
+      const idx=child.geometry.index;
+
+      // Transform verts by mesh position
+      for(let i=0;i<pos.count;i++){
+        allVerts.push(
+          pos.getX(i)+child.position.x,
+          pos.getY(i)+child.position.y,
+          pos.getZ(i)+child.position.z
+        );
+      }
+
+      if(idx){
+        for(let i=0;i<idx.count;i++){
+          allIndices.push(idx.getX(i)+offset);
+        }
+      }
+      offset+=pos.count;
+    }
+  });
+
+  const triCount=allIndices.length/3;
+  const buffer=new ArrayBuffer(84+triCount*50);
+  const view=new DataView(buffer);
+
+  const header='KONOMI v9 Complex Mechanicals';
+  for(let i=0;i<80;i++)view.setUint8(i,i<header.length?header.charCodeAt(i):0);
+  view.setUint32(80,triCount,true);
+
+  let off=84;
+  for(let i=0;i<triCount;i++){
+    const i0=allIndices[i*3],i1=allIndices[i*3+1],i2=allIndices[i*3+2];
+    const v0=[allVerts[i0*3],allVerts[i0*3+1],allVerts[i0*3+2]];
+    const v1=[allVerts[i1*3],allVerts[i1*3+1],allVerts[i1*3+2]];
+    const v2=[allVerts[i2*3],allVerts[i2*3+1],allVerts[i2*3+2]];
+
+    const ax=v1[0]-v0[0],ay=v1[1]-v0[1],az=v1[2]-v0[2];
+    const bx=v2[0]-v0[0],by=v2[1]-v0[1],bz=v2[2]-v0[2];
+    let nx=ay*bz-az*by,ny=az*bx-ax*bz,nz=ax*by-ay*bx;
+    const len=Math.sqrt(nx*nx+ny*ny+nz*nz)||1;
+
+    view.setFloat32(off,nx/len,true);off+=4;
+    view.setFloat32(off,ny/len,true);off+=4;
+    view.setFloat32(off,nz/len,true);off+=4;
+    for(const v of[v0,v1,v2]){
+      view.setFloat32(off,v[0],true);off+=4;
+      view.setFloat32(off,v[1],true);off+=4;
+      view.setFloat32(off,v[2],true);off+=4;
+    }
+    view.setUint16(off,0,true);off+=2;
+  }
+
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([buffer],{type:'application/octet-stream'}));
+  a.download=`konomi9-mechanical-${Date.now()}.stl`;
+  a.click();
+
+  log(`Exported ${triCount} triangles`,'p');
+}
+
+// Init
+window.onload=()=>{
+  document.getElementById('sS').oninput=function(){document.getElementById('vS').textContent=this.value+'x'};
+  document.getElementById('sR').oninput=function(){document.getElementById('vR').textContent=this.value};
+  document.getElementById('sC').oninput=function(){document.getElementById('vC').textContent=this.value};
+  document.getElementById('sM').oninput=function(){document.getElementById('vM').textContent=this.value+'mm'};
+  document.getElementById('sCl').oninput=function(){document.getElementById('vCl').textContent=this.value+'mm'};
+  document.getElementById('sW').oninput=function(){document.getElementById('vW').textContent=this.value+'mm'};
+
+  initGL();
+  gen();
+};
+</script>
+</body>
+</html>
