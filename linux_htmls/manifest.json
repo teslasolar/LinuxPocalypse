@@ -1,0 +1,10 @@
+[
+  {
+    "file": "kappa-cubelinux-v5.html",
+    "title": "\u03ba.CubeLinux v5",
+    "description": "SCADA Assembly simulation with \u03c6/\u03ba dynamics, Three.js 3D visualization, and industrial control systems",
+    "icon": "\ud83c\udf00",
+    "color": "#ffd700",
+    "tags": ["3D", "SCADA", "Three.js", "Simulation"]
+  }
+]

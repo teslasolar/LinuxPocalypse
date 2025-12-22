@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LinuxPocalypse</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a12;min-height:100vh;font-family:'Courier New',monospace;color:#0f0;overflow-x:hidden}
+
+/* Animated background */
+.bg{position:fixed;inset:0;z-index:0;overflow:hidden}
+.bg::before{content:'';position:absolute;inset:-50%;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,255,0,.03) 2px,rgba(0,255,0,.03) 4px);animation:scan 8s linear infinite}
+@keyframes scan{from{transform:translateY(0)}to{transform:translateY(50%)}}
+.grid{position:absolute;inset:0;background-image:linear-gradient(rgba(0,255,100,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,100,.05) 1px,transparent 1px);background-size:40px 40px}
+
+/* Header */
+header{position:relative;z-index:10;text-align:center;padding:40px 20px;border-bottom:2px solid #0f03}
+h1{font-size:clamp(2rem,8vw,4rem);text-shadow:0 0 20px #0f0,0 0 40px #0f08;letter-spacing:.2em;animation:glow 2s ease-in-out infinite alternate}
+@keyframes glow{from{text-shadow:0 0 20px #0f0,0 0 40px #0f08}to{text-shadow:0 0 30px #0f0,0 0 60px #0f0,0 0 80px #0f08}}
+.subtitle{color:#0f08;font-size:1rem;margin-top:10px;letter-spacing:.3em}
+.stats{display:flex;justify-content:center;gap:30px;margin-top:20px;flex-wrap:wrap}
+.stat{padding:8px 16px;background:rgba(0,255,0,.1);border:1px solid #0f04;border-radius:4px}
+.stat-val{color:#0f0;font-weight:bold}
+
+/* Main container */
+main{position:relative;z-index:10;max-width:1400px;margin:0 auto;padding:40px 20px}
+
+/* Cards grid */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:24px}
+
+/* Card */
+.card{background:linear-gradient(135deg,rgba(10,20,30,.95),rgba(5,15,25,.98));border:2px solid;border-radius:12px;overflow:hidden;transition:all .3s ease;cursor:pointer;position:relative}
+.card:hover{transform:translateY(-8px) scale(1.02);box-shadow:0 20px 40px rgba(0,0,0,.5)}
+.card::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,transparent 40%,rgba(255,255,255,.05));pointer-events:none}
+
+.card-header{padding:20px;display:flex;align-items:center;gap:15px;border-bottom:1px solid rgba(255,255,255,.1)}
+.card-icon{font-size:2.5rem;filter:drop-shadow(0 0 10px currentColor)}
+.card-title{font-size:1.3rem;font-weight:bold}
+
+.card-body{padding:20px}
+.card-desc{color:#888;font-size:.9rem;line-height:1.6;margin-bottom:15px}
+.card-tags{display:flex;flex-wrap:wrap;gap:8px}
+.tag{padding:4px 10px;background:rgba(0,255,0,.15);border:1px solid rgba(0,255,0,.3);border-radius:12px;font-size:.75rem;color:#0f0}
+
+.card-footer{padding:15px 20px;background:rgba(0,0,0,.3);display:flex;justify-content:space-between;align-items:center}
+.launch-btn{background:linear-gradient(135deg,#0f0,#0a0);color:#000;border:none;padding:10px 24px;border-radius:6px;font-weight:bold;font-family:inherit;cursor:pointer;transition:all .2s}
+.launch-btn:hover{background:linear-gradient(135deg,#0f0,#0c0);box-shadow:0 0 20px #0f06}
+
+/* Loading state */
+.loading{text-align:center;padding:60px;color:#0f08}
+.loading::after{content:'';display:inline-block;width:20px;height:20px;border:2px solid #0f04;border-top-color:#0f0;border-radius:50%;animation:spin 1s linear infinite;margin-left:10px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Empty state */
+.empty{text-align:center;padding:80px 20px;color:#0f06}
+.empty-icon{font-size:4rem;margin-bottom:20px}
+
+/* Terminal effect */
+.terminal{background:#000;border:2px solid #0f04;border-radius:8px;padding:20px;margin-top:40px;font-size:.85rem}
+.terminal-header{color:#0f06;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid #0f03}
+.terminal-line{color:#0f0;margin:5px 0}
+.terminal-line::before{content:'> ';color:#0f06}
+.cursor{display:inline-block;width:8px;height:14px;background:#0f0;animation:blink 1s step-end infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* Responsive */
+@media(max-width:600px){
+  .cards{grid-template-columns:1fr}
+  .stats{flex-direction:column;align-items:center}
+}
+</style>
+</head>
+<body>
+<div class="bg"><div class="grid"></div></div>
+
+<header>
+  <h1>LINUXPOCALYPSE</h1>
+  <div class="subtitle">INTERACTIVE LINUX SIMULATIONS</div>
+  <div class="stats">
+    <div class="stat">MODULES: <span class="stat-val" id="module-count">-</span></div>
+    <div class="stat">STATUS: <span class="stat-val" style="color:#0f0">ONLINE</span></div>
+    <div class="stat">VERSION: <span class="stat-val">1.0.0</span></div>
+  </div>
+</header>
+
+<main>
+  <div id="cards-container" class="cards">
+    <div class="loading">LOADING MODULES</div>
+  </div>
+
+  <div class="terminal">
+    <div class="terminal-header">// SYSTEM LOG</div>
+    <div id="terminal-output">
+      <div class="terminal-line">Initializing LinuxPocalypse...</div>
+    </div>
+  </div>
+</main>
+
+<script>
+const MANIFEST_PATH = 'linux_htmls/manifest.json';
+const HTML_BASE_PATH = 'linux_htmls/';
+
+const log = (msg) => {
+  const output = document.getElementById('terminal-output');
+  const line = document.createElement('div');
+  line.className = 'terminal-line';
+  line.textContent = msg;
+  output.appendChild(line);
+  // Keep only last 10 lines
+  while (output.children.length > 10) {
+    output.removeChild(output.children[1]);
+  }
+};
+
+const createCard = (item) => {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.style.borderColor = item.color || '#0f0';
+
+  card.innerHTML = `
+    <div class="card-header">
+      <div class="card-icon" style="color:${item.color || '#0f0'}">${item.icon || '📦'}</div>
+      <div class="card-title" style="color:${item.color || '#0f0'}">${item.title}</div>
+    </div>
+    <div class="card-body">
+      <div class="card-desc">${item.description || 'No description available.'}</div>
+      <div class="card-tags">
+        ${(item.tags || []).map(t => `<span class="tag">${t}</span>`).join('')}
+      </div>
+    </div>
+    <div class="card-footer">
+      <span style="color:#666;font-size:.8rem">${item.file}</span>
+      <button class="launch-btn">LAUNCH</button>
+    </div>
+  `;
+
+  card.addEventListener('click', () => {
+    log(`Launching ${item.title}...`);
+    window.location.href = HTML_BASE_PATH + item.file;
+  });
+
+  return card;
+};
+
+const loadManifest = async () => {
+  const container = document.getElementById('cards-container');
+
+  try {
+    log('Fetching module manifest...');
+    const response = await fetch(MANIFEST_PATH);
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const manifest = await response.json();
+    log(`Found ${manifest.length} module(s)`);
+
+    document.getElementById('module-count').textContent = manifest.length;
+
+    if (manifest.length === 0) {
+      container.innerHTML = `
+        <div class="empty">
+          <div class="empty-icon">📭</div>
+          <div>No modules found</div>
+          <div style="margin-top:10px;font-size:.8rem">Add HTML files to linux_htmls/ and update manifest.json</div>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = '';
+    manifest.forEach((item, i) => {
+      setTimeout(() => {
+        container.appendChild(createCard(item));
+        log(`Loaded: ${item.title}`);
+      }, i * 150);
+    });
+
+  } catch (error) {
+    log(`Error: ${error.message}`);
+    container.innerHTML = `
+      <div class="empty">
+        <div class="empty-icon">⚠️</div>
+        <div style="color:#f60">Failed to load manifest</div>
+        <div style="margin-top:10px;font-size:.8rem;color:#666">${error.message}</div>
+      </div>
+    `;
+  }
+};
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+  log('System ready');
+  setTimeout(loadManifest, 500);
+});
+
+// Add cursor to last terminal line
+setInterval(() => {
+  const output = document.getElementById('terminal-output');
+  const lastLine = output.lastElementChild;
+  if (lastLine && !lastLine.querySelector('.cursor')) {
+    const cursor = document.createElement('span');
+    cursor.className = 'cursor';
+    lastLine.appendChild(cursor);
+  }
+}, 100);
+</script>
+</body>
+</html>

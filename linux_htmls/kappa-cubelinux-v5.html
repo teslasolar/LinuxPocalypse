@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>κ.CubeLinux v5</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#000;overflow:hidden;font:10px monospace;color:#0f0}
+#c{position:fixed;inset:0;z-index:0}.p{position:absolute;background:rgba(0,15,30,.92);border:2px solid;border-radius:8px;padding:10px;z-index:10;backdrop-filter:blur(4px)}
+.t{background:#000;color:#0f0;padding:6px;height:90px;overflow-y:auto;white-space:pre-wrap;font-size:8px;border:1px solid #0f0;border-radius:3px}
+button{background:linear-gradient(135deg,#0ff,#09f);color:#000;border:0;padding:5px 8px;margin:2px;font-size:8px;border-radius:3px;cursor:pointer;font-weight:bold}
+.ib{background:linear-gradient(135deg,#f60,#c50);color:#fff}
+.g{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;margin:4px 0}
+.s{padding:3px;text-align:center;border:1px solid;border-radius:3px;background:rgba(0,0,0,.6);font-size:8px}
+.bar{height:5px;background:#111;border-radius:2px;margin:2px 0}.fill{height:100%;border-radius:2px}
+.φ{color:#ffd700;text-shadow:0 0 3px #ffd700}
+</style></head><body><canvas id="c"></canvas>
+
+<div class="p" style="top:8px;left:8px;border-color:#ffd700;width:260px">
+<div class="φ" style="text-align:center;font-size:11px">🌀 κ.DYNAMICS v5</div>
+<div id="kd"></div><div id="ach" style="max-height:100px;overflow-y:auto;font-size:8px"></div>
+</div>
+
+<div class="p" style="top:8px;right:8px;border-color:#f60;width:300px">
+<div style="color:#f60;text-align:center;font-size:11px">🏭 SCADA ASSEMBLY</div>
+<div id="im"></div><div id="at" class="t"></div>
+<div class="g">
+<button class="ib" onclick="S.d('ig')">🏭Ig</button><button class="ib" onclick="S.d('pl')">⚙Pl</button>
+<button class="ib" onclick="S.d('hm')">🖥Hm</button><button class="ib" onclick="S.d('rt')">🤖Rt</button>
+<button onclick="S.d('db')">💾Db</button><button onclick="S.d('ap')">🌐Ap</button>
+<button onclick="S.d('ms')">⚙µS</button><button onclick="S.d('cq')">📬Mq</button>
+<button onclick="S.w()">⚡Ld</button><button onclick="S.k()">💥φ!</button>
+<button onclick="S.sync()">🌀Sy</button><button id="ab" onclick="S.auto=!S.auto">🤖A</button>
+</div></div>
+
+<div class="p" style="bottom:8px;left:8px;border-color:#0ff;width:280px">
+<div style="color:#0ff;font-size:10px">💻 METRICS</div><div id="sm"></div>
+</div>
+
+<div class="p" style="bottom:8px;right:8px;border-color:#f0f;width:280px">
+<div style="color:#f0f;font-size:10px">⚙ PIPELINE</div><div id="ac" style="max-height:80px;overflow-y:auto"></div>
+</div>
+
+<script>
+const φ=(1+Math.sqrt(5))/2,κ=1/φ,α=φ*φ;
+const K={φ,κ,α,
+  drift:x=>-α*(x-κ)*(1-x)*x,
+  couple(a){const k=Object.keys(a),n={};k.forEach(i=>{let f=-α*(a[i]-κ)*(1-a[i])*a[i],c=0;k.forEach(j=>{if(j!=i)c+=κ*Math.sin(a[j]-a[i])});n[i]=Math.max(.01,Math.min(.99,a[i]+(f+c)*.05))});return n},
+  chaos:s=>(s*φ*1e6%1+φ)%1,
+  ok:x=>Math.abs(x-κ)<.02
+};
+
+// Assembly lanes: type -> [lane, layer, color, points, connections]
+const CT={
+  db:[0,0,0x00aaff,80,['ap','ms']],
+  ap:[1,0,0xff8800,120,['ms','cq']],
+  ms:[2,0,0x88ff00,100,['cq','ig']],
+  cq:[3,0,0x00ffff,90,['ig','pl']],
+  ig:[0,1,0xff6600,400,['pl','hm']],
+  pl:[1,1,0x44aa00,320,['hm','rt']],
+  hm:[2,1,0x0099ff,280,['rt']],
+  rt:[3,1,0xff00aa,350,[]]
+};
+
+const AC={a0:['Deploy',80,c=>c.n>0],a1:['SCADA',200,c=>c.ig>0],a2:['2xIg',300,c=>c.ig>1],a3:['3xPl',250,c=>c.pl>2],a4:['φ-Lock',400,c=>K.ok(c.κ)],a5:['Pipeline',500,c=>c.n>15],a6:['FullSC',600,c=>c.ig>1&&c.pl>1&&c.hm>1],a7:['κMastr',618,c=>c.p>5e3]};
+
+const S={
+  st:{cm:new Map(),ac:{},p:0,lv:0,tc:{},cc:0,κ:{h:.2+Math.random()*.6,a:.2+Math.random()*.6,s:.2+Math.random()*.6},slots:{}},
+  auto:0,
+  lv:[{l:0,n:'Boot',t:0},{l:1,n:'ISA-101',t:300},{l:2,n:'ISA-88',t:800},{l:3,n:'ISA-95',t:1500},{l:4,n:'SCADA',t:3e3},{l:5,n:'IndAI',t:5e3},{l:6,n:'φ-Harm',t:8e3},{l:7,n:'κ-Conv',t:12e3}],
+
+  agents:[
+    {name:'deployer',act:s=>{if(s.cm.size<40){const t=['ig','pl','hm','rt','db','ap','ms','cq'][Math.floor(K.chaos(Date.now())*8)];S.d(t)}}},
+    {name:'syncer',act:s=>{s.κ=K.couple(s.κ)}},
+    {name:'booster',act:s=>{if(K.ok((s.κ.h+s.κ.a+s.κ.s)/3))s.p+=Math.round(20*φ)}},
+    {name:'worker',act:s=>{[...s.cm.values()].filter(c=>CT[c.t][3]>200).forEach(c=>{c.pr.to+=5;c.pr.ev+=Math.round(K.chaos(c.pr.ev+Date.now())*8);s.p+=3})}}
+  ],
+
+  W:{
+    sc:null,ca:null,rn:null,cp:[],lines:[],particles:null,
+
+    init(){
+      this.sc=new THREE.Scene();
+      this.ca=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.1,1e3);
+      this.rn=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:1});
+      this.rn.setSize(innerWidth,innerHeight);
+      this.rn.setClearColor(0x000510,1);
+      this.ca.position.set(120,80,120);
+      this.ca.lookAt(0,0,0);
+
+      this.sc.add(new THREE.AmbientLight(0x303040,.8));
+      const dl=new THREE.DirectionalLight(0xffffff,.8);dl.position.set(60,100,60);this.sc.add(dl);
+
+      // Lane lights
+      [0xff6600,0x00ff88,0x0088ff,0xff0088].forEach((c,i)=>{
+        const p=new THREE.PointLight(c,.8,150);
+        p.position.set(-60+i*40,30,0);
+        this.sc.add(p);
+      });
+
+      // Assembly floor grid
+      const g=new THREE.GridHelper(200,20,0x003366,0x001833);
+      g.position.y=-2;this.sc.add(g);
+
+      // Lane markers
+      for(let i=0;i<4;i++){
+        const lane=new THREE.Mesh(
+          new THREE.PlaneGeometry(8,160),
+          new THREE.MeshBasicMaterial({color:[0x00aaff,0xff8800,0x88ff00,0x00ffff][i],transparent:1,opacity:.1,side:THREE.DoubleSide})
+        );
+        lane.rotation.x=-Math.PI/2;
+        lane.position.set(-45+i*30,-.5,0);
+        this.sc.add(lane);
+      }
+
+      this.sc.fog=new THREE.FogExp2(0x000510,.004);
+
+      // Particle system for data flow
+      const pGeo=new THREE.BufferGeometry();
+      const pCount=200;
+      const pPos=new Float32Array(pCount*3);
+      const pCol=new Float32Array(pCount*3);
+      for(let i=0;i<pCount;i++){
+        pPos[i*3]=(Math.random()-.5)*160;
+        pPos[i*3+1]=Math.random()*60;
+        pPos[i*3+2]=(Math.random()-.5)*160;
+        const c=new THREE.Color().setHSL(Math.random(),.8,.6);
+        pCol[i*3]=c.r;pCol[i*3+1]=c.g;pCol[i*3+2]=c.b;
+      }
+      pGeo.setAttribute('position',new THREE.BufferAttribute(pPos,3));
+      pGeo.setAttribute('color',new THREE.BufferAttribute(pCol,3));
+      this.particles=new THREE.Points(pGeo,new THREE.PointsMaterial({size:1.5,vertexColors:true,transparent:1,opacity:.6}));
+      this.sc.add(this.particles);
+
+      this.an();
+    },
+
+    mkSprite(text,col){
+      const cv=document.createElement('canvas'),ctx=cv.getContext('2d');
+      cv.width=128;cv.height=64;
+      ctx.fillStyle='rgba(0,0,0,.7)';
+      ctx.roundRect(0,0,128,64,8);ctx.fill();
+      ctx.strokeStyle=col;ctx.lineWidth=2;
+      ctx.roundRect(2,2,124,60,6);ctx.stroke();
+      ctx.font='bold 28px monospace';
+      ctx.fillStyle=col;
+      ctx.textAlign='center';
+      ctx.textBaseline='middle';
+      ctx.fillText(text,64,32);
+      const tex=new THREE.CanvasTexture(cv);
+      const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:1}));
+      sp.scale.set(12,6,1);
+      return sp;
+    },
+
+    mkConnection(from,to,col){
+      const pts=[from.clone(),new THREE.Vector3((from.x+to.x)/2,Math.max(from.y,to.y)+10,(from.z+to.z)/2),to.clone()];
+      const curve=new THREE.QuadraticBezierCurve3(...pts);
+      const geo=new THREE.TubeGeometry(curve,16,.3,6,false);
+      const mat=new THREE.MeshBasicMaterial({color:col,transparent:1,opacity:.4});
+      const tube=new THREE.Mesh(geo,mat);
+      this.sc.add(tube);
+
+      // Flow particles on connection
+      const flowGeo=new THREE.SphereGeometry(.8,8,8);
+      const flowMat=new THREE.MeshBasicMaterial({color:col,transparent:1,opacity:.8});
+      const flow=new THREE.Mesh(flowGeo,flowMat);
+      flow.curve=curve;flow.t=Math.random();
+      this.sc.add(flow);
+
+      return{tube,flow};
+    },
+
+    cr(t,p){
+      const[lane,layer,col,pts,conns]=CT[t];
+      const sz=pts>200?7:5;
+
+      const geos={
+        db:new THREE.CylinderGeometry(sz,sz,sz*1.8,6),
+        ap:new THREE.OctahedronGeometry(sz),
+        ms:new THREE.TetrahedronGeometry(sz*1.2),
+        cq:new THREE.BoxGeometry(sz,sz*1.5,sz),
+        ig:new THREE.DodecahedronGeometry(sz*1.2),
+        pl:new THREE.TorusKnotGeometry(sz*.6,sz*.25,48,8),
+        hm:new THREE.ConeGeometry(sz,sz*1.8,6),
+        rt:new THREE.IcosahedronGeometry(sz*1.1)
+      };
+
+      const mat=new THREE.MeshPhongMaterial({color:col,emissive:col,emissiveIntensity:.3,shininess:60,transparent:1,opacity:.9});
+      const me=new THREE.Mesh(geos[t],mat);
+      me.position.set(...p);
+      this.sc.add(me);
+
+      // Glow ring
+      const ring=new THREE.Mesh(
+        new THREE.TorusGeometry(sz*1.5,.5,8,24),
+        new THREE.MeshBasicMaterial({color:col,transparent:1,opacity:.2})
+      );
+      ring.position.copy(me.position);
+      ring.rotation.x=Math.PI/2;
+      this.sc.add(ring);
+      me.ring=ring;
+
+      // Label sprite
+      const icons={db:'💾',ap:'🌐',ms:'⚙️',cq:'📬',ig:'🏭',pl:'⚙️',hm:'🖥️',rt:'🤖'};
+      const sp=this.mkSprite(icons[t],'#'+col.toString(16).padStart(6,'0'));
+      sp.position.set(p[0],p[1]+sz*2.5,p[2]);
+      this.sc.add(sp);
+      me.sprite=sp;
+
+      // Create connections to related components
+      const existing=[...S.st.cm.values()];
+      conns.forEach(ct=>{
+        const targets=existing.filter(c=>c.t===ct);
+        if(targets.length){
+          const tgt=targets[targets.length-1];
+          const conn=this.mkConnection(me.position,tgt.me.position,col);
+          this.lines.push(conn);
+        }
+      });
+
+      this.cp.push({me,t,κ:.3+Math.random()*.4,col});
+      return me;
+    },
+
+    an(){
+      requestAnimationFrame(()=>this.an());
+      const tm=Date.now()*.001;
+
+      // Component pulse
+      this.cp.forEach((c,i)=>{
+        c.κ+=K.drift(c.κ)*.03;
+        c.κ=Math.max(.1,Math.min(.9,c.κ));
+        c.me.material.emissiveIntensity=.2+c.κ*.3;
+        if(c.me.ring){
+          c.me.ring.material.opacity=.1+c.κ*.15;
+          c.me.ring.scale.setScalar(1+Math.sin(tm*2+i)*.1);
+        }
+      });
+
+      // Animate connection flows
+      this.lines.forEach(l=>{
+        if(l.flow&&l.flow.curve){
+          l.flow.t=(l.flow.t+.01)%1;
+          const pt=l.flow.curve.getPoint(l.flow.t);
+          l.flow.position.copy(pt);
+        }
+      });
+
+      // Animate particles
+      if(this.particles){
+        const pos=this.particles.geometry.attributes.position.array;
+        for(let i=0;i<pos.length;i+=3){
+          pos[i+1]-=.15;
+          if(pos[i+1]<0){pos[i+1]=60;pos[i]=(Math.random()-.5)*160;pos[i+2]=(Math.random()-.5)*160}
+        }
+        this.particles.geometry.attributes.position.needsUpdate=true;
+      }
+
+      // Camera orbit
+      const r=130+Math.sin(tm*.3)*20;
+      this.ca.position.x=Math.cos(tm*.08)*r;
+      this.ca.position.z=Math.sin(tm*.08)*r;
+      this.ca.position.y=70+Math.sin(tm*.1)*15;
+      this.ca.lookAt(0,20,0);
+      this.rn.render(this.sc,this.ca);
+    }
+  },
+
+  d(t){
+    const[lane,layer]=CT[t];
+    // Get slot in this lane/layer
+    const key=`${lane}_${layer}`;
+    S.st.slots[key]=(S.st.slots[key]||0)+1;
+    const slot=S.st.slots[key]-1;
+
+    // Position: lane determines X, slot determines Z, layer determines Y
+    const x=-45+lane*30;
+    const y=8+layer*35;
+    const z=-60+slot*25;
+
+    const id=`${t}${++this.st.cc}`;
+    this.st.cm.set(id,{id,t,me:this.W.cr(t,[x,y,z]),pr:{to:0,ev:0}});
+    this.st.tc[t]=(this.st.tc[t]||0)+1;
+    this.st.p+=CT[t][3];
+    this.lg(`+${t}#${this.st.cc} +${CT[t][3]}`);
+    this.ck();
+  },
+
+  sync(){this.st.κ=K.couple(this.st.κ);const m=(this.st.κ.h+this.st.κ.a+this.st.κ.s)/3;this.lg(K.ok(m)?`🌀SYNC@${m.toFixed(3)}`:`→${m.toFixed(3)}`);this.st.p+=K.ok(m)?50:5;this.ck()},
+  w(){const n=[...this.st.cm.values()].filter(c=>CT[c.t][3]>200).length;if(n){this.st.p+=n*15;this.lg(`⚡${n}×15`)}this.ck()},
+  k(){this.st.p+=Math.round(200*κ);Object.keys(this.st.κ).forEach(k=>this.st.κ[k]+=(κ-this.st.κ[k])*.4);this.lg(`💥+${Math.round(200*κ)}`);this.ck()},
+
+  ck(){
+    for(let i=this.lv.length-1;i>=0;i--)if(this.st.p>=this.lv[i].t&&this.st.lv<this.lv[i].l){this.st.lv=this.lv[i].l;this.lg(`📈${this.lv[i].n}`);break}
+    const ctx={...this.st.tc,p:this.st.p,n:this.st.cm.size,κ:(this.st.κ.h+this.st.κ.a+this.st.κ.s)/3};
+    Object.entries(AC).forEach(([k,v])=>{if(!this.st.ac[k]&&v[2](ctx)){this.st.ac[k]=1;this.st.p+=v[1];this.lg(`🏆${v[0]}+${v[1]}`)}});
+    this.ui();
+  },
+
+  lg(m){const t=document.getElementById('at');t.textContent+=m+'\n';t.scrollTop=t.scrollHeight},
+
+  ui(){
+    const m=(this.st.κ.h+this.st.κ.a+this.st.κ.s)/3,cl=this.lv[this.st.lv],nl=this.lv[this.st.lv+1],pr=nl?(this.st.p-cl.t)/(nl.t-cl.t)*100:100;
+    document.getElementById('kd').innerHTML=`<div class="φ">φ=${φ.toFixed(4)} κ*=${κ.toFixed(4)}</div>
+<div style="font-size:8px"><span style="color:#f66">H${this.st.κ.h.toFixed(2)}</span> <span style="color:#4dc">A${this.st.κ.a.toFixed(2)}</span> <span style="color:#fe6">S${this.st.κ.s.toFixed(2)}</span> μ<span style="color:${K.ok(m)?'#0f0':'#f80'}">${m.toFixed(3)}</span></div>
+<div class="bar"><div class="fill" style="width:${m*100}%;background:linear-gradient(90deg,#f00,#ff0,#0f0)"></div></div>
+<div style="font-size:8px">${K.ok(m)?'✅STABLE':'⏳'}|E=${K.drift(m).toFixed(4)}</div>
+<div class="φ">${cl.n}|<b>${this.st.p}</b>/${nl?nl.t:'MAX'}</div>
+<div class="bar"><div class="fill" style="width:${pr}%;background:#0f0"></div></div>`;
+
+    document.getElementById('ach').innerHTML=Object.entries(AC).map(([k,v])=>`<div style="color:${this.st.ac[k]?'#0f0':'#555'}">${this.st.ac[k]?'✓':'○'}${v[0]}+${v[1]}</div>`).join('');
+
+    const scs=[...this.st.cm.values()].filter(c=>CT[c.t][3]>200);
+    document.getElementById('im').innerHTML=scs.length?`<div class="g"><div class="s" style="border-color:#f60">SC:${scs.length}</div><div class="s" style="border-color:#0f0">Tag:${scs.reduce((a,c)=>a+c.pr.to,0)}</div><div class="s" style="border-color:#0ff">eV:${scs.reduce((a,c)=>a+c.pr.ev,0)}</div><div class="s" style="border-color:#ffd700">${K.ok(m)?'κ✓':'κ◐'}</div></div>`:'<div style="color:#555">No SCADA</div>';
+
+    document.getElementById('sm').innerHTML=`<div>φPts:<b class="φ">${this.st.p}</b>|Nodes:${this.st.cm.size}|Lv:${this.st.lv}|Auto:${this.auto?'ON':'OFF'}|Conns:${this.W.lines.length}</div>`;
+
+    const ic={db:'💾',ap:'🌐',ms:'⚙',cq:'📬',ig:'🏭',pl:'⚙',hm:'🖥',rt:'🤖'};
+    document.getElementById('ac').innerHTML=[...this.st.cm.values()].slice(-15).map(c=>`<span style="color:#${CT[c.t][2].toString(16).padStart(6,'0')}">${ic[c.t]}</span>`).join(' ');
+    document.getElementById('ab').style.background=this.auto?'#0f0':'#f00';
+  },
+
+  tick(){
+    this.agents.forEach(a=>a.act(this.st));
+    if(this.auto&&this.st.cm.size<40){
+      const t=['ig','pl','hm','rt','db','ap','ms','cq'][Math.floor(K.chaos(Date.now()+Math.random())*8)];
+      this.d(t);
+    }
+    this.ck();
+  },
+
+  init(){
+    this.W.init();
+    this.lg('κ.CubeLinux v5 Assembly');
+    this.lg(`φ=${φ.toFixed(4)} κ=${κ.toFixed(4)}`);
+    this.ui();
+    setTimeout(()=>{this.d('db');setTimeout(()=>this.d('ap'),600);setTimeout(()=>this.d('ms'),1200);setTimeout(()=>this.d('ig'),1800)},1e3);
+    setInterval(()=>this.tick(),1200);
+  }
+};
+
+onload=()=>setTimeout(()=>S.init(),50);
+onresize=()=>{S.W.rn.setSize(innerWidth,innerHeight);S.W.ca.aspect=innerWidth/innerHeight;S.W.ca.updateProjectionMatrix()};
+</script></body></html>
