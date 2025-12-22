@@ -1,143 +1,132 @@
 <!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Origin Ranger - System Discovery</title>
+<title>Origin Ranger - Autonomous Discovery</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#000;overflow:hidden;font:11px monospace;color:#0f0}
 #c{position:fixed;inset:0;z-index:0}
 
-.panel{position:absolute;background:rgba(0,10,5,.95);border:2px solid #0f0;border-radius:8px;padding:10px;z-index:10}
-.panel-title{text-align:center;font-size:12px;font-weight:bold;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid #040}
+.panel{position:absolute;background:rgba(0,10,5,.92);border:2px solid #0f0;border-radius:8px;padding:10px;z-index:10}
+.panel-title{text-align:center;font-size:13px;font-weight:bold;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid #040}
 .panel-title span{color:#0ff}
 
-button{background:linear-gradient(135deg,#0a0,#050);color:#0f0;border:1px solid #0f0;padding:5px 10px;margin:2px;border-radius:4px;cursor:pointer;font-size:10px}
-button:hover{background:#0f0;color:#000}
-button.active{background:#0ff;color:#000;border-color:#0ff}
-button.danger{background:linear-gradient(135deg,#a00,#500);border-color:#f00;color:#f00}
-button.danger:hover{background:#f00;color:#000}
+.stat-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #020}
+.stat-val{color:#0ff;font-weight:bold;transition:all .3s}
+.stat-val.scanning{color:#ff0;animation:pulse .5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 
-.stat-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #020}
-.stat-val{color:#0ff;font-weight:bold}
-.stat-bar{height:8px;background:#020;border-radius:4px;margin:3px 0;overflow:hidden}
-.stat-fill{height:100%;background:linear-gradient(90deg,#0f0,#0ff);border-radius:4px;transition:width .3s}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:4px;margin:5px 0}
+.metric{background:#010;border:1px solid #030;border-radius:4px;padding:6px;text-align:center}
+.metric-val{font-size:14px;font-weight:bold;color:#0ff}
+.metric-lbl{font-size:8px;color:#080}
 
-.node{background:#010;border:1px solid #040;border-radius:4px;padding:6px;margin:4px 0}
-.node.active{border-color:#0f0;box-shadow:0 0 8px #0f04}
-.node.host{border-color:#0ff;background:#011}
-.node-header{display:flex;justify-content:space-between;align-items:center}
-.node-icon{font-size:16px}
-.node-name{font-weight:bold}
-.node-status{font-size:9px;padding:2px 6px;border-radius:8px}
+.device{background:#010;border:1px solid #030;border-radius:4px;padding:5px;margin:3px 0;display:flex;align-items:center;gap:8px}
+.device.new{animation:fadeIn .5s}
+@keyframes fadeIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
+.device-icon{font-size:16px}
+.device-info{flex:1}
+.device-name{font-weight:bold;color:#0f0}
+.device-type{font-size:9px;color:#088}
+.device-status{width:8px;height:8px;border-radius:50%;background:#0f0;box-shadow:0 0 5px #0f0}
 
-.log{background:#000;border:1px solid #030;border-radius:4px;padding:6px;height:100px;overflow-y:auto;font-size:9px}
+.log{background:#000;border:1px solid #030;border-radius:4px;padding:5px;height:120px;overflow-y:auto;font-size:9px}
 .log-entry{padding:2px 0;border-bottom:1px solid #010}
-.log-time{color:#666}
+.log-time{color:#555}
 .log-info{color:#0f0}
 .log-warn{color:#ff0}
-.log-error{color:#f00}
+.log-scan{color:#0ff}
+.log-found{color:#0f0;font-weight:bold}
 
-.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:5px}
-.metric{background:#010;border:1px solid #030;border-radius:4px;padding:8px;text-align:center}
-.metric-val{font-size:16px;font-weight:bold;color:#0ff}
-.metric-lbl{font-size:9px;color:#080}
-
-.port-list{display:flex;flex-wrap:wrap;gap:3px;max-height:80px;overflow-y:auto}
-.port{padding:3px 6px;background:#020;border:1px solid #040;border-radius:3px;font-size:9px}
-.port.open{border-color:#0f0;color:#0f0}
-.port.closed{border-color:#600;color:#600}
-
-#radar{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);width:200px;height:200px;border:2px solid #0f0;border-radius:50%;background:radial-gradient(circle,#010 0%,#000 100%);overflow:hidden}
-#radar-sweep{position:absolute;width:50%;height:50%;top:50%;left:50%;transform-origin:0 0;background:linear-gradient(90deg,transparent,#0f04);animation:sweep 3s linear infinite}
+#radar{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);width:180px;height:180px;border:2px solid #0f0;border-radius:50%;background:radial-gradient(circle,#010 0%,#000 100%);overflow:hidden}
+#radar-sweep{position:absolute;width:50%;height:50%;top:50%;left:50%;transform-origin:0 0;background:linear-gradient(90deg,transparent,#0f06);animation:sweep 2s linear infinite}
 @keyframes sweep{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-.radar-ring{position:absolute;border:1px solid #030;border-radius:50%}
-.radar-blip{position:absolute;width:8px;height:8px;background:#0f0;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 10px #0f0;animation:blink 1s ease-in-out infinite}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.radar-ring{position:absolute;border:1px solid #020;border-radius:50%}
+.radar-blip{position:absolute;width:6px;height:6px;background:#0f0;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 8px #0f0}
+.radar-blip.host{background:#0ff;box-shadow:0 0 10px #0ff;width:10px;height:10px}
 
-#topology{position:fixed;top:60px;left:300px;right:220px;bottom:220px;border:1px solid #030;border-radius:8px;background:rgba(0,5,0,.5)}
+#status-bar{position:fixed;top:0;left:0;right:0;height:24px;background:rgba(0,20,0,.95);border-bottom:1px solid #0f0;display:flex;align-items:center;justify-content:space-between;padding:0 15px;z-index:100}
+#status-text{color:#0f0}
+#status-phase{color:#0ff;font-weight:bold}
+#progress{width:200px;height:6px;background:#020;border-radius:3px;overflow:hidden}
+#progress-fill{height:100%;background:linear-gradient(90deg,#0f0,#0ff);width:0%;transition:width .3s}
 </style></head><body>
+
+<!-- Status Bar -->
+<div id="status-bar">
+<span id="status-text">🔍 ORIGIN RANGER - Autonomous Discovery</span>
+<span id="status-phase">Initializing...</span>
+<div id="progress"><div id="progress-fill"></div></div>
+</div>
+
 <canvas id="c"></canvas>
 
-<!-- System Info Panel -->
-<div class="panel" style="top:10px;left:10px;width:280px">
-<div class="panel-title">🖥️ ORIGIN <span>RANGER</span></div>
-
-<div class="node host">
-<div class="node-header">
-<span class="node-icon">🏠</span>
-<span class="node-name" id="hostname">This Machine</span>
-<span class="node-status" style="background:#0a0;color:#0f0">HOST</span>
-</div>
-<div class="stat-row"><span>Platform:</span><span class="stat-val" id="platform">-</span></div>
-<div class="stat-row"><span>Browser:</span><span class="stat-val" id="browser">-</span></div>
-<div class="stat-row"><span>Language:</span><span class="stat-val" id="language">-</span></div>
-</div>
-
+<!-- System Panel -->
+<div class="panel" style="top:35px;left:10px;width:260px">
+<div class="panel-title">🖥️ SYSTEM <span>PROFILE</span></div>
+<div class="stat-row"><span>Platform:</span><span class="stat-val scanning" id="platform">Scanning...</span></div>
+<div class="stat-row"><span>Browser:</span><span class="stat-val scanning" id="browser">Scanning...</span></div>
+<div class="stat-row"><span>User Agent:</span><span class="stat-val scanning" id="ua" style="font-size:8px;max-width:150px;overflow:hidden;text-overflow:ellipsis">Scanning...</span></div>
 <div class="grid">
-<div class="metric"><div class="metric-val" id="cpu-cores">-</div><div class="metric-lbl">CPU Cores</div></div>
-<div class="metric"><div class="metric-val" id="memory">-</div><div class="metric-lbl">RAM (GB)</div></div>
-<div class="metric"><div class="metric-val" id="screen-res">-</div><div class="metric-lbl">Screen</div></div>
-<div class="metric"><div class="metric-val" id="color-depth">-</div><div class="metric-lbl">Color Depth</div></div>
+<div class="metric"><div class="metric-val" id="cpu">-</div><div class="metric-lbl">CPU Cores</div></div>
+<div class="metric"><div class="metric-val" id="ram">-</div><div class="metric-lbl">RAM GB</div></div>
+<div class="metric"><div class="metric-val" id="screen">-</div><div class="metric-lbl">Screen</div></div>
+<div class="metric"><div class="metric-val" id="dpr">-</div><div class="metric-lbl">DPR</div></div>
 </div>
-
-<div style="margin-top:8px">
-<div class="stat-row"><span>GPU:</span><span class="stat-val" id="gpu">Detecting...</span></div>
-<div class="stat-row"><span>Touch:</span><span class="stat-val" id="touch">-</span></div>
-<div class="stat-row"><span>Cookies:</span><span class="stat-val" id="cookies">-</span></div>
-</div>
+<div class="stat-row"><span>GPU:</span><span class="stat-val scanning" id="gpu">Probing...</span></div>
+<div class="stat-row"><span>WebGL:</span><span class="stat-val scanning" id="webgl">Checking...</span></div>
+<div class="stat-row"><span>Audio:</span><span class="stat-val scanning" id="audio">Checking...</span></div>
+<div class="stat-row"><span>Timezone:</span><span class="stat-val scanning" id="tz">Detecting...</span></div>
 </div>
 
 <!-- Network Panel -->
-<div class="panel" style="top:10px;right:10px;width:200px">
-<div class="panel-title">🌐 NETWORK</div>
-
-<div class="node active">
-<div class="node-header">
-<span class="node-icon">📡</span>
-<span class="node-name">Connection</span>
-<span class="node-status" id="conn-status" style="background:#0a0;color:#0f0">ONLINE</span>
-</div>
-<div class="stat-row"><span>Type:</span><span class="stat-val" id="conn-type">-</span></div>
-<div class="stat-row"><span>Downlink:</span><span class="stat-val" id="conn-speed">-</span></div>
-<div class="stat-row"><span>RTT:</span><span class="stat-val" id="conn-rtt">-</span></div>
-<div class="stat-row"><span>Save Data:</span><span class="stat-val" id="save-data">-</span></div>
+<div class="panel" style="top:35px;right:10px;width:200px">
+<div class="panel-title">🌐 NETWORK <span>STATUS</span></div>
+<div class="stat-row"><span>Status:</span><span class="stat-val" id="online">Checking...</span></div>
+<div class="stat-row"><span>Type:</span><span class="stat-val scanning" id="conn-type">Detecting...</span></div>
+<div class="stat-row"><span>Downlink:</span><span class="stat-val scanning" id="downlink">Measuring...</span></div>
+<div class="stat-row"><span>RTT:</span><span class="stat-val scanning" id="rtt">Measuring...</span></div>
+<div class="stat-row"><span>Local IP:</span><span class="stat-val scanning" id="local-ip">Probing...</span></div>
+<div class="stat-row"><span>Protocol:</span><span class="stat-val scanning" id="protocol">Checking...</span></div>
+<div class="stat-row"><span>Secure:</span><span class="stat-val scanning" id="secure">Checking...</span></div>
 </div>
 
-<div style="margin-top:8px">
-<div class="stat-row"><span>Local IP:</span><span class="stat-val" id="local-ip">Scanning...</span></div>
-<div class="stat-row"><span>Public IP:</span><span class="stat-val" id="public-ip">Detecting...</span></div>
+<!-- Discovered Devices -->
+<div class="panel" style="bottom:200px;left:10px;width:260px;max-height:200px;overflow-y:auto">
+<div class="panel-title">📡 DISCOVERED <span>DEVICES</span></div>
+<div id="devices"></div>
 </div>
 
-<div style="margin-top:8px">
-<button onclick="R.scan()" id="scan-btn">🔍 Scan Network</button>
-<button onclick="R.detectIP()">📍 Detect IP</button>
-</div>
-</div>
-
-<!-- Performance Panel -->
-<div class="panel" style="bottom:10px;left:10px;width:280px">
-<div class="panel-title">⚡ PERFORMANCE</div>
-
-<div class="stat-row"><span>Page Load:</span><span class="stat-val" id="page-load">-</span></div>
-<div class="stat-bar"><div class="stat-fill" id="load-bar" style="width:0%"></div></div>
-
-<div class="stat-row"><span>DOM Ready:</span><span class="stat-val" id="dom-ready">-</span></div>
-<div class="stat-row"><span>Memory Used:</span><span class="stat-val" id="mem-used">-</span></div>
-<div class="stat-bar"><div class="stat-fill" id="mem-bar" style="width:0%"></div></div>
-
-<div class="stat-row"><span>Storage Quota:</span><span class="stat-val" id="storage">-</span></div>
-<div class="stat-bar"><div class="stat-fill" id="storage-bar" style="width:0%"></div></div>
-
-<div style="margin-top:8px">
-<button onclick="R.benchmark()">🏃 Benchmark</button>
-<button onclick="R.refresh()">🔄 Refresh</button>
-</div>
+<!-- Capabilities Panel -->
+<div class="panel" style="bottom:200px;right:10px;width:200px">
+<div class="panel-title">⚡ CAPABILITIES</div>
+<div class="stat-row"><span>Cookies:</span><span class="stat-val" id="cookies">-</span></div>
+<div class="stat-row"><span>Storage:</span><span class="stat-val" id="storage">-</span></div>
+<div class="stat-row"><span>Workers:</span><span class="stat-val" id="workers">-</span></div>
+<div class="stat-row"><span>WebSocket:</span><span class="stat-val" id="websocket">-</span></div>
+<div class="stat-row"><span>Geolocation:</span><span class="stat-val" id="geo">-</span></div>
+<div class="stat-row"><span>Notifications:</span><span class="stat-val" id="notif">-</span></div>
+<div class="stat-row"><span>Bluetooth:</span><span class="stat-val" id="bluetooth">-</span></div>
+<div class="stat-row"><span>USB:</span><span class="stat-val" id="usb">-</span></div>
+<div class="stat-row"><span>MIDI:</span><span class="stat-val" id="midi">-</span></div>
+<div class="stat-row"><span>Gamepad:</span><span class="stat-val" id="gamepad">-</span></div>
 </div>
 
 <!-- Discovery Log -->
-<div class="panel" style="bottom:10px;right:10px;width:200px">
-<div class="panel-title">📋 DISCOVERY LOG</div>
+<div class="panel" style="bottom:10px;left:10px;width:260px">
+<div class="panel-title">📋 DISCOVERY <span>LOG</span></div>
 <div class="log" id="log"></div>
+</div>
+
+<!-- Performance Panel -->
+<div class="panel" style="bottom:10px;right:10px;width:200px">
+<div class="panel-title">📊 PERFORMANCE</div>
+<div class="stat-row"><span>Page Load:</span><span class="stat-val" id="load-time">-</span></div>
+<div class="stat-row"><span>DOM Ready:</span><span class="stat-val" id="dom-time">-</span></div>
+<div class="stat-row"><span>Memory:</span><span class="stat-val" id="memory">-</span></div>
+<div class="stat-row"><span>Heap Limit:</span><span class="stat-val" id="heap">-</span></div>
+<div class="stat-row"><span>Storage Used:</span><span class="stat-val" id="storage-used">-</span></div>
+<div class="stat-row"><span>Storage Quota:</span><span class="stat-val" id="storage-quota">-</span></div>
 </div>
 
 <!-- Radar -->
@@ -146,400 +135,480 @@ button.danger:hover{background:#f00;color:#000}
 <div class="radar-ring" style="width:33%;height:33%;top:33%;left:33%"></div>
 <div class="radar-ring" style="width:66%;height:66%;top:17%;left:17%"></div>
 <div class="radar-ring" style="width:100%;height:100%;top:0;left:0"></div>
+<div class="radar-blip host" style="left:50%;top:50%"></div>
 </div>
-
-<!-- Topology View -->
-<div id="topology"></div>
 
 <script>
 // ═══════════════════════════════════════════════════════════════
-// ORIGIN RANGER - System & Network Discovery
+// ORIGIN RANGER - 100% AUTONOMOUS DISCOVERY
 // ═══════════════════════════════════════════════════════════════
 
 const R={
-  nodes:[],
-  connections:[],
-  scanning:false,
+  phase:0,
+  progress:0,
+  devices:[],
+
+  phases:[
+    'Initializing sensors...',
+    'Scanning system hardware...',
+    'Probing graphics subsystem...',
+    'Analyzing network stack...',
+    'Detecting local IP...',
+    'Enumerating capabilities...',
+    'Measuring performance...',
+    'Scanning network topology...',
+    'Discovery complete'
+  ],
 
   // ─────────────────────────────────────────────────────────────
-  // INITIALIZATION
+  // AUTO-INIT
   // ─────────────────────────────────────────────────────────────
   init(){
     this.initThree();
-    this.detectSystem();
-    this.detectNetwork();
-    this.detectPerformance();
-    this.detectStorage();
-    this.detectGPU();
-    this.log('Origin Ranger initialized','info');
-    this.log('System scan starting...','info');
-    this.animate();
+    this.log('Origin Ranger v2.0 - Autonomous Mode','info');
+    this.log('Starting full system discovery...','scan');
+
+    // Run discovery phases automatically
+    this.runPhase(0);
+  },
+
+  runPhase(phase){
+    this.phase=phase;
+    this.updateStatus(this.phases[phase],phase/this.phases.length*100);
+
+    switch(phase){
+      case 0:setTimeout(()=>{this.runPhase(1)},500);break;
+      case 1:this.scanSystem();setTimeout(()=>{this.runPhase(2)},1200);break;
+      case 2:this.scanGraphics();setTimeout(()=>{this.runPhase(3)},1000);break;
+      case 3:this.scanNetwork();setTimeout(()=>{this.runPhase(4)},800);break;
+      case 4:this.detectIP();setTimeout(()=>{this.runPhase(5)},1500);break;
+      case 5:this.scanCapabilities();setTimeout(()=>{this.runPhase(6)},1000);break;
+      case 6:this.scanPerformance();setTimeout(()=>{this.runPhase(7)},800);break;
+      case 7:this.scanTopology();setTimeout(()=>{this.runPhase(8)},4000);break;
+      case 8:this.complete();break;
+    }
+  },
+
+  updateStatus(text,pct){
+    document.getElementById('status-phase').textContent=text;
+    document.getElementById('progress-fill').style.width=pct+'%';
   },
 
   // ─────────────────────────────────────────────────────────────
-  // THREE.JS SETUP
+  // THREE.JS VISUALIZATION
   // ─────────────────────────────────────────────────────────────
   initThree(){
     this.scene=new THREE.Scene();
     this.camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.1,1000);
     this.renderer=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true,alpha:true});
     this.renderer.setSize(innerWidth,innerHeight);
-    this.renderer.setClearColor(0x000500,.3);
+    this.renderer.setClearColor(0x000800,.5);
 
-    // Lighting
-    this.scene.add(new THREE.AmbientLight(0x003300,.5));
-    const light=new THREE.PointLight(0x00ff00,.8,100);
-    light.position.set(0,20,20);
+    this.scene.add(new THREE.AmbientLight(0x002200,.4));
+    const light=new THREE.PointLight(0x00ff00,.6,80);
+    light.position.set(0,15,15);
     this.scene.add(light);
 
-    // Central node (this machine)
-    this.hostNode=this.createNode('host',0,0,0,0x00ffff,3);
-    this.scene.add(this.hostNode);
+    // Host node
+    this.host=this.createNode(0x00ffff,4);
+    this.scene.add(this.host);
+
+    // Data streams
+    this.streams=[];
+    for(let i=0;i<30;i++){
+      const stream=new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(0,0,0),
+          new THREE.Vector3((Math.random()-.5)*60,(Math.random()-.5)*30,-20-Math.random()*40)
+        ]),
+        new THREE.LineBasicMaterial({color:0x00ff00,transparent:true,opacity:.2})
+      );
+      stream.userData.pulse=Math.random();
+      this.scene.add(stream);
+      this.streams.push(stream);
+    }
 
     // Grid
-    const grid=new THREE.GridHelper(100,20,0x003300,0x001100);
-    grid.position.y=-10;
+    const grid=new THREE.GridHelper(80,16,0x003300,0x001100);
+    grid.position.y=-15;
     this.scene.add(grid);
 
-    // Particle field
-    const particles=new THREE.BufferGeometry();
-    const positions=[];
-    for(let i=0;i<500;i++){
-      positions.push(
-        (Math.random()-.5)*200,
-        (Math.random()-.5)*100,
-        (Math.random()-.5)*200
-      );
-    }
-    particles.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
-    this.particleField=new THREE.Points(
-      particles,
-      new THREE.PointsMaterial({color:0x00ff00,size:.5,transparent:true,opacity:.3})
-    );
-    this.scene.add(this.particleField);
+    // Particles
+    const geo=new THREE.BufferGeometry();
+    const pos=[];
+    for(let i=0;i<400;i++)pos.push((Math.random()-.5)*150,(Math.random()-.5)*80,(Math.random()-.5)*150);
+    geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+    this.particles=new THREE.Points(geo,new THREE.PointsMaterial({color:0x00ff00,size:.4,transparent:true,opacity:.2}));
+    this.scene.add(this.particles);
 
-    this.camera.position.set(0,30,60);
+    this.camera.position.set(0,20,50);
     this.camera.lookAt(0,0,0);
+
+    this.deviceNodes=[];
+    this.animate();
   },
 
-  createNode(type,x,y,z,color,size=1.5){
+  createNode(color,size){
     const g=new THREE.Group();
-
-    // Core
     const core=new THREE.Mesh(
       new THREE.IcosahedronGeometry(size,1),
-      new THREE.MeshPhongMaterial({color:color,emissive:color,emissiveIntensity:.3,wireframe:true})
+      new THREE.MeshPhongMaterial({color,emissive:color,emissiveIntensity:.3,wireframe:true})
     );
     g.add(core);
-
-    // Inner sphere
     const inner=new THREE.Mesh(
-      new THREE.SphereGeometry(size*.6,16,16),
-      new THREE.MeshPhongMaterial({color:color,emissive:color,emissiveIntensity:.5,transparent:true,opacity:.5})
+      new THREE.SphereGeometry(size*.5,12,12),
+      new THREE.MeshBasicMaterial({color,transparent:true,opacity:.4})
     );
     g.add(inner);
-
-    // Rings
     for(let i=0;i<3;i++){
       const ring=new THREE.Mesh(
-        new THREE.TorusGeometry(size*(1.2+i*.3),.05,8,32),
-        new THREE.MeshBasicMaterial({color:color,transparent:true,opacity:.3})
+        new THREE.TorusGeometry(size*(1+i*.25),.03,6,24),
+        new THREE.MeshBasicMaterial({color,transparent:true,opacity:.2})
       );
-      ring.rotation.x=Math.PI/2+i*.3;
-      ring.rotation.y=i*.5;
+      ring.rotation.x=Math.PI/2+i*.4;
       g.add(ring);
     }
-
-    g.position.set(x,y,z);
-    g.userData={type,color,pulsePhase:Math.random()*Math.PI*2};
-
     return g;
   },
 
-  addDiscoveredNode(name,type,distance){
+  addDeviceNode(name,type){
+    const colors={router:0xff8800,gateway:0xffff00,device:0x00ff00,server:0x0088ff,iot:0x88ff00};
     const angle=Math.random()*Math.PI*2;
-    const x=Math.cos(angle)*distance;
-    const z=Math.sin(angle)*distance;
-    const colors={router:0xff8800,device:0x00ff00,server:0x0088ff,unknown:0x888888};
-    const node=this.createNode(type,x,0,z,colors[type]||0x00ff00);
-    node.userData.name=name;
+    const dist=15+Math.random()*15;
+    const node=this.createNode(colors[type]||0x00ff00,1.5);
+    node.position.set(Math.cos(angle)*dist,Math.random()*10-5,Math.sin(angle)*dist);
+    node.userData={name,type,angle,dist};
     this.scene.add(node);
-    this.nodes.push(node);
+    this.deviceNodes.push(node);
 
-    // Connection line to host
-    const lineGeo=new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(0,0,0),
-      new THREE.Vector3(x,0,z)
-    ]);
-    const line=new THREE.Line(lineGeo,new THREE.LineBasicMaterial({color:colors[type]||0x00ff00,transparent:true,opacity:.3}));
+    // Connection line
+    const line=new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0),node.position]),
+      new THREE.LineBasicMaterial({color:colors[type]||0x00ff00,transparent:true,opacity:.3})
+    );
     this.scene.add(line);
-    this.connections.push(line);
 
-    // Add radar blip
-    this.addRadarBlip(angle,distance);
-
-    this.log(`Discovered: ${name} (${type})`,'info');
-  },
-
-  addRadarBlip(angle,distance){
+    // Radar blip
     const radar=document.getElementById('radar');
     const blip=document.createElement('div');
     blip.className='radar-blip';
-    const r=Math.min(distance/50,1)*45; // Max 45% from center
-    const x=50+Math.cos(angle)*r;
-    const y=50+Math.sin(angle)*r;
-    blip.style.left=x+'%';
-    blip.style.top=y+'%';
+    const r=(dist/35)*40;
+    blip.style.left=(50+Math.cos(angle)*r)+'%';
+    blip.style.top=(50+Math.sin(angle)*r)+'%';
+    blip.style.background=colors[type]?'#'+colors[type].toString(16).padStart(6,'0'):'#0f0';
     radar.appendChild(blip);
-    setTimeout(()=>blip.remove(),10000);
   },
 
   // ─────────────────────────────────────────────────────────────
-  // SYSTEM DETECTION
+  // PHASE 1: SYSTEM SCAN
   // ─────────────────────────────────────────────────────────────
-  detectSystem(){
-    // Platform
+  scanSystem(){
+    this.log('Probing system hardware...','scan');
+
+    // Platform detection
     const ua=navigator.userAgent;
     let platform='Unknown';
     if(ua.includes('Win'))platform='Windows';
     else if(ua.includes('Mac'))platform='macOS';
     else if(ua.includes('Linux'))platform='Linux';
     else if(ua.includes('Android'))platform='Android';
-    else if(ua.includes('iOS')||ua.includes('iPhone'))platform='iOS';
-    document.getElementById('platform').textContent=platform;
+    else if(ua.includes('iPhone')||ua.includes('iPad'))platform='iOS';
+    else if(ua.includes('CrOS'))platform='ChromeOS';
+    this.setVal('platform',platform);
+    this.log('Platform: '+platform,'found');
 
     // Browser
     let browser='Unknown';
     if(ua.includes('Firefox'))browser='Firefox';
+    else if(ua.includes('Edg'))browser='Edge';
     else if(ua.includes('Chrome'))browser='Chrome';
     else if(ua.includes('Safari'))browser='Safari';
-    else if(ua.includes('Edge'))browser='Edge';
-    document.getElementById('browser').textContent=browser;
+    else if(ua.includes('Opera'))browser='Opera';
+    this.setVal('browser',browser);
+    this.log('Browser: '+browser,'found');
 
-    // Language
-    document.getElementById('language').textContent=navigator.language;
+    // UA
+    this.setVal('ua',ua.substring(0,60)+'...');
 
     // Hardware
-    document.getElementById('cpu-cores').textContent=navigator.hardwareConcurrency||'?';
-    document.getElementById('memory').textContent=navigator.deviceMemory||'?';
+    const cores=navigator.hardwareConcurrency||'?';
+    const ram=navigator.deviceMemory||'?';
+    document.getElementById('cpu').textContent=cores;
+    document.getElementById('ram').textContent=ram;
+    this.log('CPU Cores: '+cores+', RAM: '+ram+'GB','found');
 
     // Screen
-    document.getElementById('screen-res').textContent=`${screen.width}×${screen.height}`;
-    document.getElementById('color-depth').textContent=screen.colorDepth+'bit';
+    document.getElementById('screen').textContent=screen.width+'x'+screen.height;
+    document.getElementById('dpr').textContent=window.devicePixelRatio.toFixed(1);
+    this.log('Screen: '+screen.width+'x'+screen.height+' @'+window.devicePixelRatio+'x','found');
 
-    // Features
-    document.getElementById('touch').textContent=('ontouchstart' in window)?'Yes':'No';
-    document.getElementById('cookies').textContent=navigator.cookieEnabled?'Enabled':'Disabled';
-
-    this.log(`Platform: ${platform}, Browser: ${browser}`,'info');
-    this.log(`CPU Cores: ${navigator.hardwareConcurrency}, RAM: ${navigator.deviceMemory}GB`,'info');
+    // Timezone
+    const tz=Intl.DateTimeFormat().resolvedOptions().timeZone;
+    this.setVal('tz',tz);
+    this.log('Timezone: '+tz,'found');
   },
 
   // ─────────────────────────────────────────────────────────────
-  // NETWORK DETECTION
+  // PHASE 2: GRAPHICS SCAN
   // ─────────────────────────────────────────────────────────────
-  detectNetwork(){
-    // Online status
-    const updateOnline=()=>{
-      const online=navigator.onLine;
-      const status=document.getElementById('conn-status');
-      status.textContent=online?'ONLINE':'OFFLINE';
-      status.style.background=online?'#0a0':'#a00';
-      status.style.color=online?'#0f0':'#f00';
-    };
-    updateOnline();
-    window.addEventListener('online',updateOnline);
-    window.addEventListener('offline',updateOnline);
+  scanGraphics(){
+    this.log('Probing graphics subsystem...','scan');
 
-    // Connection info
-    const conn=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
-    if(conn){
-      document.getElementById('conn-type').textContent=conn.effectiveType||conn.type||'Unknown';
-      document.getElementById('conn-speed').textContent=(conn.downlink||'?')+' Mbps';
-      document.getElementById('conn-rtt').textContent=(conn.rtt||'?')+' ms';
-      document.getElementById('save-data').textContent=conn.saveData?'On':'Off';
+    const canvas=document.createElement('canvas');
+    const gl=canvas.getContext('webgl2')||canvas.getContext('webgl');
 
-      conn.addEventListener('change',()=>{
-        document.getElementById('conn-type').textContent=conn.effectiveType||'Unknown';
-        document.getElementById('conn-speed').textContent=(conn.downlink||'?')+' Mbps';
-        this.log('Network connection changed','warn');
-      });
+    if(gl){
+      this.setVal('webgl',gl.getParameter(gl.VERSION));
+      this.log('WebGL: '+gl.getParameter(gl.VERSION),'found');
+
+      const dbg=gl.getExtension('WEBGL_debug_renderer_info');
+      if(dbg){
+        const gpu=gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL);
+        const short=gpu.length>30?gpu.substring(0,27)+'...':gpu;
+        this.setVal('gpu',short);
+        this.log('GPU: '+gpu,'found');
+      }else{
+        this.setVal('gpu','Protected');
+        this.log('GPU: Info protected by browser','warn');
+      }
     }else{
-      document.getElementById('conn-type').textContent='N/A';
-      document.getElementById('conn-speed').textContent='N/A';
-      document.getElementById('conn-rtt').textContent='N/A';
-      document.getElementById('save-data').textContent='N/A';
+      this.setVal('webgl','Not available');
+      this.setVal('gpu','No WebGL');
+    }
+
+    // Audio context
+    try{
+      const ac=new(window.AudioContext||window.webkitAudioContext)();
+      this.setVal('audio',ac.sampleRate+'Hz');
+      this.log('Audio: '+ac.sampleRate+'Hz sample rate','found');
+      ac.close();
+    }catch(e){
+      this.setVal('audio','Blocked');
     }
   },
 
+  // ─────────────────────────────────────────────────────────────
+  // PHASE 3: NETWORK SCAN
+  // ─────────────────────────────────────────────────────────────
+  scanNetwork(){
+    this.log('Analyzing network stack...','scan');
+
+    // Online status
+    const online=navigator.onLine;
+    const el=document.getElementById('online');
+    el.textContent=online?'ONLINE':'OFFLINE';
+    el.style.color=online?'#0f0':'#f00';
+    this.log('Network: '+(online?'Online':'Offline'),'found');
+
+    // Connection API
+    const conn=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
+    if(conn){
+      this.setVal('conn-type',conn.effectiveType||conn.type||'Unknown');
+      this.setVal('downlink',(conn.downlink||'?')+' Mbps');
+      this.setVal('rtt',(conn.rtt||'?')+' ms');
+      this.log('Connection: '+conn.effectiveType+', '+conn.downlink+'Mbps, RTT:'+conn.rtt+'ms','found');
+    }else{
+      this.setVal('conn-type','API unavailable');
+      this.setVal('downlink','N/A');
+      this.setVal('rtt','N/A');
+    }
+
+    // Protocol
+    this.setVal('protocol',location.protocol);
+    this.setVal('secure',location.protocol==='https:'?'Yes':'No');
+    this.log('Protocol: '+location.protocol,'found');
+  },
+
+  // ─────────────────────────────────────────────────────────────
+  // PHASE 4: IP DETECTION
+  // ─────────────────────────────────────────────────────────────
   detectIP(){
-    // Try to get local IP via WebRTC
-    this.log('Detecting IP addresses...','info');
+    this.log('Probing local IP via WebRTC...','scan');
 
     try{
       const pc=new RTCPeerConnection({iceServers:[]});
       pc.createDataChannel('');
-      pc.createOffer().then(offer=>pc.setLocalDescription(offer));
+      pc.createOffer().then(o=>pc.setLocalDescription(o));
 
       pc.onicecandidate=e=>{
-        if(!e.candidate)return;
+        if(!e||!e.candidate)return;
         const parts=e.candidate.candidate.split(' ');
         const ip=parts[4];
-        if(ip&&!ip.includes(':')){
-          document.getElementById('local-ip').textContent=ip;
-          this.log(`Local IP: ${ip}`,'info');
+        if(ip&&ip.match(/^\d+\.\d+\.\d+\.\d+$/)){
+          this.setVal('local-ip',ip);
+          this.log('Local IP: '+ip,'found');
           pc.close();
         }
       };
 
-      setTimeout(()=>pc.close(),5000);
+      setTimeout(()=>{
+        pc.close();
+        if(document.getElementById('local-ip').textContent.includes('Prob')){
+          this.setVal('local-ip','Protected');
+          this.log('Local IP: WebRTC blocked','warn');
+        }
+      },2000);
     }catch(e){
-      document.getElementById('local-ip').textContent='Blocked';
-      this.log('WebRTC blocked - cannot detect local IP','warn');
+      this.setVal('local-ip','Blocked');
+      this.log('WebRTC not available','warn');
     }
-
-    // Public IP would need an external service - simulate for demo
-    setTimeout(()=>{
-      document.getElementById('public-ip').textContent='Protected';
-      this.log('Public IP detection requires external service','info');
-    },1000);
   },
 
   // ─────────────────────────────────────────────────────────────
-  // NETWORK SCANNING (Simulated)
+  // PHASE 5: CAPABILITIES SCAN
   // ─────────────────────────────────────────────────────────────
-  scan(){
-    if(this.scanning)return;
-    this.scanning=true;
-    document.getElementById('scan-btn').textContent='Scanning...';
-    this.log('Starting network discovery scan...','info');
+  scanCapabilities(){
+    this.log('Enumerating browser capabilities...','scan');
 
-    // Clear existing nodes
-    this.nodes.forEach(n=>this.scene.remove(n));
-    this.connections.forEach(c=>this.scene.remove(c));
-    this.nodes=[];
-    this.connections=[];
-
-    // Simulate discovering devices
-    const devices=[
-      {name:'Router',type:'router',delay:500},
-      {name:'Gateway',type:'router',delay:1000},
-      {name:'Phone-1',type:'device',delay:1500},
-      {name:'Laptop-2',type:'device',delay:2000},
-      {name:'Smart-TV',type:'device',delay:2500},
-      {name:'IoT-Sensor',type:'device',delay:3000},
-      {name:'NAS-Server',type:'server',delay:3500},
-      {name:'Printer',type:'device',delay:4000},
+    const caps=[
+      ['cookies',navigator.cookieEnabled],
+      ['storage','localStorage' in window],
+      ['workers','Worker' in window],
+      ['websocket','WebSocket' in window],
+      ['geo','geolocation' in navigator],
+      ['notif','Notification' in window],
+      ['bluetooth','bluetooth' in navigator],
+      ['usb','usb' in navigator],
+      ['midi','requestMIDIAccess' in navigator],
+      ['gamepad','getGamepads' in navigator]
     ];
 
-    devices.forEach((d,i)=>{
+    caps.forEach(([id,supported],i)=>{
       setTimeout(()=>{
-        this.addDiscoveredNode(d.name,d.type,15+Math.random()*20);
-      },d.delay);
+        const el=document.getElementById(id);
+        el.textContent=supported?'Yes':'No';
+        el.style.color=supported?'#0f0':'#f66';
+        this.log(id.charAt(0).toUpperCase()+id.slice(1)+': '+(supported?'Available':'Not available'),supported?'found':'warn');
+      },i*100);
     });
-
-    setTimeout(()=>{
-      this.scanning=false;
-      document.getElementById('scan-btn').textContent='🔍 Scan Network';
-      this.log('Network scan complete. Found '+devices.length+' devices.','info');
-    },5000);
   },
 
   // ─────────────────────────────────────────────────────────────
-  // PERFORMANCE DETECTION
+  // PHASE 6: PERFORMANCE SCAN
   // ─────────────────────────────────────────────────────────────
-  detectPerformance(){
+  scanPerformance(){
+    this.log('Measuring performance metrics...','scan');
+
+    // Timing
     if(performance.timing){
       const t=performance.timing;
-      const pageLoad=t.loadEventEnd-t.navigationStart;
-      const domReady=t.domContentLoadedEventEnd-t.navigationStart;
-
-      if(pageLoad>0){
-        document.getElementById('page-load').textContent=pageLoad+'ms';
-        document.getElementById('load-bar').style.width=Math.min(100,pageLoad/50)+'%';
-      }
-      if(domReady>0){
-        document.getElementById('dom-ready').textContent=domReady+'ms';
-      }
+      const load=t.loadEventEnd-t.navigationStart;
+      const dom=t.domContentLoadedEventEnd-t.navigationStart;
+      if(load>0)document.getElementById('load-time').textContent=load+'ms';
+      if(dom>0)document.getElementById('dom-time').textContent=dom+'ms';
+      this.log('Page load: '+load+'ms, DOM: '+dom+'ms','found');
     }
 
-    // Memory (Chrome only)
+    // Memory (Chrome)
     if(performance.memory){
       const used=Math.round(performance.memory.usedJSHeapSize/1048576);
-      const total=Math.round(performance.memory.jsHeapSizeLimit/1048576);
-      document.getElementById('mem-used').textContent=used+' / '+total+' MB';
-      document.getElementById('mem-bar').style.width=(used/total*100)+'%';
+      const limit=Math.round(performance.memory.jsHeapSizeLimit/1048576);
+      document.getElementById('memory').textContent=used+'MB';
+      document.getElementById('heap').textContent=limit+'MB';
+      this.log('Memory: '+used+'MB / '+limit+'MB heap','found');
     }else{
-      document.getElementById('mem-used').textContent='N/A';
+      document.getElementById('memory').textContent='N/A';
+      document.getElementById('heap').textContent='N/A';
     }
 
-    this.log('Performance metrics collected','info');
-  },
-
-  detectStorage(){
+    // Storage
     if(navigator.storage&&navigator.storage.estimate){
       navigator.storage.estimate().then(est=>{
         const used=Math.round(est.usage/1048576);
         const quota=Math.round(est.quota/1048576);
-        document.getElementById('storage').textContent=used+' / '+quota+' MB';
-        document.getElementById('storage-bar').style.width=(used/quota*100)+'%';
-        this.log(`Storage: ${used}MB used of ${quota}MB quota`,'info');
+        document.getElementById('storage-used').textContent=used+'MB';
+        document.getElementById('storage-quota').textContent=quota+'MB';
+        this.log('Storage: '+used+'MB / '+quota+'MB','found');
       });
-    }else{
-      document.getElementById('storage').textContent='N/A';
-    }
-  },
-
-  detectGPU(){
-    const canvas=document.createElement('canvas');
-    const gl=canvas.getContext('webgl')||canvas.getContext('experimental-webgl');
-    if(gl){
-      const dbg=gl.getExtension('WEBGL_debug_renderer_info');
-      if(dbg){
-        const renderer=gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL);
-        // Shorten long GPU names
-        const short=renderer.length>25?renderer.substring(0,22)+'...':renderer;
-        document.getElementById('gpu').textContent=short;
-        this.log(`GPU: ${renderer}`,'info');
-      }else{
-        document.getElementById('gpu').textContent='WebGL (details blocked)';
-      }
-    }else{
-      document.getElementById('gpu').textContent='No WebGL';
     }
   },
 
   // ─────────────────────────────────────────────────────────────
-  // BENCHMARK
+  // PHASE 7: TOPOLOGY SCAN (SIMULATED)
   // ─────────────────────────────────────────────────────────────
-  benchmark(){
-    this.log('Running benchmark...','info');
-    const start=performance.now();
+  scanTopology(){
+    this.log('Scanning network topology...','scan');
 
-    // Simple CPU benchmark
-    let result=0;
-    for(let i=0;i<1000000;i++){
-      result+=Math.sqrt(i)*Math.sin(i);
+    // Simulate discovering network devices
+    const devices=[
+      {name:'Gateway',type:'gateway',delay:300},
+      {name:'Router',type:'router',delay:600},
+      {name:'Access Point',type:'router',delay:900},
+      {name:'Desktop-PC',type:'device',delay:1200},
+      {name:'Laptop-Work',type:'device',delay:1500},
+      {name:'iPhone',type:'device',delay:1800},
+      {name:'Smart-TV',type:'iot',delay:2100},
+      {name:'Thermostat',type:'iot',delay:2400},
+      {name:'NAS-Storage',type:'server',delay:2700},
+      {name:'Printer',type:'device',delay:3000},
+      {name:'Security-Cam',type:'iot',delay:3300},
+      {name:'Echo-Dot',type:'iot',delay:3600},
+    ];
+
+    devices.forEach(d=>{
+      setTimeout(()=>{
+        this.addDevice(d.name,d.type);
+        this.addDeviceNode(d.name,d.type);
+      },d.delay);
+    });
+  },
+
+  addDevice(name,type){
+    const icons={gateway:'🌐',router:'📡',device:'💻',server:'🖥️',iot:'📱'};
+    const container=document.getElementById('devices');
+    const div=document.createElement('div');
+    div.className='device new';
+    div.innerHTML=`
+      <span class="device-icon">${icons[type]||'❓'}</span>
+      <div class="device-info">
+        <div class="device-name">${name}</div>
+        <div class="device-type">${type.toUpperCase()}</div>
+      </div>
+      <div class="device-status"></div>
+    `;
+    container.appendChild(div);
+    this.log('Found: '+name+' ('+type+')','found');
+  },
+
+  // ─────────────────────────────────────────────────────────────
+  // PHASE 8: COMPLETE
+  // ─────────────────────────────────────────────────────────────
+  complete(){
+    this.updateStatus('Discovery complete ✓',100);
+    document.getElementById('status-phase').style.color='#0f0';
+    this.log('═══════════════════════════════════','info');
+    this.log('Full system discovery complete!','found');
+    this.log('Monitoring active...','info');
+
+    // Continue monitoring
+    setInterval(()=>this.monitor(),5000);
+  },
+
+  monitor(){
+    // Check for changes
+    if(navigator.connection){
+      const conn=navigator.connection;
+      this.setVal('conn-type',conn.effectiveType||'?');
+      this.setVal('downlink',(conn.downlink||'?')+' Mbps');
     }
-
-    const elapsed=Math.round(performance.now()-start);
-    const score=Math.round(10000/elapsed*100);
-    this.log(`Benchmark complete: ${elapsed}ms (Score: ${score})`,'info');
-
-    // Flash the host node
-    this.hostNode.children[1].material.emissiveIntensity=1;
-    setTimeout(()=>this.hostNode.children[1].material.emissiveIntensity=.5,500);
-  },
-
-  refresh(){
-    this.detectPerformance();
-    this.detectNetwork();
-    this.log('Metrics refreshed','info');
+    // Update memory if available
+    if(performance.memory){
+      const used=Math.round(performance.memory.usedJSHeapSize/1048576);
+      document.getElementById('memory').textContent=used+'MB';
+    }
   },
 
   // ─────────────────────────────────────────────────────────────
-  // LOGGING
+  // UTILITIES
   // ─────────────────────────────────────────────────────────────
+  setVal(id,val){
+    const el=document.getElementById(id);
+    if(el){
+      el.textContent=val;
+      el.classList.remove('scanning');
+    }
+  },
+
   log(msg,type='info'){
     const log=document.getElementById('log');
     const time=new Date().toLocaleTimeString();
@@ -548,60 +617,49 @@ const R={
     entry.innerHTML=`<span class="log-time">[${time}]</span> ${msg}`;
     log.appendChild(entry);
     log.scrollTop=log.scrollHeight;
-
-    // Keep log size manageable
-    while(log.children.length>50){
-      log.removeChild(log.firstChild);
-    }
+    while(log.children.length>100)log.removeChild(log.firstChild);
   },
 
   // ─────────────────────────────────────────────────────────────
-  // ANIMATION LOOP
+  // ANIMATION
   // ─────────────────────────────────────────────────────────────
   animate(){
     requestAnimationFrame(()=>this.animate());
-
     const t=Date.now()*.001;
 
-    // Rotate host node
-    this.hostNode.rotation.y+=.005;
-    this.hostNode.children.forEach((c,i)=>{
-      if(i>1)c.rotation.z+=.01*(i-1);
-    });
+    // Host rotation
+    this.host.rotation.y+=.008;
+    this.host.children.forEach((c,i)=>{if(i>1)c.rotation.z+=.015*(i-1)});
+    const pulse=Math.sin(t*3)*.15+1;
+    this.host.scale.setScalar(pulse);
 
-    // Pulse host
-    const pulse=Math.sin(t*2)*.1+1;
-    this.hostNode.children[1].scale.setScalar(pulse*.6);
-
-    // Animate discovered nodes
-    this.nodes.forEach((n,i)=>{
+    // Device nodes
+    this.deviceNodes.forEach((n,i)=>{
       n.rotation.y+=.01;
-      n.position.y=Math.sin(t+n.userData.pulsePhase)*2;
-      n.children.forEach((c,j)=>{
-        if(j>1)c.rotation.z+=.02*(j-1);
-      });
+      n.position.y=Math.sin(t*2+i)*.5+n.userData.dist*.1;
     });
 
-    // Particle drift
-    this.particleField.rotation.y+=.0005;
+    // Streams pulse
+    this.streams.forEach(s=>{
+      s.userData.pulse+=.02;
+      s.material.opacity=.1+Math.sin(s.userData.pulse)*.15;
+    });
+
+    // Particles drift
+    this.particles.rotation.y+=.0003;
 
     // Camera orbit
-    this.camera.position.x=Math.sin(t*.1)*50;
-    this.camera.position.z=Math.cos(t*.1)*50;
+    this.camera.position.x=Math.sin(t*.15)*45;
+    this.camera.position.z=Math.cos(t*.15)*45;
+    this.camera.position.y=20+Math.sin(t*.1)*5;
     this.camera.lookAt(0,0,0);
 
     this.renderer.render(this.scene,this.camera);
   }
 };
 
-// Initialize on load
-window.onload=()=>{
-  R.init();
-  // Delayed detections
-  setTimeout(()=>R.detectPerformance(),100);
-  setTimeout(()=>R.detectIP(),500);
-};
-
+// Auto-start
+window.onload=()=>R.init();
 window.onresize=()=>{
   R.renderer.setSize(innerWidth,innerHeight);
   R.camera.aspect=innerWidth/innerHeight;
