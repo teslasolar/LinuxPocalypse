@@ -38,5 +38,13 @@
     "icon": "⚛",
     "color": "#ff00ff",
     "tags": ["Agents", "Autonomous", "Token-System", "Evolution"]
+  },
+  {
+    "file": "circuit-forge.html",
+    "title": "Circuit Forge",
+    "description": "PCB circuit builder with component placement, Manhattan auto-routing, signal flow particles, and power management",
+    "icon": "⚡",
+    "color": "#00ff88",
+    "tags": ["PCB", "Electronics", "Auto-Route", "Signals"]
   }
 ]

@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Circuit Forge</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#0a1410;overflow:hidden;font:9px monospace;color:#0f8}
+#c{position:fixed;inset:0}.p{position:absolute;background:rgba(10,20,16,.95);border:1px solid;border-radius:6px;padding:10px;z-index:10;backdrop-filter:blur(5px)}
+.t{background:#050a08;color:#0f0;padding:6px;height:70px;overflow-y:auto;font-size:8px;border:1px solid #0f02;border-radius:3px}
+button{background:linear-gradient(135deg,#0c6,#084);color:#fff;border:0;padding:5px 8px;margin:2px;font-size:8px;border-radius:3px;cursor:pointer;font-weight:bold}
+button:hover{filter:brightness(1.2)}
+.r{background:linear-gradient(135deg,#c44,#822)}.b{background:linear-gradient(135deg,#28f,#148)}.y{background:linear-gradient(135deg,#cc0,#880)}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(45px,1fr));gap:3px;margin:5px 0}
+.s{padding:4px;text-align:center;border:1px solid;border-radius:3px;background:#0001;font-size:8px}
+.bar{height:5px;background:#111;border-radius:2px;margin:3px 0}.fill{height:100%;border-radius:2px}
+</style></head><body><canvas id="c"></canvas>
+
+<div class="p" style="top:8px;left:8px;border-color:#0f8;width:250px">
+<div style="color:#0f8;text-align:center;font-size:11px">⚡ CIRCUIT FORGE</div>
+<div id="stats"></div>
+<div id="power"></div>
+</div>
+
+<div class="p" style="top:8px;right:8px;border-color:#0ff;width:280px">
+<div style="color:#0ff;font-size:10px">🔧 COMPONENTS</div>
+<div class="g" id="parts"></div>
+<div style="margin-top:8px;font-size:9px;color:#888">ACTIONS:</div>
+<div class="g">
+<button class="b" onclick="C.autoRoute()">🔀Route</button>
+<button class="y" onclick="C.pulse()">⚡Pulse</button>
+<button class="r" onclick="C.clear()">🗑️Clear</button>
+<button onclick="C.auto=!C.auto;this.textContent=C.auto?'🤖Stop':'🤖Auto'">🤖Auto</button>
+</div>
+<div id="log" class="t"></div>
+</div>
+
+<div class="p" style="bottom:8px;left:8px;border-color:#ff0;width:250px">
+<div style="color:#ff0;font-size:10px">📊 SIGNALS</div>
+<div id="signals"></div>
+</div>
+
+<div class="p" style="bottom:8px;right:8px;border-color:#f80;width:250px">
+<div style="color:#f80;font-size:10px">🔌 NETLIST</div>
+<div id="netlist" style="max-height:80px;overflow-y:auto;font-size:8px"></div>
+</div>
+
+<script>
+const T={
+  τ:Math.PI*2,π:Math.PI,
+  rng:(a=0,b=1)=>a+(b-a)*Math.random(),
+  rngInt:(a,b)=>Math.floor(T.rng(a,b+1)),
+  v3:(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z),
+  hsl:(h,s=.7,l=.5)=>new THREE.Color().setHSL(h,s,l),
+  $:id=>document.getElementById(id),
+  html:(id,h)=>T.$(id).innerHTML=h,
+  log:(id,m)=>{const e=T.$(id);e.textContent+=m+'\n';e.scrollTop=e.scrollHeight}
+};
+
+// Component definitions: [name, icon, color, pins, power, size]
+const PARTS={
+  mcu:['MCU','🔲',0x2244aa,8,50,2],
+  res:['Resistor','═',0x886644,2,0,.6],
+  cap:['Capacitor','⊥',0x448844,2,5,.5],
+  led:['LED','◉',0xff4444,2,10,.4],
+  trans:['Transistor','⊳',0x666666,3,5,.5],
+  ic:['IC Chip','▣',0x222222,6,30,1.5],
+  osc:['Oscillator','∿',0x884488,4,15,.8],
+  vreg:['VReg','▭',0x444488,3,20,.7],
+  conn:['Connector','▥',0x888888,4,0,.6],
+  diode:['Diode','▷',0x448888,2,0,.4]
+};
+
+const C={
+  components:new Map(),
+  traces:[],
+  signals:[],
+  compId:0,
+  power:100,
+  clock:0,
+  auto:false,
+
+  W:{
+    scene:null,camera:null,renderer:null,
+    pcb:null,compMeshes:[],traceMeshes:[],signalParticles:[],
+
+    init(){
+      this.scene=new THREE.Scene();
+      this.camera=new THREE.PerspectiveCamera(50,innerWidth/innerHeight,.1,1000);
+      this.renderer=new THREE.WebGLRenderer({canvas:T.$('c'),antialias:true});
+      this.renderer.setSize(innerWidth,innerHeight);
+      this.renderer.setClearColor(0x0a1410);
+      this.camera.position.set(0,40,30);
+      this.camera.lookAt(0,0,0);
+
+      // Lighting
+      this.scene.add(new THREE.AmbientLight(0x405040,.6));
+      const key=new THREE.DirectionalLight(0xffffff,.7);
+      key.position.set(20,40,20);
+      this.scene.add(key);
+
+      // PCB Board
+      const pcbGeo=new THREE.BoxGeometry(50,1,40);
+      const pcbMat=new THREE.MeshPhongMaterial({color:0x0a4020,emissive:0x041008,emissiveIntensity:.2});
+      this.pcb=new THREE.Mesh(pcbGeo,pcbMat);
+      this.pcb.position.y=-.5;
+      this.scene.add(this.pcb);
+
+      // PCB grid pattern
+      this.createPCBGrid();
+
+      // Copper ground plane (bottom)
+      const ground=new THREE.Mesh(
+        new THREE.PlaneGeometry(48,38),
+        new THREE.MeshBasicMaterial({color:0x553311,transparent:true,opacity:.3})
+      );
+      ground.rotation.x=-T.π/2;
+      ground.position.y=.01;
+      this.scene.add(ground);
+
+      this.scene.fog=new THREE.FogExp2(0x0a1410,.01);
+      this.animate();
+    },
+
+    createPCBGrid(){
+      const gridMat=new THREE.LineBasicMaterial({color:0x0f3018,transparent:true,opacity:.5});
+      for(let x=-24;x<=24;x+=2){
+        const pts=[T.v3(x,.02,-19),T.v3(x,.02,19)];
+        const geo=new THREE.BufferGeometry().setFromPoints(pts);
+        this.scene.add(new THREE.Line(geo,gridMat));
+      }
+      for(let z=-19;z<=19;z+=2){
+        const pts=[T.v3(-24,.02,z),T.v3(24,.02,z)];
+        const geo=new THREE.BufferGeometry().setFromPoints(pts);
+        this.scene.add(new THREE.Line(geo,gridMat));
+      }
+    },
+
+    createComponent(type,x,z){
+      const[name,icon,color,pins,pwr,size]=PARTS[type];
+      const group=new THREE.Group();
+
+      // Component body
+      let bodyGeo;
+      if(type==='mcu'||type==='ic'){
+        bodyGeo=new THREE.BoxGeometry(size*2,size*.5,size*1.5);
+      }else if(type==='res'){
+        bodyGeo=new THREE.CylinderGeometry(size*.3,size*.3,size*2,8);
+      }else if(type==='cap'){
+        bodyGeo=new THREE.CylinderGeometry(size*.4,size*.4,size,12);
+      }else if(type==='led'){
+        bodyGeo=new THREE.SphereGeometry(size*.5,12,8);
+      }else if(type==='trans'){
+        bodyGeo=new THREE.ConeGeometry(size*.5,size,3);
+      }else{
+        bodyGeo=new THREE.BoxGeometry(size,size*.4,size*.8);
+      }
+
+      const bodyMat=new THREE.MeshPhongMaterial({
+        color,emissive:color,emissiveIntensity:.1,shininess:80
+      });
+      const body=new THREE.Mesh(bodyGeo,bodyMat);
+      body.position.y=size*.3;
+      if(type==='res')body.rotation.z=T.π/2;
+      if(type==='cap')body.rotation.x=0;
+      group.add(body);
+
+      // Pins/legs
+      const pinGeo=new THREE.CylinderGeometry(.05,.05,.3,4);
+      const pinMat=new THREE.MeshPhongMaterial({color:0xcccccc,shininess:100});
+      const pinPositions=this.getPinPositions(type,size);
+      pinPositions.forEach(p=>{
+        const pin=new THREE.Mesh(pinGeo,pinMat);
+        pin.position.set(p.x,-.1,p.z);
+        group.add(pin);
+
+        // Solder pad
+        const pad=new THREE.Mesh(
+          new THREE.CircleGeometry(.15,8),
+          new THREE.MeshBasicMaterial({color:0xccaa44})
+        );
+        pad.rotation.x=-T.π/2;
+        pad.position.set(p.x,.02,p.z);
+        group.add(pad);
+      });
+
+      // LED glow
+      if(type==='led'){
+        const glow=new THREE.PointLight(color,.5,3);
+        glow.position.y=size*.5;
+        group.add(glow);
+        group.ledLight=glow;
+      }
+
+      group.position.set(x,.5,z);
+      this.scene.add(group);
+      this.compMeshes.push(group);
+      return{mesh:group,pinPos:pinPositions.map(p=>T.v3(x+p.x,.1,z+p.z))};
+    },
+
+    getPinPositions(type,size){
+      const pins=PARTS[type][3];
+      const positions=[];
+      if(pins===2){
+        positions.push({x:-size*.6,z:0},{x:size*.6,z:0});
+      }else if(pins===3){
+        positions.push({x:-size*.5,z:-.3},{x:0,z:.3},{x:size*.5,z:-.3});
+      }else{
+        const side=Math.ceil(pins/2);
+        for(let i=0;i<side;i++){
+          const offset=(i-(side-1)/2)*size*.5;
+          positions.push({x:-size*.8,z:offset});
+          if(positions.length<pins)positions.push({x:size*.8,z:offset});
+        }
+      }
+      return positions;
+    },
+
+    createTrace(p1,p2,color=0xccaa44){
+      // Route with right angles (Manhattan routing)
+      const midZ=(p1.z+p2.z)/2;
+      const points=[
+        p1.clone(),
+        T.v3(p1.x,.1,midZ),
+        T.v3(p2.x,.1,midZ),
+        p2.clone()
+      ];
+
+      const curve=new THREE.CatmullRomCurve3(points);
+      const geo=new THREE.TubeGeometry(curve,20,.08,6,false);
+      const mat=new THREE.MeshPhongMaterial({color,emissive:color,emissiveIntensity:.1,shininess:100});
+      const mesh=new THREE.Mesh(geo,mat);
+      this.scene.add(mesh);
+      this.traceMeshes.push({mesh,p1,p2,active:false});
+      return mesh;
+    },
+
+    createSignalParticle(trace){
+      const geo=new THREE.SphereGeometry(.15,8,8);
+      const mat=new THREE.MeshBasicMaterial({color:0x00ff88});
+      const particle=new THREE.Mesh(geo,mat);
+      particle.t=0;
+      particle.trace=trace;
+      this.scene.add(particle);
+      this.signalParticles.push(particle);
+      return particle;
+    },
+
+    animate(){
+      requestAnimationFrame(()=>this.animate());
+      const t=Date.now()*.001;
+
+      // Camera
+      const r=45+Math.sin(t*.2)*5;
+      this.camera.position.x=Math.cos(t*.08)*r;
+      this.camera.position.z=Math.sin(t*.08)*r*.7;
+      this.camera.position.y=35+Math.sin(t*.1)*5;
+      this.camera.lookAt(0,0,0);
+
+      // Component animations
+      this.compMeshes.forEach((m,i)=>{
+        if(m.ledLight){
+          m.ledLight.intensity=.3+Math.sin(t*5+i)*.3;
+        }
+      });
+
+      // Signal particles flow along traces
+      this.signalParticles.forEach((p,i)=>{
+        if(p.trace){
+          p.t+=.02;
+          if(p.t>1){
+            p.t=0;
+            // Random new trace
+            if(this.traceMeshes.length){
+              p.trace=this.traceMeshes[T.rngInt(0,this.traceMeshes.length-1)];
+            }
+          }
+          const pos=T.v3().lerpVectors(p.trace.p1,p.trace.p2,p.t);
+          pos.y=.2+Math.sin(p.t*T.π)*.1;
+          p.position.copy(pos);
+        }
+      });
+
+      // Trace pulse effect
+      this.traceMeshes.forEach((tr,i)=>{
+        if(tr.active){
+          tr.mesh.material.emissiveIntensity=.2+Math.sin(t*10+i)*.15;
+        }
+      });
+
+      this.renderer.render(this.scene,this.camera);
+    },
+
+    clear(){
+      this.compMeshes.forEach(m=>this.scene.remove(m));
+      this.traceMeshes.forEach(t=>this.scene.remove(t.mesh));
+      this.signalParticles.forEach(p=>this.scene.remove(p));
+      this.compMeshes=[];
+      this.traceMeshes=[];
+      this.signalParticles=[];
+    }
+  },
+
+  place(type){
+    const def=PARTS[type];
+    if(this.power<def[4]){
+      T.log('log',`⚠ Need ${def[4]} power for ${def[0]}`);
+      return;
+    }
+
+    // Find open position
+    const x=T.rng(-20,20);
+    const z=T.rng(-15,15);
+
+    const id=++this.compId;
+    const{mesh,pinPos}=this.W.createComponent(type,x,z);
+    const comp={id,type,mesh,pinPos,x,z,connections:[]};
+
+    this.components.set(id,comp);
+    this.power-=def[4];
+
+    T.log('log',`+${def[1]}${def[0]}#${id}`);
+    this.updateUI();
+    return comp;
+  },
+
+  autoRoute(){
+    const comps=[...this.components.values()];
+    if(comps.length<2)return;
+
+    let routed=0;
+    for(let i=0;i<comps.length;i++){
+      for(let j=i+1;j<comps.length;j++){
+        if(Math.random()<.3&&comps[i].connections.length<PARTS[comps[i].type][3]){
+          const p1=comps[i].pinPos[T.rngInt(0,comps[i].pinPos.length-1)];
+          const p2=comps[j].pinPos[T.rngInt(0,comps[j].pinPos.length-1)];
+
+          const trace=this.W.createTrace(p1,p2);
+          comps[i].connections.push(comps[j].id);
+          comps[j].connections.push(comps[i].id);
+          this.traces.push({from:comps[i].id,to:comps[j].id,mesh:trace});
+          routed++;
+        }
+      }
+    }
+
+    T.log('log',`🔀 Routed ${routed} traces`);
+    this.updateUI();
+  },
+
+  pulse(){
+    // Activate random traces
+    this.W.traceMeshes.forEach(tr=>{
+      tr.active=Math.random()<.5;
+      tr.mesh.material.emissiveIntensity=tr.active?.3:.1;
+    });
+
+    // Spawn signal particles
+    const count=Math.min(5,this.W.traceMeshes.length);
+    for(let i=0;i<count;i++){
+      if(this.W.traceMeshes.length){
+        const trace=this.W.traceMeshes[T.rngInt(0,this.W.traceMeshes.length-1)];
+        this.W.createSignalParticle(trace);
+      }
+    }
+
+    this.power+=10;
+    this.clock++;
+    T.log('log',`⚡ Pulse! Clock: ${this.clock}`);
+    this.updateUI();
+  },
+
+  clear(){
+    this.W.clear();
+    this.components.clear();
+    this.traces=[];
+    this.compId=0;
+    this.power=100;
+    T.log('log','🗑️ Board cleared');
+    this.updateUI();
+  },
+
+  tick(){
+    // Passive power regen
+    this.power=Math.min(500,this.power+2+this.components.size);
+
+    // Auto mode
+    if(this.auto&&this.components.size<20){
+      const types=Object.keys(PARTS);
+      const type=types[T.rngInt(0,types.length-1)];
+      if(this.power>=PARTS[type][4]){
+        this.place(type);
+        if(this.components.size>2&&Math.random()<.4){
+          this.autoRoute();
+        }
+      }
+    }
+
+    // Random pulse
+    if(this.traces.length>0&&Math.random()<.1){
+      this.pulse();
+    }
+
+    this.updateUI();
+  },
+
+  updateUI(){
+    T.html('stats',`
+      <div class="g">
+        <div class="s" style="border-color:#0f8">⚡${this.power}</div>
+        <div class="s" style="border-color:#0ff">🔲${this.components.size}</div>
+        <div class="s" style="border-color:#ff0">🔀${this.traces.length}</div>
+        <div class="s" style="border-color:#f80">⏱${this.clock}</div>
+      </div>
+    `);
+
+    T.html('power',`
+      <div style="font-size:8px">Power:</div>
+      <div class="bar"><div class="fill" style="width:${Math.min(100,this.power/5)}%;background:linear-gradient(90deg,#0a4,#0f8)"></div></div>
+    `);
+
+    T.html('parts',Object.entries(PARTS).map(([k,v])=>
+      `<button onclick="C.place('${k}')" title="${v[0]} (${v[4]}⚡)">${v[1]}</button>`
+    ).join(''));
+
+    // Signals
+    const activeTraces=this.W.traceMeshes.filter(t=>t.active).length;
+    T.html('signals',`
+      <div class="g">
+        <div class="s" style="border-color:#0f0">Active:${activeTraces}</div>
+        <div class="s" style="border-color:#0ff">Particles:${this.W.signalParticles.length}</div>
+      </div>
+      <div style="font-size:8px;margin-top:5px">Signal flow: ${activeTraces?'▓'.repeat(Math.min(10,activeTraces)):'---'}</div>
+    `);
+
+    // Netlist
+    const typeCounts={};
+    this.components.forEach(c=>typeCounts[c.type]=(typeCounts[c.type]||0)+1);
+    T.html('netlist',Object.entries(typeCounts).map(([t,n])=>
+      `<div style="color:#${PARTS[t][2].toString(16).padStart(6,'0')}">${PARTS[t][1]} ${PARTS[t][0]}: ${n}</div>`
+    ).join('')+`<div style="color:#cc8">Nets: ${this.traces.length}</div>`);
+  },
+
+  init(){
+    this.W.init();
+    T.log('log','⚡ Circuit Forge v1');
+    T.log('log','Place components, then route!');
+
+    // Initial components
+    setTimeout(()=>this.place('mcu'),300);
+    setTimeout(()=>this.place('vreg'),600);
+    setTimeout(()=>this.place('cap'),900);
+
+    setInterval(()=>this.tick(),1000);
+    this.updateUI();
+  }
+};
+
+onload=()=>setTimeout(()=>C.init(),100);
+onresize=()=>{C.W.renderer.setSize(innerWidth,innerHeight);C.W.camera.aspect=innerWidth/innerHeight;C.W.camera.updateProjectionMatrix()};
+</script></body></html>
