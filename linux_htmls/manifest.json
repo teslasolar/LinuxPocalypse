@@ -22,5 +22,13 @@
     "icon": "🖨️",
     "color": "#ff8800",
     "tags": ["3D", "Printing", "Voxel", "Layer-Builder"]
+  },
+  {
+    "file": "fdm-extruder.html",
+    "title": "FDM Extruder Pro",
+    "description": "Realistic FDM 3D printer with cylindrical extrusion beads, toolpath slicing, infill patterns, and nozzle-width accuracy",
+    "icon": "🔥",
+    "color": "#ff6600",
+    "tags": ["3D", "FDM", "Realistic", "Slicer"]
   }
 ]

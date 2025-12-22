@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FDM Extruder Pro</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#12141a;overflow:hidden;font:10px monospace;color:#0ff}
+#c{position:fixed;inset:0;z-index:0}
+.p{position:absolute;background:rgba(15,18,25,.96);border:2px solid;border-radius:10px;padding:12px;z-index:10;backdrop-filter:blur(8px)}
+.t{background:#0a0b10;color:#0f0;padding:8px;height:80px;overflow-y:auto;white-space:pre-wrap;font-size:9px;border:1px solid #0f03;border-radius:4px}
+button{background:linear-gradient(135deg,#f60,#c40);color:#fff;border:0;padding:7px 12px;margin:3px;font-size:9px;border-radius:5px;cursor:pointer;font-weight:bold;transition:all .2s}
+button:hover{transform:scale(1.05);box-shadow:0 0 20px #f604}
+.cyan{background:linear-gradient(135deg,#0ee,#08c)}
+.green{background:linear-gradient(135deg,#0d8,#0a5)}
+.purple{background:linear-gradient(135deg,#e0f,#80d)}
+.g{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin:8px 0}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:6px 0}
+.s{padding:6px;text-align:center;border:1px solid;border-radius:5px;background:rgba(0,0,0,.4);font-size:9px}
+.bar{height:8px;background:#1a1c22;border-radius:4px;margin:5px 0;overflow:hidden}.fill{height:100%;border-radius:4px;transition:width .2s}
+.hot{color:#f80;text-shadow:0 0 8px #f80}
+input[type=range]{-webkit-appearance:none;width:100%;height:6px;background:#2a2d35;border-radius:3px;outline:none;margin:6px 0}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;background:linear-gradient(135deg,#f80,#f60);border-radius:50%;cursor:pointer;box-shadow:0 0 8px #f804}
+select{background:#1a1c22;color:#0ff;border:1px solid #0ff4;padding:5px;border-radius:4px;font-size:9px;width:100%}
+</style></head><body><canvas id="c"></canvas>
+
+<div class="p" style="top:10px;left:10px;border-color:#f60;width:300px">
+<div class="hot" style="text-align:center;font-size:14px">🔥 FDM EXTRUDER PRO</div>
+<div id="status"></div>
+<div id="layerInfo"></div>
+<div id="gcode" class="t"></div>
+</div>
+
+<div class="p" style="top:10px;right:10px;border-color:#0ff;width:340px">
+<div style="color:#0ff;text-align:center;font-size:12px">📐 SLICER</div>
+<div style="font-size:9px;margin:10px 0">MODEL:</div>
+<div class="g">
+<button onclick="F.slice('cylinder')">⚙️Cylinder</button>
+<button onclick="F.slice('box')">📦Box</button>
+<button onclick="F.slice('vase')">🏺Vase</button>
+<button onclick="F.slice('gear')">⚙️Gear</button>
+<button onclick="F.slice('hex')">⬡Hex</button>
+<button onclick="F.slice('star')">⭐Star</button>
+<button onclick="F.slice('bowl')">🥣Bowl</button>
+<button onclick="F.slice('cone')">📐Cone</button>
+<button onclick="F.slice('spring')">🔩Spring</button>
+</div>
+<div style="font-size:9px;margin-top:10px">INFILL PATTERN:</div>
+<select id="infillPattern" onchange="F.settings.infillPattern=this.value">
+<option value="lines">Lines</option>
+<option value="grid">Grid</option>
+<option value="triangles">Triangles</option>
+<option value="honeycomb">Honeycomb</option>
+<option value="concentric">Concentric</option>
+</select>
+<div class="g" style="margin-top:12px">
+<button class="cyan" onclick="F.start()">▶️Print</button>
+<button class="green" onclick="F.pause()">⏸️Pause</button>
+<button class="purple" onclick="F.clear()">🗑️Clear</button>
+</div>
+</div>
+
+<div class="p" style="bottom:10px;left:10px;border-color:#0d8;width:320px">
+<div style="color:#0d8;font-size:11px">⚙️ PRINT SETTINGS</div>
+<div style="font-size:9px;margin-top:10px">
+<div>Nozzle: <span id="nozzleVal">0.4</span>mm</div>
+<input type="range" id="nozzle" min="2" max="10" value="4" oninput="F.setNozzle(this.value)">
+<div>Layer Height: <span id="layerVal">0.2</span>mm</div>
+<input type="range" id="layer" min="1" max="6" value="2" oninput="F.setLayerHeight(this.value)">
+<div>Speed: <span id="speedVal">60</span>mm/s</div>
+<input type="range" id="speed" min="20" max="150" value="60" oninput="F.setSpeed(this.value)">
+<div>Infill: <span id="infillVal">20</span>%</div>
+<input type="range" id="infill" min="0" max="100" value="20" step="5" oninput="F.setInfill(this.value)">
+<div>Walls: <span id="wallVal">2</span></div>
+<input type="range" id="walls" min="1" max="5" value="2" oninput="F.setWalls(this.value)">
+</div>
+</div>
+
+<div class="p" style="bottom:10px;right:10px;border-color:#f0f;width:320px">
+<div style="color:#f0f;font-size:11px">🎨 FILAMENT</div>
+<div class="g4" id="filaments"></div>
+<div id="temps" style="margin-top:10px"></div>
+<div id="stats" style="font-size:9px;margin-top:10px;padding-top:10px;border-top:1px solid #fff2"></div>
+</div>
+
+<script>
+const τ=Math.PI*2,π=Math.PI;
+
+const FILAMENTS={
+  pla:['PLA',0x22dd66,200,60,'Biodegradable, easy to print'],
+  abs:['ABS',0xff6622,240,100,'Strong, heat resistant'],
+  petg:['PETG',0x22ccff,235,80,'Durable, flexible'],
+  tpu:['TPU',0xff22ff,225,50,'Flexible, rubber-like'],
+  asa:['ASA',0xffcc22,250,100,'UV resistant, outdoor use'],
+  pc:['PC',0xaaaaaa,280,110,'Very strong, clear'],
+  nylon:['Nylon',0xddddaa,260,80,'Tough, low friction'],
+  cf:['Carbon',0x333333,250,100,'Stiff, lightweight']
+};
+
+const F={
+  toolpath:[],
+  pathIndex:0,
+  isPrinting:false,
+  isPaused:false,
+  currentLayer:0,
+  totalLayers:0,
+  filament:'pla',
+
+  settings:{
+    nozzle:.4,
+    layerHeight:.2,
+    speed:60,
+    infill:20,
+    walls:2,
+    infillPattern:'lines'
+  },
+
+  stats:{
+    totalLength:0,
+    printTime:0,
+    layersPrinted:0
+  },
+
+  W:{
+    scene:null,camera:null,renderer:null,
+    head:null,bed:null,beads:[],
+
+    init(){
+      this.scene=new THREE.Scene();
+      this.camera=new THREE.PerspectiveCamera(45,innerWidth/innerHeight,.1,1000);
+      this.renderer=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true});
+      this.renderer.setSize(innerWidth,innerHeight);
+      this.renderer.setClearColor(0x12141a);
+      this.renderer.shadowMap.enabled=true;
+      this.camera.position.set(50,40,50);
+      this.camera.lookAt(0,10,0);
+
+      // Lighting
+      this.scene.add(new THREE.AmbientLight(0x404050,.7));
+      const key=new THREE.DirectionalLight(0xffffff,.9);
+      key.position.set(30,50,30);
+      key.castShadow=true;
+      key.shadow.mapSize.set(2048,2048);
+      this.scene.add(key);
+
+      const fill=new THREE.PointLight(0x4488ff,.4,100);
+      fill.position.set(-20,30,-20);
+      this.scene.add(fill);
+
+      this.buildPrinter();
+      this.scene.fog=new THREE.FogExp2(0x12141a,.006);
+      this.animate();
+    },
+
+    buildPrinter(){
+      // Frame
+      const frameMat=new THREE.MeshPhongMaterial({color:0x2a2d35});
+      const pillarGeo=new THREE.BoxGeometry(.8,35,.8);
+
+      [[-15,-15],[15,-15],[15,15],[-15,15]].forEach(([x,z])=>{
+        const p=new THREE.Mesh(pillarGeo,frameMat);
+        p.position.set(x,17,z);
+        p.castShadow=true;
+        this.scene.add(p);
+      });
+
+      // Top rails
+      const railGeo=new THREE.BoxGeometry(30,.6,.6);
+      [-15,15].forEach(z=>{
+        const r=new THREE.Mesh(railGeo,frameMat);
+        r.position.set(0,34,z);
+        this.scene.add(r);
+      });
+
+      // Heated bed with texture
+      const bedGeo=new THREE.BoxGeometry(28,.4,28);
+      const bedMat=new THREE.MeshPhongMaterial({color:0x1a1a1a,emissive:0x331100,emissiveIntensity:.2});
+      this.bed=new THREE.Mesh(bedGeo,bedMat);
+      this.bed.receiveShadow=true;
+      this.scene.add(this.bed);
+
+      // Bed surface grid
+      const gridTex=this.createGridTexture();
+      const surface=new THREE.Mesh(
+        new THREE.PlaneGeometry(26,26),
+        new THREE.MeshBasicMaterial({map:gridTex,transparent:true,opacity:.3})
+      );
+      surface.rotation.x=-π/2;
+      surface.position.y=.25;
+      this.scene.add(surface);
+
+      // Print head assembly
+      this.head=new THREE.Group();
+
+      // Carriage
+      const carriage=new THREE.Mesh(
+        new THREE.BoxGeometry(6,3,4),
+        new THREE.MeshPhongMaterial({color:0x3a3d45})
+      );
+      carriage.position.y=1;
+      this.head.add(carriage);
+
+      // Heatsink
+      for(let i=0;i<5;i++){
+        const fin=new THREE.Mesh(
+          new THREE.BoxGeometry(4,.15,3),
+          new THREE.MeshPhongMaterial({color:0x666666})
+        );
+        fin.position.set(0,-i*.4,0);
+        this.head.add(fin);
+      }
+
+      // Heat block
+      const heatBlock=new THREE.Mesh(
+        new THREE.BoxGeometry(1.5,1.5,1.5),
+        new THREE.MeshPhongMaterial({color:0xcc8833,emissive:0xff4400,emissiveIntensity:.3})
+      );
+      heatBlock.position.y=-2.5;
+      this.head.add(heatBlock);
+
+      // Nozzle
+      const nozzle=new THREE.Mesh(
+        new THREE.ConeGeometry(.25,.8,6),
+        new THREE.MeshPhongMaterial({color:0xffaa00,emissive:0xff6600,emissiveIntensity:.6})
+      );
+      nozzle.rotation.x=π;
+      nozzle.position.y=-3.8;
+      this.head.add(nozzle);
+      this.nozzle=nozzle;
+
+      // Nozzle glow
+      const glow=new THREE.PointLight(0xff6600,.8,8);
+      glow.position.y=-4;
+      this.head.add(glow);
+      this.headGlow=glow;
+
+      // Extrusion indicator (small sphere at nozzle tip)
+      const extrudeIndicator=new THREE.Mesh(
+        new THREE.SphereGeometry(.2,8,8),
+        new THREE.MeshBasicMaterial({color:0x22dd66,transparent:true,opacity:0})
+      );
+      extrudeIndicator.position.y=-4.2;
+      this.head.add(extrudeIndicator);
+      this.extrudeIndicator=extrudeIndicator;
+
+      this.head.position.set(0,30,0);
+      this.scene.add(this.head);
+
+      // Ground plane
+      const ground=new THREE.Mesh(
+        new THREE.PlaneGeometry(200,200),
+        new THREE.MeshPhongMaterial({color:0x12141a})
+      );
+      ground.rotation.x=-π/2;
+      ground.position.y=-2;
+      ground.receiveShadow=true;
+      this.scene.add(ground);
+
+      // Environment grid
+      const envGrid=new THREE.GridHelper(100,50,0x1a2030,0x151820);
+      envGrid.position.y=-1.9;
+      this.scene.add(envGrid);
+    },
+
+    createGridTexture(){
+      const cv=document.createElement('canvas');
+      cv.width=cv.height=256;
+      const ctx=cv.getContext('2d');
+      ctx.fillStyle='#000';
+      ctx.fillRect(0,0,256,256);
+      ctx.strokeStyle='#333';
+      ctx.lineWidth=1;
+      for(let i=0;i<=16;i++){
+        ctx.beginPath();
+        ctx.moveTo(i*16,0);ctx.lineTo(i*16,256);
+        ctx.moveTo(0,i*16);ctx.lineTo(256,i*16);
+        ctx.stroke();
+      }
+      return new THREE.CanvasTexture(cv);
+    },
+
+    // Create a bead (cylindrical segment) between two points
+    createBead(x1,z1,x2,z2,y,color,nozzleWidth){
+      const dx=x2-x1,dz=z2-z1;
+      const len=Math.sqrt(dx*dx+dz*dz);
+      if(len<.01)return null;
+
+      const beadHeight=F.settings.layerHeight*.8;
+      const beadWidth=nozzleWidth*.9;
+
+      // Capsule/pill shape: cylinder with rounded ends
+      const geo=new THREE.CapsuleGeometry(beadWidth/2,len,4,8);
+      const mat=new THREE.MeshPhongMaterial({
+        color,
+        emissive:color,
+        emissiveIntensity:.15,
+        shininess:30
+      });
+
+      const mesh=new THREE.Mesh(geo,mat);
+
+      // Position at midpoint
+      mesh.position.set((x1+x2)/2,y+beadHeight/2,(z1+z2)/2);
+
+      // Rotate to align with direction
+      mesh.rotation.z=π/2;
+      mesh.rotation.y=-Math.atan2(dz,dx);
+
+      // Flatten to layer height
+      mesh.scale.y=beadHeight/beadWidth;
+
+      mesh.castShadow=true;
+      this.scene.add(mesh);
+      this.beads.push(mesh);
+
+      return mesh;
+    },
+
+    clearBeads(){
+      this.beads.forEach(b=>this.scene.remove(b));
+      this.beads=[];
+    },
+
+    animate(){
+      requestAnimationFrame(()=>this.animate());
+      const t=Date.now()*.001;
+
+      // Camera
+      const r=60+Math.sin(t*.15)*10;
+      this.camera.position.x=Math.cos(t*.1)*r;
+      this.camera.position.z=Math.sin(t*.1)*r;
+      this.camera.position.y=35+Math.sin(t*.12)*8;
+      this.camera.lookAt(0,10,0);
+
+      // Bed heat pulse
+      if(this.bed)this.bed.material.emissiveIntensity=.15+Math.sin(t*2)*.05;
+
+      // Head idle
+      if(!F.isPrinting&&this.head){
+        this.head.position.x=Math.sin(t*.5)*3;
+        this.head.position.z=Math.cos(t*.4)*3;
+      }
+
+      // Nozzle glow
+      if(this.headGlow)this.headGlow.intensity=.6+Math.sin(t*4)*.2;
+
+      this.renderer.render(this.scene,this.camera);
+    }
+  },
+
+  // Generate toolpath for different models
+  generateToolpath(model){
+    const paths=[];
+    const layers=Math.ceil(20/this.settings.layerHeight);
+    this.totalLayers=layers;
+
+    const generators={
+      cylinder:this.genCylinder.bind(this),
+      box:this.genBox.bind(this),
+      vase:this.genVase.bind(this),
+      gear:this.genGear.bind(this),
+      hex:this.genHex.bind(this),
+      star:this.genStar.bind(this),
+      bowl:this.genBowl.bind(this),
+      cone:this.genCone.bind(this),
+      spring:this.genSpring.bind(this)
+    };
+
+    return generators[model](layers);
+  },
+
+  // Generate perimeter paths for a shape
+  genPerimeter(points,y,walls){
+    const paths=[];
+    for(let w=0;w<walls;w++){
+      const offset=w*this.settings.nozzle;
+      const scaled=points.map(p=>({
+        x:p.x*(1-offset/10),
+        z:p.z*(1-offset/10)
+      }));
+      for(let i=0;i<scaled.length;i++){
+        const next=(i+1)%scaled.length;
+        paths.push({x1:scaled[i].x,z1:scaled[i].z,x2:scaled[next].x,z2:scaled[next].z,y});
+      }
+    }
+    return paths;
+  },
+
+  // Generate infill
+  genInfill(bounds,y,density){
+    if(density<=0)return[];
+    const paths=[];
+    const spacing=this.settings.nozzle*(100/density);
+    const{minX,maxX,minZ,maxZ}=bounds;
+
+    const pattern=this.settings.infillPattern;
+    const layerNum=Math.round(y/this.settings.layerHeight);
+
+    if(pattern==='lines'||pattern==='grid'){
+      const alt=layerNum%2===0;
+      if(alt||pattern==='grid'){
+        for(let x=minX;x<=maxX;x+=spacing){
+          paths.push({x1:x,z1:minZ,x2:x,z2:maxZ,y});
+        }
+      }
+      if(!alt||pattern==='grid'){
+        for(let z=minZ;z<=maxZ;z+=spacing){
+          paths.push({x1:minX,z1:z,x2:maxX,z2:z,y});
+        }
+      }
+    }else if(pattern==='triangles'){
+      for(let x=minX;x<=maxX;x+=spacing*2){
+        paths.push({x1:x,z1:minZ,x2:x+spacing,z2:maxZ,y});
+        paths.push({x1:x+spacing,z1:maxZ,x2:x+spacing*2,z2:minZ,y});
+      }
+    }else if(pattern==='honeycomb'){
+      const s=spacing*1.5;
+      for(let row=0;row<(maxZ-minZ)/s;row++){
+        const z=minZ+row*s;
+        const off=(row%2)*s/2;
+        for(let x=minX+off;x<=maxX;x+=s){
+          // Hex edges
+          paths.push({x1:x,z1:z,x2:x+s/2,z2:z+s/3,y});
+          paths.push({x1:x+s/2,z1:z+s/3,x2:x+s,z2:z,y});
+        }
+      }
+    }else if(pattern==='concentric'){
+      for(let r=Math.min(maxX-minX,maxZ-minZ)/2;r>0;r-=spacing){
+        const pts=[];
+        for(let a=0;a<τ;a+=.3)pts.push({x:Math.cos(a)*r,z:Math.sin(a)*r});
+        for(let i=0;i<pts.length;i++){
+          const next=(i+1)%pts.length;
+          paths.push({x1:pts[i].x,z1:pts[i].z,x2:pts[next].x,z2:pts[next].z,y});
+        }
+      }
+    }
+    return paths;
+  },
+
+  genCylinder(layers){
+    const paths=[];
+    const r=8;
+    for(let l=0;l<layers;l++){
+      const y=l*this.settings.layerHeight;
+      const pts=[];
+      for(let a=0;a<τ;a+=.2)pts.push({x:Math.cos(a)*r,z:Math.sin(a)*r});
+      paths.push(...this.genPerimeter(pts,y,this.settings.walls));
+      paths.push(...this.genInfill({minX:-r+2,maxX:r-2,minZ:-r+2,maxZ:r-2},y,this.settings.infill));
+    }
+    return paths;
+  },
+
+  genBox(layers){
+    const paths=[];
+    const s=7;
+    for(let l=0;l<layers;l++){
+      const y=l*this.settings.layerHeight;
+      const pts=[{x:-s,z:-s},{x:s,z:-s},{x:s,z:s},{x:-s,z:s}];
+      paths.push(...this.genPerimeter(pts,y,this.settings.walls));
+      paths.push(...this.genInfill({minX:-s+2,maxX:s-2,minZ:-s+2,maxZ:s-2},y,this.settings.infill));
+    }
+    return paths;
+  },
+
+  genVase(layers){
+    const paths=[];
+    for(let l=0;l<layers;l++){
+      const y=l*this.settings.layerHeight;
+      const t=l/layers;
+      const r=4+Math.sin(t*π)*5;
+      const pts=[];
+      for(let a=0;a<τ;a+=.15)pts.push({x:Math.cos(a)*r,z:Math.sin(a)*r});
+      // Vase mode - single wall, no infill
+      paths.push(...this.genPerimeter(pts,y,1));
+    }
+    return paths;
+  },
+
+  genGear(layers){
+    const paths=[];
+    const teeth=8,innerR=4,outerR=7;
+    for(let l=0;l<layers;l++){
+      const y=l*this.settings.layerHeight;
+      const pts=[];
+      for(let t=0;t<teeth;t++){
+        const a1=t*τ/teeth,a2=(t+.3)*τ/teeth,a3=(t+.5)*τ/teeth,a4=(t+.8)*τ/teeth;
+        pts.push({x:Math.cos(a1)*innerR,z:Math.sin(a1)*innerR});
+        pts.push({x:Math.cos(a2)*outerR,z:Math.sin(a2)*outerR});
+        pts.push({x:Math.cos(a3)*outerR,z:Math.sin(a3)*outerR});
+        pts.push({x:Math.cos(a4)*innerR,z:Math.sin(a4)*innerR});
+      }
+      paths.push(...this.genPerimeter(pts,y,this.settings.walls));
+      paths.push(...this.genInfill({minX:-innerR+1,maxX:innerR-1,minZ:-innerR+1,maxZ:innerR-1},y,this.settings.infill));
+    }
+    return paths;
+  },
+
+  genHex(layers){
+    const paths=[];
+    const r=7;
+    for(let l=0;l<layers;l++){
+      const y=l*this.settings.layerHeight;
+      const pts=[];
+      for(let i=0;i<6;i++){
+        const a=i*τ/6;
+        pts.push({x:Math.cos(a)*r,z:Math.sin(a)*r});
+      }
+      paths.push(...this.genPerimeter(pts,y,this.settings.walls));
+      paths.push(...this.genInfill({minX:-r+2,maxX:r-2,minZ:-r+2,maxZ:r-2},y,this.settings.infill));
+    }
+    return paths;
+  },
+
+  genStar(layers){
+    const paths=[];
+    const innerR=3,outerR=8,points=5;
+    for(let l=0;l<layers;l++){
+      const y=l*this.settings.layerHeight;
+      const pts=[];
+      for(let i=0;i<points*2;i++){
+        const a=i*τ/(points*2)-π/2;
+        const r=i%2===0?outerR:innerR;
+        pts.push({x:Math.cos(a)*r,z:Math.sin(a)*r});
+      }
+      paths.push(...this.genPerimeter(pts,y,this.settings.walls));
+      paths.push(...this.genInfill({minX:-innerR+1,maxX:innerR-1,minZ:-innerR+1,maxZ:innerR-1},y,this.settings.infill));
+    }
+    return paths;
+  },
+
+  genBowl(layers){
+    const paths=[];
+    for(let l=0;l<layers;l++){
+      const y=l*this.settings.layerHeight;
+      const t=l/layers;
+      const r=3+t*6;
+      const pts=[];
+      for(let a=0;a<τ;a+=.15)pts.push({x:Math.cos(a)*r,z:Math.sin(a)*r});
+      paths.push(...this.genPerimeter(pts,y,this.settings.walls));
+      if(l<layers*.3){
+        paths.push(...this.genInfill({minX:-r+2,maxX:r-2,minZ:-r+2,maxZ:r-2},y,this.settings.infill));
+      }
+    }
+    return paths;
+  },
+
+  genCone(layers){
+    const paths=[];
+    for(let l=0;l<layers;l++){
+      const y=l*this.settings.layerHeight;
+      const r=8*(1-l/layers)+.5;
+      if(r<.5)continue;
+      const pts=[];
+      for(let a=0;a<τ;a+=.2)pts.push({x:Math.cos(a)*r,z:Math.sin(a)*r});
+      paths.push(...this.genPerimeter(pts,y,this.settings.walls));
+      if(r>2)paths.push(...this.genInfill({minX:-r+1,maxX:r-1,minZ:-r+1,maxZ:r-1},y,this.settings.infill));
+    }
+    return paths;
+  },
+
+  genSpring(layers){
+    const paths=[];
+    const coils=3,r=6,tubeR=1.5;
+    for(let l=0;l<layers;l++){
+      const y=l*this.settings.layerHeight;
+      const a=(l/layers)*coils*τ;
+      const cx=Math.cos(a)*r,cz=Math.sin(a)*r;
+      const pts=[];
+      for(let t=0;t<τ;t+=.4)pts.push({x:cx+Math.cos(t)*tubeR,z:cz+Math.sin(t)*tubeR});
+      paths.push(...this.genPerimeter(pts,y,this.settings.walls));
+    }
+    return paths;
+  },
+
+  slice(model){
+    this.log(`🔪 Slicing: ${model}`);
+    this.toolpath=this.generateToolpath(model);
+    this.log(`Generated ${this.toolpath.length} moves`);
+    this.log(`Layers: ${this.totalLayers}`);
+    this.updateUI();
+  },
+
+  start(){
+    if(this.toolpath.length===0){
+      this.log('⚠ No model sliced');
+      return;
+    }
+    if(this.isPrinting&&!this.isPaused){
+      return;
+    }
+    if(this.isPaused){
+      this.isPaused=false;
+      this.log('▶ Resumed');
+      this.printLoop();
+      return;
+    }
+
+    this.pathIndex=0;
+    this.currentLayer=0;
+    this.isPrinting=true;
+    this.W.clearBeads();
+    this.log('🖨️ Starting print...');
+    this.log(`Nozzle: ${this.settings.nozzle}mm @ ${FILAMENTS[this.filament][2]}°C`);
+    this.printLoop();
+  },
+
+  printLoop(){
+    if(!this.isPrinting||this.isPaused)return;
+    if(this.pathIndex>=this.toolpath.length){
+      this.finishPrint();
+      return;
+    }
+
+    const move=this.toolpath[this.pathIndex];
+    const color=FILAMENTS[this.filament][1];
+
+    // Move head
+    this.W.head.position.x=move.x2;
+    this.W.head.position.z=move.z2;
+    this.W.head.position.y=move.y+5;
+
+    // Extrusion indicator flash
+    this.W.extrudeIndicator.material.color.setHex(color);
+    this.W.extrudeIndicator.material.opacity=.8;
+    setTimeout(()=>this.W.extrudeIndicator.material.opacity=0,50);
+
+    // Create bead
+    this.W.createBead(move.x1,move.z1,move.x2,move.z2,move.y,color,this.settings.nozzle);
+
+    // Track layer
+    const newLayer=Math.floor(move.y/this.settings.layerHeight);
+    if(newLayer>this.currentLayer){
+      this.currentLayer=newLayer;
+      this.gcode(`; Layer ${newLayer}`);
+    }
+
+    this.pathIndex++;
+    this.stats.totalLength+=Math.sqrt((move.x2-move.x1)**2+(move.z2-move.z1)**2);
+
+    // G-code every 20 moves
+    if(this.pathIndex%20===0){
+      this.gcode(`G1 X${move.x2.toFixed(1)} Y${move.z2.toFixed(1)} Z${move.y.toFixed(2)} E${(this.pathIndex*.05).toFixed(2)}`);
+    }
+
+    this.updateUI();
+
+    const delay=Math.max(5,80-this.settings.speed*.5);
+    setTimeout(()=>this.printLoop(),delay);
+  },
+
+  finishPrint(){
+    this.isPrinting=false;
+    this.stats.layersPrinted+=this.totalLayers;
+    this.log('✅ Print complete!');
+    this.log(`Layers: ${this.totalLayers} | Moves: ${this.toolpath.length}`);
+    this.updateUI();
+  },
+
+  pause(){
+    if(this.isPrinting){
+      this.isPaused=!this.isPaused;
+      this.log(this.isPaused?'⏸ Paused':'▶ Resumed');
+      if(!this.isPaused)this.printLoop();
+    }
+  },
+
+  clear(){
+    this.isPrinting=false;
+    this.isPaused=false;
+    this.toolpath=[];
+    this.pathIndex=0;
+    this.W.clearBeads();
+    this.log('🗑️ Cleared');
+    this.updateUI();
+  },
+
+  setNozzle(v){this.settings.nozzle=v/10;document.getElementById('nozzleVal').textContent=this.settings.nozzle.toFixed(1);},
+  setLayerHeight(v){this.settings.layerHeight=v/10;document.getElementById('layerVal').textContent=this.settings.layerHeight.toFixed(1);},
+  setSpeed(v){this.settings.speed=parseInt(v);document.getElementById('speedVal').textContent=v;},
+  setInfill(v){this.settings.infill=parseInt(v);document.getElementById('infillVal').textContent=v;},
+  setWalls(v){this.settings.walls=parseInt(v);document.getElementById('wallVal').textContent=v;},
+
+  setFilament(f){
+    this.filament=f;
+    this.updateUI();
+  },
+
+  log(msg){
+    const el=document.getElementById('gcode');
+    el.textContent+=msg+'\n';
+    el.scrollTop=el.scrollHeight;
+  },
+
+  gcode(cmd){
+    const el=document.getElementById('gcode');
+    el.textContent+=cmd+'\n';
+    el.scrollTop=el.scrollHeight;
+  },
+
+  updateUI(){
+    const f=FILAMENTS[this.filament];
+    let status='IDLE',statusColor='#666';
+    if(this.isPrinting){status=this.isPaused?'PAUSED':'PRINTING';statusColor=this.isPaused?'#ff0':'#0f0';}
+
+    document.getElementById('status').innerHTML=`
+      <div class="g">
+        <div class="s" style="border-color:${statusColor}"><span style="color:${statusColor}">${status}</span></div>
+        <div class="s" style="border-color:#0ff">Moves: ${this.toolpath.length}</div>
+        <div class="s" style="border-color:#f60">${this.pathIndex}/${this.toolpath.length}</div>
+      </div>
+    `;
+
+    const progress=this.toolpath.length?Math.round(this.pathIndex/this.toolpath.length*100):0;
+    document.getElementById('layerInfo').innerHTML=this.isPrinting||this.toolpath.length?`
+      <div style="font-size:9px">Layer: ${this.currentLayer}/${this.totalLayers}</div>
+      <div class="bar"><div class="fill" style="width:${progress}%;background:linear-gradient(90deg,#f60,#0d8)"></div></div>
+      <div style="font-size:9px;text-align:center;color:#0d8">${progress}%</div>
+    `:'<div style="color:#555;font-size:9px">Select a model to slice</div>';
+
+    document.getElementById('filaments').innerHTML=Object.entries(FILAMENTS).map(([k,v])=>
+      `<button style="background:#${v[1].toString(16).padStart(6,'0')};color:#000;font-size:8px;padding:4px 6px;opacity:${k===this.filament?1:.6}" onclick="F.setFilament('${k}')">${v[0]}</button>`
+    ).join('');
+
+    document.getElementById('temps').innerHTML=`
+      <div class="g">
+        <div class="s" style="border-color:#f60">🔥Nozzle<br><span class="hot">${f[2]}°C</span></div>
+        <div class="s" style="border-color:#f80">🛏️Bed<br><span style="color:#f80">${f[3]}°C</span></div>
+        <div class="s" style="border-color:#0ff">💨Fan<br><span style="color:#0ff">100%</span></div>
+      </div>
+      <div style="font-size:8px;color:#888;margin-top:6px">${f[4]}</div>
+    `;
+
+    document.getElementById('stats').innerHTML=`
+      <div>Filament Used: <b style="color:#0d8">${(this.stats.totalLength/10).toFixed(1)}cm</b></div>
+      <div>Total Layers: <b style="color:#0ff">${this.stats.layersPrinted}</b></div>
+    `;
+  },
+
+  init(){
+    this.W.init();
+    this.log('🔥 FDM Extruder Pro');
+    this.log('Select model → Slice → Print');
+    this.updateUI();
+  }
+};
+
+onload=()=>setTimeout(()=>F.init(),100);
+onresize=()=>{F.W.renderer.setSize(innerWidth,innerHeight);F.W.camera.aspect=innerWidth/innerHeight;F.W.camera.updateProjectionMatrix()};
+</script></body></html>
