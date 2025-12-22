@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Packet Storm</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#080810;overflow:hidden;font:9px monospace;color:#0af}
+#c{position:fixed;inset:0}.p{position:absolute;background:rgba(8,8,20,.95);border:1px solid;border-radius:6px;padding:10px;z-index:10;backdrop-filter:blur(5px)}
+.t{background:#040408;color:#0f0;padding:6px;height:65px;overflow-y:auto;font-size:8px;border:1px solid #0f02;border-radius:3px}
+button{background:linear-gradient(135deg,#08f,#06a);color:#fff;border:0;padding:5px 8px;margin:2px;font-size:8px;border-radius:3px;cursor:pointer;font-weight:bold}
+button:hover{filter:brightness(1.2)}
+.r{background:linear-gradient(135deg,#f44,#a22)}.g{background:linear-gradient(135deg,#0c4,#084)}.y{background:linear-gradient(135deg,#fa0,#a60)}
+.gr{display:grid;grid-template-columns:repeat(auto-fit,minmax(40px,1fr));gap:3px;margin:5px 0}
+.s{padding:4px;text-align:center;border:1px solid;border-radius:3px;background:#0002;font-size:8px}
+.bar{height:4px;background:#111;border-radius:2px;margin:2px 0}.fill{height:100%;border-radius:2px;transition:width .3s}
+</style></head><body><canvas id="c"></canvas>
+
+<div class="p" style="top:8px;left:8px;border-color:#0af;width:240px">
+<div style="color:#0af;text-align:center;font-size:11px">🌐 PACKET STORM</div>
+<div id="stats"></div>
+<div id="bandwidth"></div>
+</div>
+
+<div class="p" style="top:8px;right:8px;border-color:#0f0;width:270px">
+<div style="color:#0f0;font-size:10px">🖧 NETWORK</div>
+<div class="gr" id="nodes"></div>
+<div style="margin-top:6px;font-size:9px;color:#888">TRAFFIC:</div>
+<div class="gr">
+<button onclick="N.send('tcp')">TCP</button>
+<button onclick="N.send('udp')">UDP</button>
+<button onclick="N.send('icmp')">ICMP</button>
+<button onclick="N.send('dns')">DNS</button>
+<button onclick="N.send('http')">HTTP</button>
+<button onclick="N.send('ssh')">SSH</button>
+</div>
+<div class="gr">
+<button class="g" onclick="N.flood()">⚡Flood</button>
+<button class="y" onclick="N.scan()">🔍Scan</button>
+<button class="r" onclick="N.clear()">🗑️Clear</button>
+<button onclick="N.auto=!N.auto">🤖Auto</button>
+</div>
+<div id="log" class="t"></div>
+</div>
+
+<div class="p" style="bottom:8px;left:8px;border-color:#f80;width:240px">
+<div style="color:#f80;font-size:10px">📊 THROUGHPUT</div>
+<div id="throughput"></div>
+</div>
+
+<div class="p" style="bottom:8px;right:8px;border-color:#f0f;width:240px">
+<div style="color:#f0f;font-size:10px">📡 PROTOCOLS</div>
+<div id="protocols"></div>
+</div>
+
+<script>
+const T={
+  τ:Math.PI*2,π:Math.PI,
+  rng:(a=0,b=1)=>a+(b-a)*Math.random(),
+  rngInt:(a,b)=>Math.floor(T.rng(a,b+1)),
+  v3:(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z),
+  hsl:(h,s=.8,l=.5)=>new THREE.Color().setHSL(h,s,l),
+  $:id=>document.getElementById(id),
+  html:(id,h)=>T.$(id).innerHTML=h,
+  log:(id,m)=>{const e=T.$(id);e.textContent+=m+'\n';e.scrollTop=e.scrollHeight}
+};
+
+// Node types: [name, icon, color, capacity, isEndpoint]
+const NODES={
+  router:['Router','📡',0x00aaff,100,false],
+  server:['Server','🖥️',0x00ff88,80,true],
+  client:['Client','💻',0x88ff00,40,true],
+  firewall:['Firewall','🛡️',0xff4400,60,false],
+  switch:['Switch','🔀',0xffaa00,120,false],
+  database:['Database','💾',0xff00ff,50,true],
+  cloud:['Cloud','☁️',0x4488ff,200,true],
+  iot:['IoT','📱',0x44ffaa,20,true]
+};
+
+// Packet types: [name, color, size, speed, priority]
+const PACKETS={
+  tcp:[0x00ff00,.3,1,2],
+  udp:[0x00ffff,.25,1.5,1],
+  icmp:[0xffff00,.2,2,0],
+  dns:[0xff8800,.2,1.8,3],
+  http:[0x0088ff,.35,.8,2],
+  ssh:[0xff00ff,.25,1,3],
+  https:[0x00ff88,.4,.7,3],
+  ftp:[0xff4444,.5,.5,1]
+};
+
+const N={
+  nodes:new Map(),
+  links:[],
+  packets:[],
+  nodeId:0,
+  totalPackets:0,
+  dropped:0,
+  auto:false,
+  protocolStats:{},
+
+  W:{
+    scene:null,camera:null,renderer:null,
+    nodeMeshes:[],linkMeshes:[],packetMeshes:[],
+
+    init(){
+      this.scene=new THREE.Scene();
+      this.camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.1,1000);
+      this.renderer=new THREE.WebGLRenderer({canvas:T.$('c'),antialias:true});
+      this.renderer.setSize(innerWidth,innerHeight);
+      this.renderer.setClearColor(0x080810);
+      this.camera.position.set(0,50,50);
+      this.camera.lookAt(0,0,0);
+
+      // Lighting
+      this.scene.add(new THREE.AmbientLight(0x303050,.5));
+      [0x0088ff,0x00ff88,0xff8800].forEach((c,i)=>{
+        const l=new THREE.PointLight(c,.6,80);
+        l.position.set(Math.cos(i*T.τ/3)*30,15,Math.sin(i*T.τ/3)*30);
+        this.scene.add(l);
+      });
+
+      // Grid
+      const grid=new THREE.GridHelper(80,20,0x1a1a30,0x0a0a18);
+      this.scene.add(grid);
+
+      // Central hub glow
+      const hubGeo=new THREE.RingGeometry(8,10,32);
+      const hubMat=new THREE.MeshBasicMaterial({color:0x0044aa,transparent:true,opacity:.2,side:THREE.DoubleSide});
+      const hub=new THREE.Mesh(hubGeo,hubMat);
+      hub.rotation.x=-T.π/2;
+      hub.position.y=.1;
+      this.scene.add(hub);
+
+      this.scene.fog=new THREE.FogExp2(0x080810,.012);
+      this.animate();
+    },
+
+    createNode(type,x,z){
+      const[name,icon,color,cap,endpoint]=NODES[type];
+      const group=new THREE.Group();
+
+      // Base platform
+      const baseGeo=new THREE.CylinderGeometry(2,2.5,.5,type==='switch'?6:16);
+      const baseMat=new THREE.MeshPhongMaterial({color:0x222233});
+      const base=new THREE.Mesh(baseGeo,baseMat);
+      group.add(base);
+
+      // Main body
+      let bodyGeo;
+      if(type==='router'||type==='switch'){
+        bodyGeo=new THREE.BoxGeometry(3,1.5,2);
+      }else if(type==='server'||type==='database'){
+        bodyGeo=new THREE.BoxGeometry(2,3,2);
+      }else if(type==='firewall'){
+        bodyGeo=new THREE.BoxGeometry(4,2,.5);
+      }else if(type==='cloud'){
+        bodyGeo=new THREE.SphereGeometry(2,16,12);
+      }else{
+        bodyGeo=new THREE.BoxGeometry(1.5,1,1.5);
+      }
+
+      const bodyMat=new THREE.MeshPhongMaterial({
+        color,emissive:color,emissiveIntensity:.2,shininess:60
+      });
+      const body=new THREE.Mesh(bodyGeo,bodyMat);
+      body.position.y=type==='cloud'?2.5:1.5;
+      group.add(body);
+
+      // Activity indicator
+      const indGeo=new THREE.SphereGeometry(.3,8,8);
+      const indMat=new THREE.MeshBasicMaterial({color:0x00ff00});
+      const indicator=new THREE.Mesh(indGeo,indMat);
+      indicator.position.set(0,body.position.y+1.5,0);
+      group.add(indicator);
+      group.indicator=indicator;
+
+      // Connection points
+      const portGeo=new THREE.SphereGeometry(.15,6,6);
+      const portMat=new THREE.MeshBasicMaterial({color:0xffff00});
+      for(let i=0;i<4;i++){
+        const port=new THREE.Mesh(portGeo,portMat);
+        const a=i*T.τ/4;
+        port.position.set(Math.cos(a)*2,.5,Math.sin(a)*2);
+        group.add(port);
+      }
+
+      group.position.set(x,0,z);
+      this.scene.add(group);
+      this.nodeMeshes.push({mesh:group,type,color});
+      return group;
+    },
+
+    createLink(n1,n2){
+      const points=[n1.mesh.position.clone(),n2.mesh.position.clone()];
+      points[0].y=.5;points[1].y=.5;
+
+      const geo=new THREE.BufferGeometry().setFromPoints(points);
+      const mat=new THREE.LineBasicMaterial({color:0x004488,transparent:true,opacity:.6});
+      const line=new THREE.Line(geo,mat);
+      this.scene.add(line);
+
+      // Data flow tube (subtle)
+      const curve=new THREE.LineCurve3(points[0],points[1]);
+      const tubeGeo=new THREE.TubeGeometry(curve,1,.1,6,false);
+      const tubeMat=new THREE.MeshBasicMaterial({color:0x002244,transparent:true,opacity:.3});
+      const tube=new THREE.Mesh(tubeGeo,tubeMat);
+      this.scene.add(tube);
+
+      this.linkMeshes.push({line,tube,n1,n2});
+      return{line,tube};
+    },
+
+    createPacket(type,start,end){
+      const[color,size,speed]=PACKETS[type];
+      const geo=new THREE.SphereGeometry(size,8,8);
+      const mat=new THREE.MeshBasicMaterial({color,transparent:true,opacity:.9});
+      const mesh=new THREE.Mesh(geo,mat);
+
+      // Trail
+      const trailGeo=new THREE.BufferGeometry();
+      const trailPts=[];
+      for(let i=0;i<10;i++)trailPts.push(start.clone());
+      trailGeo.setFromPoints(trailPts);
+      const trailMat=new THREE.LineBasicMaterial({color,transparent:true,opacity:.3});
+      const trail=new THREE.Line(trailGeo,trailMat);
+      this.scene.add(trail);
+
+      mesh.position.copy(start);
+      mesh.position.y=1;
+      this.scene.add(mesh);
+
+      const packet={mesh,trail,start:start.clone(),end:end.clone(),t:0,speed:speed*.02,type,trailPts};
+      this.packetMeshes.push(packet);
+      return packet;
+    },
+
+    removePacket(p){
+      this.scene.remove(p.mesh);
+      this.scene.remove(p.trail);
+      const idx=this.packetMeshes.indexOf(p);
+      if(idx>-1)this.packetMeshes.splice(idx,1);
+    },
+
+    animate(){
+      requestAnimationFrame(()=>this.animate());
+      const t=Date.now()*.001;
+
+      // Camera orbit
+      const r=55+Math.sin(t*.2)*8;
+      this.camera.position.x=Math.cos(t*.1)*r;
+      this.camera.position.z=Math.sin(t*.1)*r;
+      this.camera.position.y=40+Math.sin(t*.15)*10;
+      this.camera.lookAt(0,0,0);
+
+      // Node indicators blink
+      this.nodeMeshes.forEach((n,i)=>{
+        if(n.mesh.indicator){
+          n.mesh.indicator.material.color.setHSL((t+i*.2)%1,.8,.5);
+          n.mesh.indicator.scale.setScalar(.8+Math.sin(t*5+i)*.2);
+        }
+      });
+
+      // Packet movement
+      this.packetMeshes.forEach(p=>{
+        p.t+=p.speed;
+        if(p.t>=1){
+          N.packetArrived(p);
+          this.removePacket(p);
+          return;
+        }
+
+        // Lerp position with arc
+        const pos=T.v3().lerpVectors(p.start,p.end,p.t);
+        pos.y=1+Math.sin(p.t*T.π)*2;
+        p.mesh.position.copy(pos);
+
+        // Update trail
+        p.trailPts.unshift(pos.clone());
+        p.trailPts.pop();
+        p.trail.geometry.setFromPoints(p.trailPts);
+      });
+
+      // Link pulse when carrying traffic
+      this.linkMeshes.forEach((l,i)=>{
+        const hasTraffic=this.packetMeshes.some(p=>{
+          const d1=p.start.distanceTo(l.n1.mesh.position);
+          const d2=p.end.distanceTo(l.n2.mesh.position);
+          return d1<3||d2<3;
+        });
+        l.tube.material.opacity=hasTraffic?.5+Math.sin(t*10+i)*.2:.2;
+      });
+
+      this.renderer.render(this.scene,this.camera);
+    }
+  },
+
+  addNode(type){
+    const angle=T.rng(0,T.τ);
+    const r=10+this.nodes.size*3+T.rng(0,8);
+    const x=Math.cos(angle)*r;
+    const z=Math.sin(angle)*r;
+
+    const id=++this.nodeId;
+    const mesh=this.W.createNode(type,x,z);
+    const node={id,type,mesh,connections:[],packetsIn:0,packetsOut:0};
+
+    this.nodes.set(id,node);
+
+    // Auto-connect to nearby nodes
+    this.autoConnect(node);
+
+    T.log('log',`+${NODES[type][1]}${type}#${id}`);
+    this.updateUI();
+    return node;
+  },
+
+  autoConnect(node){
+    const others=[...this.nodes.values()].filter(n=>n.id!==node.id);
+    others.sort((a,b)=>{
+      const da=node.mesh.position.distanceTo(a.mesh.position);
+      const db=node.mesh.position.distanceTo(b.mesh.position);
+      return da-db;
+    });
+
+    const toConnect=others.slice(0,Math.min(2,others.length));
+    toConnect.forEach(other=>{
+      if(!node.connections.includes(other.id)){
+        this.W.createLink(node,other);
+        node.connections.push(other.id);
+        other.connections.push(node.id);
+        this.links.push({from:node.id,to:other.id});
+      }
+    });
+  },
+
+  send(protocol){
+    const endpoints=[...this.nodes.values()].filter(n=>NODES[n.type][4]);
+    if(endpoints.length<2)return;
+
+    const src=endpoints[T.rngInt(0,endpoints.length-1)];
+    let dst=endpoints[T.rngInt(0,endpoints.length-1)];
+    while(dst===src)dst=endpoints[T.rngInt(0,endpoints.length-1)];
+
+    this.W.createPacket(protocol,src.mesh.position,dst.mesh.position);
+    src.packetsOut++;
+    this.totalPackets++;
+    this.protocolStats[protocol]=(this.protocolStats[protocol]||0)+1;
+
+    T.log('log',`📤 ${protocol.toUpperCase()} ${src.id}→${dst.id}`);
+    this.updateUI();
+  },
+
+  packetArrived(p){
+    // Find destination node
+    const dst=[...this.nodes.values()].find(n=>
+      n.mesh.position.distanceTo(p.end)<3
+    );
+    if(dst){
+      dst.packetsIn++;
+      // Flash indicator
+      if(dst.mesh.indicator){
+        dst.mesh.indicator.material.color.setHex(PACKETS[p.type][0]);
+        setTimeout(()=>dst.mesh.indicator.material.color.setHex(0x00ff00),200);
+      }
+    }
+  },
+
+  flood(){
+    for(let i=0;i<10;i++){
+      setTimeout(()=>{
+        const protos=Object.keys(PACKETS);
+        this.send(protos[T.rngInt(0,protos.length-1)]);
+      },i*50);
+    }
+    T.log('log','⚡ FLOOD!');
+  },
+
+  scan(){
+    const nodes=[...this.nodes.values()];
+    nodes.forEach((n,i)=>{
+      setTimeout(()=>{
+        this.send('icmp');
+      },i*100);
+    });
+    T.log('log','🔍 Network scan');
+  },
+
+  clear(){
+    this.W.packetMeshes.forEach(p=>{
+      this.W.scene.remove(p.mesh);
+      this.W.scene.remove(p.trail);
+    });
+    this.W.packetMeshes=[];
+    this.packets=[];
+    T.log('log','🗑️ Cleared packets');
+    this.updateUI();
+  },
+
+  tick(){
+    // Auto traffic
+    if(this.auto&&this.nodes.size>1&&Math.random()<.3){
+      const protos=Object.keys(PACKETS);
+      this.send(protos[T.rngInt(0,protos.length-1)]);
+    }
+
+    // Auto add nodes
+    if(this.auto&&this.nodes.size<12&&Math.random()<.1){
+      const types=Object.keys(NODES);
+      this.addNode(types[T.rngInt(0,types.length-1)]);
+    }
+
+    this.updateUI();
+  },
+
+  updateUI(){
+    const activePackets=this.W.packetMeshes.length;
+
+    T.html('stats',`
+      <div class="gr">
+        <div class="s" style="border-color:#0af">🖧${this.nodes.size}</div>
+        <div class="s" style="border-color:#0f0">🔗${this.links.length}</div>
+        <div class="s" style="border-color:#ff0">📦${activePackets}</div>
+        <div class="s" style="border-color:#f80">Σ${this.totalPackets}</div>
+      </div>
+    `);
+
+    T.html('bandwidth',`
+      <div style="font-size:8px">Active: ${activePackets} packets</div>
+      <div class="bar"><div class="fill" style="width:${Math.min(100,activePackets*5)}%;background:linear-gradient(90deg,#08f,#0f8)"></div></div>
+    `);
+
+    T.html('nodes',Object.entries(NODES).map(([k,v])=>
+      `<button onclick="N.addNode('${k}')">${v[1]}</button>`
+    ).join(''));
+
+    // Throughput per node
+    const topNodes=[...this.nodes.values()]
+      .sort((a,b)=>(b.packetsIn+b.packetsOut)-(a.packetsIn+a.packetsOut))
+      .slice(0,4);
+    T.html('throughput',topNodes.map(n=>
+      `<div style="font-size:8px;color:#${NODES[n.type][2].toString(16).padStart(6,'0')}">${NODES[n.type][1]}#${n.id}: ↓${n.packetsIn} ↑${n.packetsOut}</div>`
+    ).join('')||'<div style="color:#555">No traffic</div>');
+
+    // Protocol breakdown
+    T.html('protocols',Object.entries(this.protocolStats).map(([p,c])=>
+      `<div style="font-size:8px"><span style="color:#${PACKETS[p][0].toString(16).padStart(6,'0')}">■</span> ${p.toUpperCase()}: ${c}</div>`
+    ).join('')||'<div style="color:#555">No packets sent</div>');
+  },
+
+  init(){
+    this.W.init();
+    T.log('log','🌐 Packet Storm v1');
+    T.log('log','Add nodes, send traffic!');
+
+    // Initial network
+    setTimeout(()=>this.addNode('router'),200);
+    setTimeout(()=>this.addNode('server'),400);
+    setTimeout(()=>this.addNode('client'),600);
+    setTimeout(()=>this.addNode('firewall'),800);
+
+    setInterval(()=>this.tick(),500);
+    this.updateUI();
+  }
+};
+
+onload=()=>setTimeout(()=>N.init(),100);
+onresize=()=>{N.W.renderer.setSize(innerWidth,innerHeight);N.W.camera.aspect=innerWidth/innerHeight;N.W.camera.updateProjectionMatrix()};
+</script></body></html>

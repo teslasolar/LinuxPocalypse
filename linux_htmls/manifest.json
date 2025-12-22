@@ -46,5 +46,13 @@
     "icon": "⚡",
     "color": "#00ff88",
     "tags": ["PCB", "Electronics", "Auto-Route", "Signals"]
+  },
+  {
+    "file": "packet-storm.html",
+    "title": "Packet Storm",
+    "description": "Network traffic visualizer with routers, servers, firewalls, packet flows, and protocol analysis",
+    "icon": "🌐",
+    "color": "#00aaff",
+    "tags": ["Network", "Packets", "Traffic", "Protocols"]
   }
 ]
