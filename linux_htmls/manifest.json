@@ -78,5 +78,13 @@
     "icon": "🌍",
     "color": "#4488ff",
     "tags": ["World", "FDM", "Terrain", "Multi-Head"]
+  },
+  {
+    "file": "swarm-mind.html",
+    "title": "Swarm Mind",
+    "description": "Ant colony swarm intelligence with pheromone trails, multi-colony competition, predators, and evolutionary trait inheritance",
+    "icon": "🐜",
+    "color": "#00ff00",
+    "tags": ["Swarm", "AI", "Evolution", "Colonies"]
   }
 ]

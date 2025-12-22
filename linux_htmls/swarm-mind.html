@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Swarm Mind - Emergent Colony Intelligence</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#000;overflow:hidden;font:11px monospace;color:#0f0}
+#c{position:fixed;inset:0}
+.p{position:absolute;background:rgba(0,20,10,.9);border:1px solid #0f0;border-radius:6px;padding:8px;z-index:10}
+button{background:linear-gradient(135deg,#0a0,#060);color:#0f0;border:1px solid #0f0;padding:5px 10px;margin:2px;border-radius:4px;cursor:pointer;font-size:10px}
+button:hover{background:#0f0;color:#000}
+.row{display:flex;gap:5px;margin:3px 0;flex-wrap:wrap}
+.stat{background:#001a00;border:1px solid #0a0;border-radius:4px;padding:4px 8px;text-align:center;min-width:60px}
+.val{font-size:14px;font-weight:bold}
+.lbl{font-size:8px;opacity:.7}
+select{background:#001a00;color:#0f0;border:1px solid #0f0;padding:4px;border-radius:4px;font-size:10px}
+.colony-btn{padding:6px 12px;border-radius:4px;font-weight:bold}
+</style></head><body><canvas id="c"></canvas>
+
+<div class="p" style="top:8px;left:8px;width:200px">
+<div style="color:#0f0;text-align:center;font-size:13px;margin-bottom:8px">🐜 SWARM MIND</div>
+<div class="row">
+<div class="stat"><div class="val" id="ants">0</div><div class="lbl">Ants</div></div>
+<div class="stat"><div class="val" id="food">0</div><div class="lbl">Food</div></div>
+<div class="stat"><div class="val" id="stored">0</div><div class="lbl">Stored</div></div>
+</div>
+<div class="row">
+<div class="stat" style="border-color:#f80"><div class="val" id="phero">0</div><div class="lbl">Pheromone</div></div>
+<div class="stat" style="border-color:#08f"><div class="val" id="gen">1</div><div class="lbl">Gen</div></div>
+</div>
+</div>
+
+<div class="p" style="top:8px;right:8px;width:220px">
+<div style="color:#f80;text-align:center;font-size:11px;margin-bottom:5px">⚙️ CONTROLS</div>
+<div class="row">
+<button onclick="S.addFood(5)">🍎+5 Food</button>
+<button onclick="S.addAnts(10)">🐜+10 Ants</button>
+</div>
+<div class="row">
+<button onclick="S.addColony()">🏠+Colony</button>
+<button onclick="S.addPredator()">🕷️+Predator</button>
+</div>
+<div class="row">
+<select id="mode" onchange="S.mode=this.value">
+<option value="forage">Forage Mode</option>
+<option value="defend">Defend Mode</option>
+<option value="expand">Expand Mode</option>
+<option value="swarm">Swarm Mode</option>
+</select>
+</div>
+<div class="row">
+<button onclick="S.evapRate=Math.max(.9,S.evapRate-.02)">🔥Evap+</button>
+<button onclick="S.evapRate=Math.min(.99,S.evapRate+.02)">❄️Evap-</button>
+<button onclick="S.speed=S.speed===1?3:1" id="speedBtn">⚡Speed</button>
+</div>
+<div style="margin-top:5px;font-size:9px;color:#888" id="info">Ants follow pheromone trails</div>
+</div>
+
+<div class="p" style="bottom:8px;left:8px;width:280px">
+<div style="color:#0ff;font-size:10px;margin-bottom:4px">📊 COLONY STATUS</div>
+<div id="colonies"></div>
+</div>
+
+<div class="p" style="bottom:8px;right:8px;width:180px">
+<div style="color:#f0f;font-size:10px;margin-bottom:4px">🧬 EVOLUTION</div>
+<div class="row">
+<div class="stat" style="border-color:#f0f"><div class="val" id="speed-stat">1.0</div><div class="lbl">Speed</div></div>
+<div class="stat" style="border-color:#ff0"><div class="val" id="sense-stat">1.0</div><div class="lbl">Sense</div></div>
+</div>
+<div style="font-size:9px;color:#888;margin-top:4px" id="evo-info">Traits evolve over generations</div>
+</div>
+
+<script>
+const T={v3:(x,y,z)=>new THREE.Vector3(x,y,z),rnd:(a,b)=>a+Math.random()*(b-a),pick:a=>a[Math.floor(Math.random()*a.length)],clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),dist:(a,b)=>Math.sqrt((a.x-b.x)**2+(a.z-b.z)**2)};
+
+const COLORS={
+  colony:[0x00ff00,0x00aaff,0xffaa00,0xff00ff,0xff0000,0x00ffaa],
+  food:0xffff00,
+  predator:0xff0000,
+  pheromone:0xff8800
+};
+
+const S={
+  ants:[],colonies:[],foods:[],predators:[],pheromones:[],
+  mode:'forage',evapRate:.97,speed:1,gen:1,
+  totalStored:0,avgSpeed:1,avgSense:1,
+
+  init(){
+    this.sc=new THREE.Scene();
+    this.ca=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.1,1000);
+    this.rn=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true});
+    this.rn.setSize(innerWidth,innerHeight);
+    this.rn.setClearColor(0x000800);
+    this.ca.position.set(0,120,80);
+    this.ca.lookAt(0,0,0);
+
+    // Lights
+    this.sc.add(new THREE.AmbientLight(0x202020));
+    const dl=new THREE.DirectionalLight(0xffffff,.6);dl.position.set(50,100,50);
+    this.sc.add(dl);
+
+    // Ground
+    const ground=new THREE.Mesh(
+      new THREE.PlaneGeometry(200,200,50,50),
+      new THREE.MeshPhongMaterial({color:0x1a0f00,wireframe:false})
+    );
+    ground.rotation.x=-Math.PI/2;
+    this.sc.add(ground);
+
+    // Grid
+    const grid=new THREE.GridHelper(200,40,0x003300,0x001a00);
+    this.sc.add(grid);
+
+    // Pheromone system (instanced)
+    this.pheroGeo=new THREE.PlaneGeometry(2,2);
+    this.pheroMat=new THREE.MeshBasicMaterial({color:COLORS.pheromone,transparent:true,opacity:.3,side:THREE.DoubleSide});
+
+    // Start with one colony
+    this.addColony();
+    this.addFood(8);
+
+    this.animate();
+    setInterval(()=>this.tick(),50);
+  },
+
+  addColony(){
+    const idx=this.colonies.length;
+    const col=COLORS.colony[idx%COLORS.colony.length];
+    const pos=T.v3(T.rnd(-60,60),0,T.rnd(-60,60));
+
+    // Nest mesh
+    const nest=new THREE.Mesh(
+      new THREE.DodecahedronGeometry(5),
+      new THREE.MeshPhongMaterial({color:col,emissive:col,emissiveIntensity:.3})
+    );
+    nest.position.copy(pos);
+    nest.position.y=3;
+    this.sc.add(nest);
+
+    const colony={id:idx,pos,nest,color:col,stored:0,ants:0,
+      traits:{speed:1+T.rnd(-.2,.2),sense:1+T.rnd(-.2,.2),strength:1}};
+    this.colonies.push(colony);
+
+    // Initial ants
+    for(let i=0;i<15;i++)this.spawnAnt(colony);
+
+    this.updateUI();
+  },
+
+  spawnAnt(colony){
+    const ant=new THREE.Mesh(
+      new THREE.ConeGeometry(.4,.8,4),
+      new THREE.MeshPhongMaterial({color:colony.color})
+    );
+    const a=Math.random()*Math.PI*2;
+    ant.position.set(colony.pos.x+Math.cos(a)*3,.4,colony.pos.z+Math.sin(a)*3);
+    ant.rotation.x=Math.PI/2;
+    this.sc.add(ant);
+
+    const speed=colony.traits.speed*(1+T.rnd(-.1,.1));
+    const sense=colony.traits.sense*(1+T.rnd(-.1,.1));
+
+    this.ants.push({
+      mesh:ant,colony,
+      state:'search',// search, toFood, toNest, flee
+      target:null,
+      carrying:false,
+      dir:Math.random()*Math.PI*2,
+      speed,sense,
+      age:0,maxAge:500+Math.random()*500
+    });
+    colony.ants++;
+  },
+
+  addAnts(n){
+    if(this.colonies.length===0)return;
+    const col=T.pick(this.colonies);
+    for(let i=0;i<n;i++)this.spawnAnt(col);
+    this.updateUI();
+  },
+
+  addFood(n){
+    for(let i=0;i<n;i++){
+      const food=new THREE.Mesh(
+        new THREE.SphereGeometry(2,8,8),
+        new THREE.MeshPhongMaterial({color:COLORS.food,emissive:0x444400})
+      );
+      food.position.set(T.rnd(-80,80),2,T.rnd(-80,80));
+      this.sc.add(food);
+      this.foods.push({mesh:food,amount:20+Math.floor(Math.random()*30)});
+    }
+    this.updateUI();
+  },
+
+  addPredator(){
+    const pred=new THREE.Mesh(
+      new THREE.OctahedronGeometry(3),
+      new THREE.MeshPhongMaterial({color:COLORS.predator,emissive:0x440000})
+    );
+    pred.position.set(T.rnd(-70,70),3,T.rnd(-70,70));
+    this.sc.add(pred);
+    this.predators.push({mesh:pred,dir:Math.random()*Math.PI*2,kills:0});
+  },
+
+  dropPheromone(x,z,strength,type='food'){
+    // Check for existing pheromone nearby
+    for(let p of this.pheromones){
+      if(T.dist({x,z},p)<3){
+        p.strength=Math.min(2,p.strength+strength*.5);
+        return;
+      }
+    }
+
+    const mesh=new THREE.Mesh(this.pheroGeo,this.pheroMat.clone());
+    mesh.position.set(x,.1,z);
+    mesh.rotation.x=-Math.PI/2;
+    mesh.material.opacity=strength*.3;
+    mesh.material.color.setHex(type==='food'?0xff8800:0x00ff00);
+    this.sc.add(mesh);
+    this.pheromones.push({mesh,x,z,strength,type});
+  },
+
+  findPheromone(ant){
+    let best=null,bestScore=0;
+    const range=10*ant.sense;
+
+    for(let p of this.pheromones){
+      const d=T.dist(ant.mesh.position,p);
+      if(d<range&&d>1){
+        // Prefer pheromones in front of ant
+        const toP=Math.atan2(p.z-ant.mesh.position.z,p.x-ant.mesh.position.x);
+        const angleDiff=Math.abs(toP-ant.dir);
+        const score=p.strength/(d*.5)*(angleDiff<1?2:1);
+        if(score>bestScore){best=p;bestScore=score}
+      }
+    }
+    return best;
+  },
+
+  tick(){
+    for(let i=0;i<this.speed;i++)this.update();
+    this.updateUI();
+  },
+
+  update(){
+    // Update ants
+    for(let i=this.ants.length-1;i>=0;i--){
+      const ant=this.ants[i];
+      ant.age++;
+
+      // Death
+      if(ant.age>ant.maxAge){
+        this.sc.remove(ant.mesh);
+        ant.colony.ants--;
+        this.ants.splice(i,1);
+        continue;
+      }
+
+      const pos=ant.mesh.position;
+      let targetDir=ant.dir;
+
+      // Check for predators (flee)
+      if(this.mode!=='defend'){
+        for(let pred of this.predators){
+          if(T.dist(pos,pred.mesh.position)<15){
+            ant.state='flee';
+            targetDir=Math.atan2(pos.z-pred.mesh.position.z,pos.x-pred.mesh.position.x);
+          }
+        }
+      }
+
+      // State machine
+      if(ant.state==='search'){
+        // Look for food
+        for(let f of this.foods){
+          if(T.dist(pos,f.mesh.position)<8*ant.sense){
+            ant.target=f;
+            ant.state='toFood';
+            break;
+          }
+        }
+        // Follow pheromones
+        if(ant.state==='search'){
+          const p=this.findPheromone(ant);
+          if(p){
+            targetDir=Math.atan2(p.z-pos.z,p.x-pos.x);
+          }else{
+            targetDir+=T.rnd(-.5,.5);
+          }
+        }
+      }
+      else if(ant.state==='toFood'){
+        if(!ant.target||ant.target.amount<=0){
+          ant.state='search';
+          ant.target=null;
+        }else{
+          targetDir=Math.atan2(ant.target.mesh.position.z-pos.z,ant.target.mesh.position.x-pos.x);
+          if(T.dist(pos,ant.target.mesh.position)<3){
+            ant.target.amount--;
+            ant.carrying=true;
+            ant.state='toNest';
+            ant.mesh.material.emissive.setHex(0x888800);
+            if(ant.target.amount<=0){
+              this.sc.remove(ant.target.mesh);
+              this.foods.splice(this.foods.indexOf(ant.target),1);
+            }
+          }
+        }
+      }
+      else if(ant.state==='toNest'){
+        targetDir=Math.atan2(ant.colony.pos.z-pos.z,ant.colony.pos.x-pos.x);
+        // Drop pheromone trail
+        if(Math.random()<.3)this.dropPheromone(pos.x,pos.z,.5,'food');
+
+        if(T.dist(pos,ant.colony.pos)<5){
+          ant.carrying=false;
+          ant.colony.stored++;
+          this.totalStored++;
+          ant.mesh.material.emissive.setHex(0x000000);
+          ant.state='search';
+
+          // Reproduction
+          if(ant.colony.stored%10===0&&ant.colony.ants<100){
+            this.spawnAnt(ant.colony);
+          }
+        }
+      }
+      else if(ant.state==='flee'){
+        if(Math.random()<.05)ant.state='search';
+      }
+
+      // Swarm mode: move toward colony center
+      if(this.mode==='swarm'){
+        targetDir=Math.atan2(ant.colony.pos.z-pos.z,ant.colony.pos.x-pos.x)+T.rnd(-.3,.3);
+      }
+
+      // Defend mode: attack predators
+      if(this.mode==='defend'){
+        for(let pred of this.predators){
+          if(T.dist(pos,pred.mesh.position)<20){
+            targetDir=Math.atan2(pred.mesh.position.z-pos.z,pred.mesh.position.x-pos.x);
+            if(T.dist(pos,pred.mesh.position)<2){
+              pred.kills--;// ants damage predator
+            }
+          }
+        }
+      }
+
+      // Move
+      ant.dir+=(targetDir-ant.dir)*.1;
+      const spd=ant.speed*.3;
+      pos.x+=Math.cos(ant.dir)*spd;
+      pos.z+=Math.sin(ant.dir)*spd;
+      pos.x=T.clamp(pos.x,-95,95);
+      pos.z=T.clamp(pos.z,-95,95);
+      ant.mesh.rotation.z=ant.dir+Math.PI/2;
+    }
+
+    // Update predators
+    for(let i=this.predators.length-1;i>=0;i--){
+      const pred=this.predators[i];
+
+      // Hunt nearest ant
+      let nearest=null,nearDist=Infinity;
+      for(let ant of this.ants){
+        const d=T.dist(pred.mesh.position,ant.mesh.position);
+        if(d<nearDist){nearDist=d;nearest=ant}
+      }
+
+      if(nearest&&nearDist<30){
+        pred.dir=Math.atan2(nearest.mesh.position.z-pred.mesh.position.z,nearest.mesh.position.x-pred.mesh.position.x);
+
+        // Kill ant
+        if(nearDist<3){
+          this.sc.remove(nearest.mesh);
+          nearest.colony.ants--;
+          this.ants.splice(this.ants.indexOf(nearest),1);
+          pred.kills++;
+        }
+      }else{
+        pred.dir+=T.rnd(-.2,.2);
+      }
+
+      pred.mesh.position.x+=Math.cos(pred.dir)*.15;
+      pred.mesh.position.z+=Math.sin(pred.dir)*.15;
+      pred.mesh.position.x=T.clamp(pred.mesh.position.x,-90,90);
+      pred.mesh.position.z=T.clamp(pred.mesh.position.z,-90,90);
+      pred.mesh.rotation.y+=.05;
+
+      // Predator dies if attacked enough
+      if(pred.kills<-20){
+        this.sc.remove(pred.mesh);
+        this.predators.splice(i,1);
+      }
+    }
+
+    // Evaporate pheromones
+    for(let i=this.pheromones.length-1;i>=0;i--){
+      const p=this.pheromones[i];
+      p.strength*=this.evapRate;
+      p.mesh.material.opacity=p.strength*.3;
+      if(p.strength<.05){
+        this.sc.remove(p.mesh);
+        this.pheromones.splice(i,1);
+      }
+    }
+
+    // Evolution: every 1000 food stored
+    if(this.totalStored>0&&this.totalStored%100===0){
+      this.gen++;
+      // Evolve traits based on successful ants
+      for(let col of this.colonies){
+        col.traits.speed+=T.rnd(-.05,.1);
+        col.traits.sense+=T.rnd(-.05,.1);
+        col.traits.speed=T.clamp(col.traits.speed,.5,2);
+        col.traits.sense=T.clamp(col.traits.sense,.5,2);
+      }
+    }
+
+    // Calculate averages
+    if(this.ants.length>0){
+      this.avgSpeed=this.ants.reduce((a,b)=>a+b.speed,0)/this.ants.length;
+      this.avgSense=this.ants.reduce((a,b)=>a+b.sense,0)/this.ants.length;
+    }
+
+    // Spawn more food occasionally
+    if(this.foods.length<3&&Math.random()<.02)this.addFood(1);
+  },
+
+  updateUI(){
+    document.getElementById('ants').textContent=this.ants.length;
+    document.getElementById('food').textContent=this.foods.reduce((a,b)=>a+b.amount,0);
+    document.getElementById('stored').textContent=this.totalStored;
+    document.getElementById('phero').textContent=this.pheromones.length;
+    document.getElementById('gen').textContent=this.gen;
+    document.getElementById('speed-stat').textContent=this.avgSpeed.toFixed(2);
+    document.getElementById('sense-stat').textContent=this.avgSense.toFixed(2);
+
+    // Colony list
+    document.getElementById('colonies').innerHTML=this.colonies.map((c,i)=>
+      `<div style="display:flex;align-items:center;gap:5px;margin:2px 0">
+        <div style="width:12px;height:12px;border-radius:50%;background:#${c.color.toString(16).padStart(6,'0')}"></div>
+        <span>Colony ${i+1}: ${c.ants} ants, ${c.stored} food</span>
+      </div>`
+    ).join('');
+
+    // Mode info
+    const infos={
+      forage:'Ants search for food and follow trails',
+      defend:'Ants attack predators aggressively',
+      expand:'Ants spread out to find new food',
+      swarm:'Ants cluster near their colony'
+    };
+    document.getElementById('info').textContent=infos[this.mode];
+    document.getElementById('evo-info').textContent=`Gen ${this.gen}: Speed/Sense evolve`;
+  },
+
+  animate(){
+    requestAnimationFrame(()=>this.animate());
+    const t=Date.now()*.001;
+
+    // Camera orbit
+    this.ca.position.x=Math.cos(t*.1)*100;
+    this.ca.position.z=Math.sin(t*.1)*100;
+    this.ca.position.y=80+Math.sin(t*.2)*20;
+    this.ca.lookAt(0,0,0);
+
+    // Animate colony nests
+    this.colonies.forEach((c,i)=>{
+      c.nest.rotation.y+=.01;
+      c.nest.scale.setScalar(1+Math.sin(t*2+i)*.1);
+    });
+
+    // Animate predators
+    this.predators.forEach(p=>{
+      p.mesh.scale.setScalar(1+Math.sin(t*5)*.1);
+    });
+
+    this.rn.render(this.sc,this.ca);
+  }
+};
+
+onload=()=>S.init();
+onresize=()=>{S.rn.setSize(innerWidth,innerHeight);S.ca.aspect=innerWidth/innerHeight;S.ca.updateProjectionMatrix()};
+</script></body></html>
