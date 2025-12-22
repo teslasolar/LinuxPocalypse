@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Git Fox - Level 5: GitFox vs Amazon</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#000;overflow:hidden;font:bold 14px monospace;color:#0f0}
+#c{position:fixed;inset:0}
+.hud{position:fixed;z-index:10;pointer-events:none}
+#shield-bar{top:20px;left:20px;width:200px;height:20px;border:2px solid #0f0;background:#001a00}
+#shield-fill{height:100%;background:linear-gradient(90deg,#f00,#ff0,#0f0);width:100%;transition:width .2s}
+#shield-label{top:22px;left:230px;color:#0f0;font-size:12px}
+#boost-bar{top:50px;left:20px;width:150px;height:12px;border:2px solid #08f;background:#001020}
+#boost-fill{height:100%;background:#08f;width:100%}
+#boost-label{top:50px;left:180px;color:#08f;font-size:11px}
+#score{top:20px;right:20px;font-size:24px;color:#ff0;text-align:right}
+#bombs{top:55px;right:20px;font-size:16px;color:#f80}
+#lives{bottom:20px;left:20px;font-size:20px;color:#0f0}
+#level-title{top:100px;left:50%;transform:translateX(-50%);font-size:28px;color:#f90;text-shadow:0 0 10px #f60;opacity:0;transition:opacity 1s}
+#crosshair{top:50%;left:50%;transform:translate(-50%,-50%);width:60px;height:60px}
+#radio{bottom:80px;left:50%;transform:translateX(-50%);background:rgba(0,10,20,.95);border:2px solid #0af;border-radius:8px;padding:10px 20px;opacity:0;transition:opacity .5s}
+#radio-face{width:50px;height:50px;border:2px solid #08a;border-radius:50%;background:#001a2a;float:left;margin-right:15px;display:flex;align-items:center;justify-content:center;font-size:24px}
+#radio-text{color:#0af;font-size:14px;max-width:350px}
+#controls{bottom:20px;right:20px;font-size:10px;color:#888;text-align:right}
+#game-over{top:50%;left:50%;transform:translate(-50%,-50%);font-size:48px;color:#f00;text-shadow:0 0 20px #f00;display:none}
+#mission-complete{top:50%;left:50%;transform:translate(-50%,-50%);font-size:36px;color:#0f0;text-shadow:0 0 20px #0f0;display:none;text-align:center}
+#rival-status{top:90px;right:20px;font-size:12px;color:#f90;text-align:right;line-height:1.8}
+#team-status{top:90px;left:20px;font-size:12px;color:#0f0;line-height:1.8}
+#versus{top:50%;left:50%;transform:translate(-50%,-50%);font-size:48px;color:#fff;text-shadow:0 0 20px #f90,0 0 40px #f60;opacity:0;transition:opacity .5s}
+</style></head><body><canvas id="c"></canvas>
+
+<div class="hud" id="shield-bar"><div id="shield-fill"></div></div>
+<div class="hud" id="shield-label">SHIELD</div>
+
+<div class="hud" id="boost-bar"><div id="boost-fill"></div></div>
+<div class="hud" id="boost-label">BOOST</div>
+
+<div class="hud" id="score">00000</div>
+<div class="hud" id="bombs">BOMBS: 3</div>
+<div class="hud" id="lives">♦ ♦ ♦</div>
+
+<div class="hud" id="level-title">GITFOX vs AMAZON</div>
+<div class="hud" id="versus">⚔️ RIVAL SHOWDOWN ⚔️</div>
+
+<div class="hud" id="team-status"></div>
+<div class="hud" id="rival-status"></div>
+
+<svg class="hud" id="crosshair" viewBox="0 0 60 60">
+<circle cx="30" cy="30" r="25" stroke="#0f0" stroke-width="2" fill="none" opacity="0.5"/>
+<line x1="30" y1="0" x2="30" y2="20" stroke="#0f0" stroke-width="2"/>
+<line x1="30" y1="40" x2="30" y2="60" stroke="#0f0" stroke-width="2"/>
+<line x1="0" y1="30" x2="20" y2="30" stroke="#0f0" stroke-width="2"/>
+<line x1="40" y1="30" x2="60" y2="30" stroke="#0f0" stroke-width="2"/>
+<circle cx="30" cy="30" r="3" fill="#0f0"/>
+</svg>
+
+<div class="hud" id="radio">
+<div id="radio-face">🦊</div>
+<div id="radio-text">Enemy team detected!</div>
+</div>
+
+<div class="hud" id="game-over">GAME OVER</div>
+<div class="hud" id="mission-complete">VICTORY!<br><span style="font-size:20px">AMAZON DEFEATED</span><br><span style="font-size:16px">Score: <span id="final-score">0</span></span></div>
+
+<div class="hud" id="controls">
+WASD/LStick: Move | L3: Barrel Roll<br>
+Mouse/RStick: Aim | Click/RB: Fire | B: Bomb
+</div>
+
+<script>
+const T={v3:(x,y,z)=>new THREE.Vector3(x,y,z),rnd:(a,b)=>a+Math.random()*(b-a),clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),lerp:(a,b,t)=>a+(b-a)*t};
+
+// Team GitFox
+const GITFOX=[
+  {name:'Fox',emoji:'🦊',color:0x00ff00,status:'active'},
+  {name:'Falco',emoji:'🦅',color:0x4444ff,status:'active'},
+  {name:'Peppy',emoji:'🐰',color:0xffaa00,status:'active'},
+  {name:'Slippy',emoji:'🐸',color:0x00ffaa,status:'active'}
+];
+
+// Team Amazon (rivals)
+const AMAZON=[
+  {name:'Bezos',emoji:'📦',color:0xff6600,taunt:'Your repository is MINE!',defeat:'No... my stock options!'},
+  {name:'Prime',emoji:'🚀',color:0x00aaff,taunt:'Free two-day destruction!',defeat:'Delivery... failed...'},
+  {name:'Alexa',emoji:'🔊',color:0x00ffff,taunt:'I heard you wanted to lose!',defeat:'I... did not understand...'},
+  {name:'Lambda',emoji:'λ',color:0xffff00,taunt:'Serverless means YOU!',defeat:'Function... timed out...'}
+];
+
+const G={
+  shield:100,
+  boost:100,
+  score:0,
+  bombs:3,
+  lives:3,
+  gameOver:false,
+  complete:false,
+  barrelRolling:false,
+  barrelRollTimer:0,
+  invincible:0,
+
+  // Rivals
+  rivals:[],
+  rivalsDefeated:0,
+
+  // Teammates (AI controlled)
+  teammates:[],
+
+  bullets:[],
+  particles:[],
+  enemyBullets:[],
+
+  input:{lx:0,ly:0,rx:0,ry:0,buttons:{}},
+  mouse:{x:0,y:0,locked:false},
+  keys:{},
+  gamepad:null,
+
+  shipX:0,
+  shipY:0,
+  shipTargetX:0,
+  shipTargetY:0,
+
+  init(){
+    this.sc=new THREE.Scene();
+    this.ca=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.1,3000);
+    this.rn=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true});
+    this.rn.setSize(innerWidth,innerHeight);
+    this.rn.setClearColor(0x050510);
+
+    // Space lighting
+    this.sc.add(new THREE.AmbientLight(0x222244,.5));
+    const sun=new THREE.DirectionalLight(0xffffee,.8);
+    sun.position.set(100,50,50);
+    this.sc.add(sun);
+
+    // Starfield
+    this.createStarfield();
+
+    // Space station in background
+    this.createStation();
+
+    // Planet below
+    this.createPlanet();
+
+    // Player ship
+    this.ship=this.createShip(0x00ff00);
+    this.ship.position.set(0,0,0);
+    this.sc.add(this.ship);
+
+    // Spawn teammates
+    this.spawnTeammates();
+
+    // Spawn rivals
+    this.spawnRivals();
+
+    // Camera
+    this.ca.position.set(0,20,40);
+    this.ca.lookAt(0,0,-30);
+
+    // Input
+    window.addEventListener('gamepadconnected',e=>this.gamepad=e.gamepad);
+    window.addEventListener('gamepaddisconnected',()=>this.gamepad=null);
+    window.addEventListener('keydown',e=>{
+      this.keys[e.code]=true;
+      if(e.code==='KeyQ'||e.code==='ShiftLeft')this.barrelRoll();
+      if(e.code==='KeyB')this.useBomb();
+    });
+    window.addEventListener('keyup',e=>this.keys[e.code]=false);
+    document.addEventListener('click',()=>{
+      if(!this.mouse.locked)document.body.requestPointerLock();
+      else this.fire();
+    });
+    document.addEventListener('pointerlockchange',()=>{
+      this.mouse.locked=!!document.pointerLockElement;
+    });
+    document.addEventListener('mousemove',e=>{
+      if(this.mouse.locked){
+        this.mouse.x+=e.movementX*.002;
+        this.mouse.y+=e.movementY*.002;
+        this.mouse.x=T.clamp(this.mouse.x,-1,1);
+        this.mouse.y=T.clamp(this.mouse.y,-1,1);
+      }
+    });
+
+    // Intro sequence
+    setTimeout(()=>{
+      document.getElementById('level-title').style.opacity=1;
+    },500);
+    setTimeout(()=>{
+      document.getElementById('level-title').style.opacity=0;
+      document.getElementById('versus').style.opacity=1;
+    },2000);
+    setTimeout(()=>{
+      document.getElementById('versus').style.opacity=0;
+      this.showRadio('📦','Well well... GitFox! Your open source ends here!',0xff6600);
+      this.battleStarted=true;
+    },4000);
+    setTimeout(()=>{
+      this.showRadio('🦊','Team Amazon! We\'ll push you to /dev/null!');
+    },6500);
+
+    this.updateStatusDisplays();
+    this.animate();
+  },
+
+  createShip(color,isEnemy=false){
+    const g=new THREE.Group();
+
+    const body=new THREE.Mesh(
+      new THREE.ConeGeometry(1.5,6,4),
+      new THREE.MeshPhongMaterial({color:isEnemy?0x333333:0xcccccc})
+    );
+    body.rotation.x=-Math.PI/2;
+    body.rotation.y=Math.PI/4;
+    g.add(body);
+
+    const wingGeo=new THREE.BoxGeometry(8,.2,2);
+    const wingMat=new THREE.MeshPhongMaterial({color:color});
+    const leftWing=new THREE.Mesh(wingGeo,wingMat);
+    leftWing.position.set(-2,0,1);
+    leftWing.rotation.z=.1;
+    g.add(leftWing);
+
+    const rightWing=new THREE.Mesh(wingGeo,wingMat);
+    rightWing.position.set(2,0,1);
+    rightWing.rotation.z=-.1;
+    g.add(rightWing);
+
+    // Enemy ships have different wing style
+    if(isEnemy){
+      const finGeo=new THREE.BoxGeometry(.5,6,2);
+      const leftFin=new THREE.Mesh(finGeo,wingMat);
+      leftFin.position.set(-4,0,1);
+      g.add(leftFin);
+      const rightFin=new THREE.Mesh(finGeo,wingMat);
+      rightFin.position.set(4,0,1);
+      g.add(rightFin);
+    }
+
+    const cockpit=new THREE.Mesh(
+      new THREE.SphereGeometry(.8,8,8),
+      new THREE.MeshPhongMaterial({color:isEnemy?0xff4400:0x00ff88,emissive:isEnemy?0x441100:0x004422})
+    );
+    cockpit.position.z=-1;
+    cockpit.scale.set(1,.5,1);
+    g.add(cockpit);
+
+    for(let i=-1;i<=1;i+=2){
+      const eng=new THREE.Mesh(
+        new THREE.CylinderGeometry(.3,.5,1.5),
+        new THREE.MeshPhongMaterial({color:0x666666})
+      );
+      eng.rotation.x=Math.PI/2;
+      eng.position.set(i*1.5,-.3,3);
+      g.add(eng);
+
+      const glow=new THREE.Mesh(
+        new THREE.CylinderGeometry(.2,.4,.5),
+        new THREE.MeshBasicMaterial({color:isEnemy?0xff6600:0x00aaff})
+      );
+      glow.rotation.x=Math.PI/2;
+      glow.position.set(i*1.5,-.3,3.8);
+      glow.userData.isGlow=true;
+      g.add(glow);
+    }
+
+    return g;
+  },
+
+  createStarfield(){
+    const starGeo=new THREE.BufferGeometry();
+    const starPos=[];
+    for(let i=0;i<2000;i++){
+      starPos.push(
+        T.rnd(-800,800),
+        T.rnd(-400,400),
+        T.rnd(-800,200)
+      );
+    }
+    starGeo.setAttribute('position',new THREE.Float32BufferAttribute(starPos,3));
+    this.starField=new THREE.Points(
+      starGeo,
+      new THREE.PointsMaterial({color:0xffffff,size:.8})
+    );
+    this.sc.add(this.starField);
+  },
+
+  createStation(){
+    const g=new THREE.Group();
+
+    // Main ring
+    const ring=new THREE.Mesh(
+      new THREE.TorusGeometry(80,8,8,32),
+      new THREE.MeshPhongMaterial({color:0x445566})
+    );
+    ring.rotation.x=Math.PI/2;
+    g.add(ring);
+
+    // Central hub
+    const hub=new THREE.Mesh(
+      new THREE.CylinderGeometry(15,15,40,16),
+      new THREE.MeshPhongMaterial({color:0x556677})
+    );
+    g.add(hub);
+
+    // Spokes
+    for(let i=0;i<4;i++){
+      const spoke=new THREE.Mesh(
+        new THREE.BoxGeometry(4,4,70),
+        new THREE.MeshPhongMaterial({color:0x445566})
+      );
+      spoke.rotation.y=i*Math.PI/2;
+      spoke.position.x=Math.cos(i*Math.PI/2)*35;
+      spoke.position.z=Math.sin(i*Math.PI/2)*35;
+      g.add(spoke);
+    }
+
+    // Solar panels
+    for(let i=0;i<8;i++){
+      const panel=new THREE.Mesh(
+        new THREE.BoxGeometry(20,1,30),
+        new THREE.MeshPhongMaterial({color:0x2244aa})
+      );
+      const angle=i*Math.PI/4;
+      panel.position.set(Math.cos(angle)*90,0,Math.sin(angle)*90);
+      panel.rotation.y=angle;
+      g.add(panel);
+    }
+
+    g.position.set(0,50,-300);
+    g.rotation.x=.3;
+    this.station=g;
+    this.sc.add(g);
+  },
+
+  createPlanet(){
+    const planet=new THREE.Mesh(
+      new THREE.SphereGeometry(200,32,32),
+      new THREE.MeshPhongMaterial({color:0x2244aa})
+    );
+    planet.position.set(-100,-350,-200);
+    this.sc.add(planet);
+
+    // Atmosphere glow
+    const atmo=new THREE.Mesh(
+      new THREE.SphereGeometry(210,32,32),
+      new THREE.MeshBasicMaterial({color:0x4488ff,transparent:true,opacity:.2})
+    );
+    atmo.position.copy(planet.position);
+    this.sc.add(atmo);
+  },
+
+  spawnTeammates(){
+    // Falco, Peppy, Slippy
+    for(let i=1;i<GITFOX.length;i++){
+      const tm=GITFOX[i];
+      const ship=this.createShip(tm.color);
+      ship.position.set(-30+i*20,T.rnd(-10,10),20+i*10);
+      ship.userData={
+        name:tm.name,
+        emoji:tm.emoji,
+        hp:50,
+        target:null,
+        fireTimer:0,
+        evadeTimer:0,
+        basePos:ship.position.clone()
+      };
+      this.sc.add(ship);
+      this.teammates.push(ship);
+    }
+  },
+
+  spawnRivals(){
+    AMAZON.forEach((r,i)=>{
+      const ship=this.createShip(r.color,true);
+      ship.position.set(-40+i*25,T.rnd(-5,15),-150-i*20);
+      ship.userData={
+        name:r.name,
+        emoji:r.emoji,
+        color:r.color,
+        taunt:r.taunt,
+        defeat:r.defeat,
+        hp:40+i*10,// Bezos has most HP
+        maxHp:40+i*10,
+        target:null,
+        fireTimer:T.rnd(0,60),
+        state:'approach',// approach, combat, evade
+        stateTimer:0,
+        hasTaunted:false
+      };
+      this.sc.add(ship);
+      this.rivals.push(ship);
+    });
+  },
+
+  updateStatusDisplays(){
+    // Team status
+    let teamHtml='<span style="color:#0f0">— TEAM GITFOX —</span><br>';
+    teamHtml+=`<span style="color:#0f0">🦊 Fox: ${this.shield>0?'ACTIVE':'DOWN'}</span><br>`;
+    this.teammates.forEach(tm=>{
+      const status=tm.userData.hp>0?'ACTIVE':'DOWN';
+      const color=tm.userData.hp>0?'#0f0':'#666';
+      teamHtml+=`<span style="color:${color}">${tm.userData.emoji} ${tm.userData.name}: ${status}</span><br>`;
+    });
+    document.getElementById('team-status').innerHTML=teamHtml;
+
+    // Rival status
+    let rivalHtml='<span style="color:#f90">— TEAM AMAZON —</span><br>';
+    this.rivals.forEach(r=>{
+      const pct=Math.max(0,Math.floor(r.userData.hp/r.userData.maxHp*100));
+      const status=r.userData.hp>0?`${pct}%`:'DEFEATED';
+      const color=r.userData.hp>0?'#f90':'#666';
+      rivalHtml+=`<span style="color:${color}">${r.userData.emoji} ${r.userData.name}: ${status}</span><br>`;
+    });
+    document.getElementById('rival-status').innerHTML=rivalHtml;
+  },
+
+  fire(){
+    if(this.gameOver||this.complete)return;
+
+    const bullet=new THREE.Mesh(
+      new THREE.SphereGeometry(.3),
+      new THREE.MeshBasicMaterial({color:0x00ff00})
+    );
+    bullet.position.copy(this.ship.position);
+    bullet.position.z-=5;
+
+    const aimX=this.shipX*40;
+    const aimY=this.shipY*25;
+    bullet.userData={
+      vel:T.v3(aimX*.015,-aimY*.015,-4),
+      life:80,
+      isPlayer:true
+    };
+
+    this.sc.add(bullet);
+    this.bullets.push(bullet);
+  },
+
+  useBomb(){
+    if(this.bombs<=0||this.gameOver)return;
+    this.bombs--;
+    document.getElementById('bombs').textContent='BOMBS: '+this.bombs;
+
+    // Damage all rivals
+    this.rivals.forEach(r=>{
+      if(r.userData.hp>0){
+        r.userData.hp-=20;
+        this.spawnExplosion(r.position,.5);
+        if(r.userData.hp<=0){
+          this.defeatRival(r);
+        }
+      }
+    });
+
+    // Clear enemy bullets
+    this.enemyBullets.forEach(b=>{this.sc.remove(b);b.userData.dead=true});
+    this.enemyBullets=[];
+
+    this.updateStatusDisplays();
+    document.body.style.background='#fff';
+    setTimeout(()=>document.body.style.background='#000',100);
+  },
+
+  defeatRival(rival){
+    this.rivalsDefeated++;
+    this.addScore(500);
+    this.spawnExplosion(rival.position,1);
+    this.showRadio(rival.userData.emoji,rival.userData.defeat,rival.userData.color);
+
+    setTimeout(()=>{
+      this.sc.remove(rival);
+      rival.userData.hp=-999;
+
+      // Check victory
+      if(this.rivalsDefeated>=4){
+        setTimeout(()=>{
+          this.complete=true;
+          this.addScore(2000);
+          document.getElementById('mission-complete').style.display='block';
+          document.getElementById('final-score').textContent=this.score;
+          this.showRadio('🦊','Team Amazon has been defeated! Victory!');
+        },1500);
+      }else{
+        // Teammates celebrate
+        const alive=this.teammates.filter(t=>t.userData.hp>0);
+        if(alive.length>0){
+          const tm=alive[Math.floor(Math.random()*alive.length)];
+          const cheers=[
+            'Yeah! One down!',
+            'Nice shooting Fox!',
+            'Keep it up!',
+            'That\'s how we do it!'
+          ];
+          setTimeout(()=>{
+            this.showRadio(tm.userData.emoji,cheers[Math.floor(Math.random()*cheers.length)]);
+          },1000);
+        }
+      }
+    },500);
+  },
+
+  barrelRoll(){
+    if(this.barrelRolling||this.boost<20)return;
+    this.barrelRolling=true;
+    this.barrelRollTimer=0;
+    this.boost-=20;
+    this.invincible=30;
+  },
+
+  spawnExplosion(pos,scale=1){
+    for(let i=0;i<20*scale;i++){
+      const p=new THREE.Mesh(
+        new THREE.SphereGeometry(.5*scale),
+        new THREE.MeshBasicMaterial({color:Math.random()>.5?0xff6600:0xffff00})
+      );
+      p.position.copy(pos);
+      p.userData={
+        vel:T.v3(T.rnd(-2,2)*scale,T.rnd(-2,2)*scale,T.rnd(-2,2)*scale),
+        life:40
+      };
+      this.sc.add(p);
+      this.particles.push(p);
+    }
+  },
+
+  addScore(pts){
+    this.score+=pts;
+    document.getElementById('score').textContent=String(this.score).padStart(5,'0');
+  },
+
+  takeDamage(amt){
+    if(this.invincible>0)return;
+    this.shield-=amt;
+    this.invincible=30;
+    document.getElementById('shield-fill').style.width=Math.max(0,this.shield)+'%';
+
+    if(this.shield<=0){
+      this.lives--;
+      if(this.lives<=0){
+        this.gameOver=true;
+        document.getElementById('game-over').style.display='block';
+        this.showRadio('📦','Ha! GitFox is finished! Amazon wins!',0xff6600);
+      }else{
+        this.shield=100;
+        document.getElementById('shield-fill').style.width='100%';
+        this.updateLives();
+        this.showRadio('🐰','Fox! Are you okay? Hang in there!');
+      }
+    }
+    this.updateStatusDisplays();
+  },
+
+  updateLives(){
+    document.getElementById('lives').textContent='♦ '.repeat(this.lives).trim();
+  },
+
+  showRadio(face,text,borderColor=null){
+    const radio=document.getElementById('radio');
+    document.getElementById('radio-face').textContent=face;
+    document.getElementById('radio-text').textContent=text;
+    if(borderColor){
+      radio.style.borderColor='#'+borderColor.toString(16).padStart(6,'0');
+      document.getElementById('radio-text').style.color='#'+borderColor.toString(16).padStart(6,'0');
+    }else{
+      radio.style.borderColor='#0af';
+      document.getElementById('radio-text').style.color='#0af';
+    }
+    radio.style.opacity=1;
+    setTimeout(()=>radio.style.opacity=0,3500);
+  },
+
+  pollGamepad(){
+    const gps=navigator.getGamepads();
+    if(gps[0])this.gamepad=gps[0];
+    if(!this.gamepad)return;
+
+    const gp=this.gamepad;
+    const dz=.15;
+
+    this.input.lx=Math.abs(gp.axes[0])<dz?0:gp.axes[0];
+    this.input.ly=Math.abs(gp.axes[1])<dz?0:gp.axes[1];
+    this.input.rx=Math.abs(gp.axes[2])<dz?0:gp.axes[2];
+    this.input.ry=Math.abs(gp.axes[3])<dz?0:gp.axes[3];
+
+    const wasRB=this.input.buttons.rb;
+    const wasL3=this.input.buttons.l3;
+    const wasB=this.input.buttons.b;
+    this.input.buttons.rb=gp.buttons[5]?.pressed;
+    this.input.buttons.l3=gp.buttons[10]?.pressed;
+    this.input.buttons.b=gp.buttons[1]?.pressed;
+
+    if(this.input.buttons.rb&&!wasRB)this.fire();
+    if(this.input.buttons.l3&&!wasL3)this.barrelRoll();
+    if(this.input.buttons.b&&!wasB)this.useBomb();
+  },
+
+  updateRivals(){
+    this.rivals.forEach(r=>{
+      if(r.userData.hp<=0)return;
+
+      const t=Date.now()*.001;
+      r.userData.stateTimer--;
+
+      // Taunt on first approach
+      if(!r.userData.hasTaunted&&r.position.z>-80){
+        r.userData.hasTaunted=true;
+        this.showRadio(r.userData.emoji,r.userData.taunt,r.userData.color);
+      }
+
+      // State machine
+      if(r.userData.state==='approach'){
+        // Move towards battle zone
+        r.position.z+=1.5;
+        r.position.x+=Math.sin(t+r.position.z*.05)*0.5;
+        if(r.position.z>-50){
+          r.userData.state='combat';
+          r.userData.stateTimer=200;
+        }
+      }else if(r.userData.state==='combat'){
+        // Circle and attack
+        const angle=t*.5+this.rivals.indexOf(r)*Math.PI/2;
+        const radius=60+Math.sin(t)*20;
+        r.position.x=T.lerp(r.position.x,Math.cos(angle)*radius,.02);
+        r.position.y=T.lerp(r.position.y,Math.sin(angle*.7)*20,.02);
+        r.position.z=T.lerp(r.position.z,-30+Math.sin(t*.3)*20,.02);
+
+        // Fire at player
+        r.userData.fireTimer--;
+        if(r.userData.fireTimer<=0){
+          r.userData.fireTimer=30+T.rnd(0,40);
+          this.rivalFire(r,this.ship.position);
+        }
+
+        // Sometimes target teammates
+        if(Math.random()<.005&&this.teammates.some(tm=>tm.userData.hp>0)){
+          const alive=this.teammates.filter(tm=>tm.userData.hp>0);
+          r.userData.target=alive[Math.floor(Math.random()*alive.length)];
+        }
+
+        if(r.userData.stateTimer<=0){
+          r.userData.state='evade';
+          r.userData.stateTimer=80;
+        }
+      }else if(r.userData.state==='evade'){
+        // Evade - fly away and loop back
+        r.position.z-=2;
+        r.position.x+=r.position.x>0?2:-2;
+        r.position.y=T.lerp(r.position.y,Math.sin(t*2)*30,.05);
+
+        if(r.userData.stateTimer<=0){
+          r.userData.state='combat';
+          r.userData.stateTimer=200;
+        }
+      }
+
+      // Look towards player
+      const dir=this.ship.position.clone().sub(r.position);
+      r.rotation.y=Math.atan2(dir.x,dir.z);
+      r.rotation.x=Math.atan2(dir.y,Math.sqrt(dir.x*dir.x+dir.z*dir.z))*.5;
+
+      // Engine glow
+      r.children.forEach(c=>{
+        if(c.userData.isGlow){
+          c.scale.z=.8+Math.random()*.4;
+        }
+      });
+    });
+  },
+
+  rivalFire(rival,target){
+    const bullet=new THREE.Mesh(
+      new THREE.SphereGeometry(.4),
+      new THREE.MeshBasicMaterial({color:rival.userData.color})
+    );
+    bullet.position.copy(rival.position);
+    const dir=target.clone().sub(rival.position).normalize();
+    bullet.userData={
+      vel:dir.multiplyScalar(2.5),
+      life:80
+    };
+    this.sc.add(bullet);
+    this.enemyBullets.push(bullet);
+  },
+
+  updateTeammates(){
+    this.teammates.forEach(tm=>{
+      if(tm.userData.hp<=0)return;
+
+      const t=Date.now()*.001;
+      const idx=this.teammates.indexOf(tm);
+
+      // Follow player in formation
+      const formX=-20+idx*15;
+      const formY=Math.sin(t+idx)*5;
+      const formZ=15+idx*8;
+
+      tm.position.x=T.lerp(tm.position.x,this.ship.position.x+formX,.02);
+      tm.position.y=T.lerp(tm.position.y,this.ship.position.y+formY,.02);
+      tm.position.z=T.lerp(tm.position.z,this.ship.position.z+formZ,.02);
+
+      // Fire at nearest rival
+      tm.userData.fireTimer--;
+      if(tm.userData.fireTimer<=0){
+        tm.userData.fireTimer=50+T.rnd(0,30);
+        const alive=this.rivals.filter(r=>r.userData.hp>0);
+        if(alive.length>0){
+          const target=alive[Math.floor(Math.random()*alive.length)];
+          this.teammateFire(tm,target);
+        }
+      }
+
+      // Evade incoming bullets
+      this.enemyBullets.forEach(b=>{
+        if(b.position.distanceTo(tm.position)<15){
+          tm.position.x+=T.rnd(-2,2);
+          tm.position.y+=T.rnd(-1,1);
+        }
+      });
+
+      // Look at nearest rival
+      const alive=this.rivals.filter(r=>r.userData.hp>0);
+      if(alive.length>0){
+        let nearest=alive[0];
+        let minDist=nearest.position.distanceTo(tm.position);
+        alive.forEach(r=>{
+          const d=r.position.distanceTo(tm.position);
+          if(d<minDist){minDist=d;nearest=r;}
+        });
+        const dir=nearest.position.clone().sub(tm.position);
+        tm.rotation.y=Math.atan2(dir.x,dir.z);
+      }
+
+      // Engine glow
+      tm.children.forEach(c=>{
+        if(c.userData.isGlow){
+          c.scale.z=.8+Math.random()*.4;
+        }
+      });
+    });
+  },
+
+  teammateFire(tm,target){
+    const bullet=new THREE.Mesh(
+      new THREE.SphereGeometry(.25),
+      new THREE.MeshBasicMaterial({color:0x00ff88})
+    );
+    bullet.position.copy(tm.position);
+    const dir=target.position.clone().sub(tm.position).normalize();
+    // Add some inaccuracy
+    dir.x+=T.rnd(-.1,.1);
+    dir.y+=T.rnd(-.1,.1);
+    bullet.userData={
+      vel:dir.multiplyScalar(3),
+      life:60,
+      isTeammate:true
+    };
+    this.sc.add(bullet);
+    this.bullets.push(bullet);
+  },
+
+  update(){
+    if(this.gameOver||this.complete)return;
+    if(!this.battleStarted)return;
+
+    this.pollGamepad();
+
+    let lx=this.input.lx||(this.keys.KeyA?-1:this.keys.KeyD?1:0);
+    let ly=this.input.ly||(this.keys.KeyW?-1:this.keys.KeyS?1:0);
+
+    this.shipTargetX=T.clamp(this.shipTargetX+lx*.03,-1,1);
+    this.shipTargetY=T.clamp(this.shipTargetY-ly*.03,-1,1);
+
+    this.shipX=T.lerp(this.shipX,this.shipTargetX,.1);
+    this.shipY=T.lerp(this.shipY,this.shipTargetY,.1);
+
+    this.ship.position.x=this.shipX*60;
+    this.ship.position.y=this.shipY*35;
+
+    this.ship.rotation.z=T.lerp(this.ship.rotation.z,-lx*.5,.1);
+    this.ship.rotation.x=T.lerp(this.ship.rotation.x,ly*.3,.1);
+
+    if(this.barrelRolling){
+      this.barrelRollTimer+=.25;
+      this.ship.rotation.z=this.barrelRollTimer;
+      if(this.barrelRollTimer>=Math.PI*2){
+        this.barrelRolling=false;
+        this.ship.rotation.z=0;
+      }
+    }
+
+    // Update station rotation
+    if(this.station){
+      this.station.rotation.y+=.001;
+    }
+
+    // Update rivals
+    this.updateRivals();
+
+    // Update teammates
+    this.updateTeammates();
+
+    // Update player bullets
+    this.bullets.forEach(b=>{
+      b.position.add(b.userData.vel);
+      b.userData.life--;
+
+      // Hit rivals
+      this.rivals.forEach(r=>{
+        if(r.userData.hp>0&&b.position.distanceTo(r.position)<6){
+          r.userData.hp-=(b.userData.isPlayer?8:4);
+          b.userData.life=0;
+          this.spawnExplosion(b.position,.3);
+          if(r.userData.hp<=0){
+            this.defeatRival(r);
+          }
+          if(b.userData.isPlayer)this.addScore(10);
+          this.updateStatusDisplays();
+        }
+      });
+
+      if(b.userData.life<=0){
+        this.sc.remove(b);
+        b.dead=true;
+      }
+    });
+    this.bullets=this.bullets.filter(b=>!b.dead);
+
+    // Update enemy bullets
+    this.enemyBullets.forEach(b=>{
+      b.position.add(b.userData.vel);
+      b.userData.life--;
+
+      // Hit player
+      if(b.position.distanceTo(this.ship.position)<4){
+        this.takeDamage(12);
+        this.spawnExplosion(b.position,.3);
+        b.userData.life=0;
+      }
+
+      // Hit teammates
+      this.teammates.forEach(tm=>{
+        if(tm.userData.hp>0&&b.position.distanceTo(tm.position)<5){
+          tm.userData.hp-=10;
+          b.userData.life=0;
+          this.spawnExplosion(b.position,.3);
+          if(tm.userData.hp<=0){
+            this.spawnExplosion(tm.position,.8);
+            this.showRadio(tm.userData.emoji,'I\'m hit! I can\'t maintain altitude!');
+            this.sc.remove(tm);
+          }
+          this.updateStatusDisplays();
+        }
+      });
+
+      if(b.userData.life<=0){
+        this.sc.remove(b);
+        b.dead=true;
+      }
+    });
+    this.enemyBullets=this.enemyBullets.filter(b=>!b.dead);
+
+    // Update particles
+    this.particles.forEach(p=>{
+      p.position.add(p.userData.vel);
+      p.userData.life--;
+      p.scale.setScalar(p.userData.life/40);
+      if(p.userData.life<=0){
+        this.sc.remove(p);
+        p.dead=true;
+      }
+    });
+    this.particles=this.particles.filter(p=>!p.dead);
+
+    // Boost regen
+    this.boost=Math.min(100,this.boost+.1);
+    document.getElementById('boost-fill').style.width=this.boost+'%';
+
+    if(this.invincible>0)this.invincible--;
+
+    // Engine glow
+    this.ship.children.forEach(c=>{
+      if(c.userData.isGlow){
+        c.scale.z=.8+Math.random()*.4;
+      }
+    });
+  },
+
+  animate(){
+    requestAnimationFrame(()=>this.animate());
+
+    this.update();
+
+    // Dynamic camera
+    this.ca.position.x=T.lerp(this.ca.position.x,this.ship.position.x*.2,.03);
+    this.ca.position.y=T.lerp(this.ca.position.y,20+this.ship.position.y*.15,.03);
+    this.ca.lookAt(this.ship.position.x*.5,this.ship.position.y*.5,-30);
+
+    if(this.invincible>0){
+      this.ship.visible=Math.floor(this.invincible/3)%2===0;
+    }else{
+      this.ship.visible=true;
+    }
+
+    if((this.input.buttons.rb||this.keys.Space)&&Math.random()<.15){
+      this.fire();
+    }
+
+    this.rn.render(this.sc,this.ca);
+  }
+};
+
+onload=()=>G.init();
+onresize=()=>{G.rn.setSize(innerWidth,innerHeight);G.ca.aspect=innerWidth/innerHeight;G.ca.updateProjectionMatrix()};
+</script></body></html>
