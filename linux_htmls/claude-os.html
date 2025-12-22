@@ -18,6 +18,16 @@ body{background:#000;color:#0f0;font-family:'Courier New',monospace;height:100vh
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.8.0/lib/addon-fit.min.js"></script>
 <script>
 window.addEventListener('load',()=>{
+// Check if scripts loaded
+if(typeof Terminal==='undefined'){
+  document.getElementById('term').innerHTML='<pre style="color:#f55;padding:20px">Error: xterm.js failed to load</pre>';
+  return;
+}
+if(typeof FitAddon==='undefined'){
+  document.getElementById('term').innerHTML='<pre style="color:#f55;padding:20px">Error: FitAddon failed to load</pre>';
+  return;
+}
+
 const t=new Terminal({
   theme:{background:'#000',foreground:'#0f0',cursor:'#0f0',cursorAccent:'#000',
     green:'#0f0',yellow:'#ff0',blue:'#0af',magenta:'#f0f',cyan:'#0ff',red:'#f55',white:'#fff'},
