@@ -54,5 +54,13 @@
     "icon": "🌐",
     "color": "#00aaff",
     "tags": ["Network", "Packets", "Traffic", "Protocols"]
+  },
+  {
+    "file": "gravity-well.html",
+    "title": "Gravity Well",
+    "description": "Orbital mechanics simulator with stars, planets, moons, gravity physics, collisions, and orbital trails",
+    "icon": "🌌",
+    "color": "#8888ff",
+    "tags": ["Space", "Gravity", "Orbits", "Physics"]
   }
 ]
