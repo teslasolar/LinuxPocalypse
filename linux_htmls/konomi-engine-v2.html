@@ -1,0 +1,1146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🌀 KONOMI IRRATIONAL ENGINE v2 - φ-FDM PRINTER</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #050508;
+  --panel: #0a0a10;
+  --border: #1a1a2a;
+  --gold: #ffd700;
+  --phi: #e6c200;
+  --silver: #c0c0c0;
+  --cyan: #00ffff;
+  --green: #00ff88;
+  --red: #ff4444;
+  --purple: #aa88ff;
+  --orange: #ff8844;
+  --filament: #ff6b35;
+  --dim: #444455;
+}
+
+body {
+  background: var(--bg);
+  color: #c0c0c0;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Layout */
+.app {
+  display: grid;
+  grid-template-columns: 260px 1fr 280px;
+  grid-template-rows: auto 1fr auto;
+  height: 100vh;
+  gap: 1px;
+  background: var(--border);
+}
+
+header {
+  grid-column: 1 / -1;
+  background: linear-gradient(180deg, #0f0f18 0%, var(--bg) 100%);
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+
+.title {
+  font-size: 18px;
+  background: linear-gradient(90deg, var(--gold), var(--cyan));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.phi-value {
+  font-size: 11px;
+  color: var(--phi);
+}
+
+/* Panels */
+.panel {
+  background: var(--panel);
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.panel-title {
+  font-size: 10px;
+  color: var(--cyan);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Print Canvas Area */
+.viewport {
+  position: relative;
+  background: #030305;
+  overflow: hidden;
+}
+
+#print-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.viewport-overlay {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  font-size: 10px;
+  color: var(--dim);
+  pointer-events: none;
+}
+
+.viewport-stats {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  font-size: 10px;
+  text-align: right;
+  color: var(--dim);
+}
+
+/* Agents */
+.agent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  margin-bottom: 6px;
+  background: rgba(255,255,255,0.02);
+  border-radius: 4px;
+  border-left: 2px solid var(--dim);
+  font-size: 11px;
+}
+
+.agent.active { border-left-color: var(--green); }
+.agent.printing { border-left-color: var(--filament); animation: pulse 0.5s infinite; }
+
+@keyframes pulse {
+  0%, 100% { background: rgba(255,107,53,0.05); }
+  50% { background: rgba(255,107,53,0.15); }
+}
+
+.agent-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: bold;
+  color: #000;
+}
+
+.agent-icon.phi { background: var(--gold); }
+.agent-icon.derive { background: var(--cyan); }
+.agent-icon.gcode { background: var(--green); }
+.agent-icon.extrude { background: var(--filament); }
+.agent-icon.layer { background: var(--purple); }
+.agent-icon.infill { background: var(--silver); }
+.agent-icon.spiral { background: linear-gradient(135deg, var(--gold), var(--cyan)); }
+.agent-icon.mesh { background: var(--orange); }
+
+.agent-name { flex: 1; }
+.agent-status { font-size: 9px; color: var(--dim); }
+
+/* Print Queue */
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  margin-bottom: 4px;
+  background: rgba(255,255,255,0.02);
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.queue-item:hover { background: rgba(255,255,255,0.05); }
+.queue-item.active { border: 1px solid var(--filament); }
+
+.queue-icon { font-size: 16px; }
+.queue-name { flex: 1; }
+.queue-ratio { font-size: 9px; color: var(--phi); }
+
+/* Controls */
+.control-group {
+  margin-bottom: 16px;
+}
+
+.control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 11px;
+}
+
+.control-label { color: var(--dim); }
+.control-value { color: var(--cyan); }
+
+input[type="range"] {
+  width: 100%;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  -webkit-appearance: none;
+  margin: 8px 0;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  background: var(--gold);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+button {
+  width: 100%;
+  padding: 10px;
+  background: linear-gradient(135deg, var(--gold), #b8960f);
+  border: none;
+  border-radius: 4px;
+  color: #000;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+  margin-bottom: 8px;
+  transition: transform 0.2s;
+}
+
+button:hover { transform: scale(1.02); }
+button.secondary {
+  background: var(--border);
+  color: var(--cyan);
+}
+
+/* Stats */
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.stat-box {
+  background: rgba(0,0,0,0.3);
+  padding: 8px;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 16px;
+  font-weight: bold;
+  color: var(--gold);
+}
+
+.stat-label {
+  font-size: 9px;
+  color: var(--dim);
+  margin-top: 2px;
+}
+
+/* Irrational DB */
+.irrational-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  background: rgba(255,255,255,0.02);
+  border-radius: 4px;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.irrational-item:hover { background: rgba(255,255,255,0.05); }
+.irrational-item.t0 { border-left: 2px solid var(--gold); }
+.irrational-item.t1 { border-left: 2px solid var(--silver); }
+.irrational-item.t2 { border-left: 2px solid var(--green); }
+.irrational-item.t3 { border-left: 2px solid var(--purple); }
+
+.irr-symbol { width: 30px; font-weight: bold; }
+.irr-value { flex: 1; color: var(--dim); font-size: 9px; }
+.irr-cost { color: var(--cyan); }
+
+/* Terminal */
+footer {
+  grid-column: 1 / -1;
+  background: #030306;
+  border-top: 1px solid var(--border);
+  padding: 8px 12px;
+  font-size: 10px;
+  display: flex;
+  gap: 20px;
+  overflow-x: auto;
+}
+
+.log-entry {
+  white-space: nowrap;
+}
+
+.log-entry.phi { color: var(--gold); }
+.log-entry.gcode { color: var(--green); }
+.log-entry.layer { color: var(--purple); }
+.log-entry.extrude { color: var(--filament); }
+
+/* Print Progress */
+.progress-bar {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--filament), var(--gold));
+  transition: width 0.3s;
+}
+
+/* Toolpath Preview */
+.toolpath-preview {
+  height: 80px;
+  background: #000;
+  border-radius: 4px;
+  margin: 8px 0;
+  position: relative;
+  overflow: hidden;
+}
+
+#toolpath-mini {
+  width: 100%;
+  height: 100%;
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header>
+    <div>
+      <div class="title">🌀 KONOMI v2 - φ-FDM PRINTER</div>
+      <div class="phi-value">φ = 1.6180339887498948...</div>
+    </div>
+    <div style="font-size:11px; color:var(--dim)">
+      <span id="print-status">READY</span> |
+      Layer <span id="current-layer">0</span>/<span id="total-layers">0</span>
+    </div>
+  </header>
+
+  <!-- Left Panel -->
+  <div class="panel">
+    <div class="panel-title">🤖 Print Agents</div>
+    <div id="agents-list"></div>
+
+    <div class="panel-title" style="margin-top:16px">📐 Irrational Shapes</div>
+    <div id="shape-queue"></div>
+  </div>
+
+  <!-- Central Viewport -->
+  <div class="viewport">
+    <canvas id="print-canvas"></canvas>
+    <div class="viewport-overlay">
+      <div>X: <span id="pos-x">0.00</span> Y: <span id="pos-y">0.00</span> Z: <span id="pos-z">0.00</span></div>
+      <div>E: <span id="extrusion">0.00</span>mm | F: <span id="feedrate">0</span>mm/s</div>
+    </div>
+    <div class="viewport-stats">
+      <div>Vertices: <span id="vertex-count">0</span></div>
+      <div>Triangles: <span id="tri-count">0</span></div>
+      <div>φ-Ratio: <span id="phi-ratio">1.618</span></div>
+    </div>
+  </div>
+
+  <!-- Right Panel -->
+  <div class="panel">
+    <div class="panel-title">🖨️ Print Controls</div>
+
+    <div class="control-group">
+      <button id="btn-print" onclick="startPrint()">▶ START PRINT</button>
+      <button class="secondary" onclick="pausePrint()">⏸ PAUSE</button>
+    </div>
+
+    <div class="control-group">
+      <div class="control-row">
+        <span class="control-label">Speed (φ-scaled)</span>
+        <span class="control-value" id="speed-val">1.0x</span>
+      </div>
+      <input type="range" id="speed-slider" min="0.1" max="3" step="0.1" value="1"
+             oninput="updateSpeed(this.value)">
+    </div>
+
+    <div class="control-group">
+      <div class="control-row">
+        <span class="control-label">Layer Height (Φu)</span>
+        <span class="control-value" id="layer-val">0.2mm</span>
+      </div>
+      <input type="range" id="layer-slider" min="0.1" max="0.4" step="0.05" value="0.2"
+             oninput="updateLayerHeight(this.value)">
+    </div>
+
+    <div class="control-group">
+      <div class="control-row">
+        <span class="control-label">Infill Pattern</span>
+        <span class="control-value" id="infill-type">φ-Spiral</span>
+      </div>
+      <select id="infill-select" onchange="updateInfill(this.value)" style="width:100%;padding:8px;background:var(--border);border:none;color:#fff;border-radius:4px;font-family:inherit;">
+        <option value="phi-spiral">φ-Spiral (Golden)</option>
+        <option value="fibonacci">Fibonacci Grid</option>
+        <option value="penrose">Penrose Tiles</option>
+        <option value="sqrt2-grid">√2 Diagonal</option>
+        <option value="metallic">Metallic Waves</option>
+      </select>
+    </div>
+
+    <div class="progress-bar">
+      <div class="progress-fill" id="print-progress" style="width: 0%"></div>
+    </div>
+    <div style="font-size:10px;color:var(--dim);text-align:center;margin-bottom:12px;">
+      <span id="progress-pct">0</span>% Complete | ETA: <span id="eta">--:--</span>
+    </div>
+
+    <div class="panel-title">📊 Print Stats</div>
+    <div class="stat-grid">
+      <div class="stat-box">
+        <div class="stat-value" id="stat-vertices">0</div>
+        <div class="stat-label">Vertices</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value" id="stat-gcode">0</div>
+        <div class="stat-label">G-Code Lines</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value" id="stat-filament">0m</div>
+        <div class="stat-label">Filament</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value" id="stat-time">0:00</div>
+        <div class="stat-label">Print Time</div>
+      </div>
+    </div>
+
+    <div class="panel-title" style="margin-top:16px">🧊 Irrational DB</div>
+    <div id="irrational-db"></div>
+
+    <div class="panel-title" style="margin-top:16px">📐 Toolpath</div>
+    <div class="toolpath-preview">
+      <canvas id="toolpath-mini"></canvas>
+    </div>
+  </div>
+
+  <footer id="log-footer">
+    <span class="log-entry phi">[φ] Engine ready</span>
+  </footer>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// 🌀 KONOMI v2 - φ-FDM IRRATIONAL PRINTER
+// ═══════════════════════════════════════════════════════════════════
+
+// IRRATIONAL CONSTANTS - The Origin
+const PHI = 1.6180339887498948482045868343656381177203091798057628621354;
+const PHI_INV = 0.6180339887498948482045868343656381177203091798057628621354;
+const SQRT5 = 2.2360679774997896964091736687747632;
+const SQRT2 = 1.4142135623730950488016887242097;
+const SQRT3 = 1.7320508075688772935274463415059;
+const SIGMA = 2.4142135623730950488016887242097; // Silver ratio
+const BETA = 3.3027756377319946465596106337352;  // Bronze ratio
+
+// ═══════════════════════════════════════════════════════════════════
+// 🤖 PRINT AGENTS
+// ═══════════════════════════════════════════════════════════════════
+const AGENTS = [
+  { id: 'φ', name: 'φ-Origin', task: 'Anchor all ratios', icon: 'phi', status: 'active' },
+  { id: 'β', name: 'Derive', task: 'Compute paths', icon: 'derive', status: 'idle' },
+  { id: 'G', name: 'G-Code', task: 'Generate moves', icon: 'gcode', status: 'idle' },
+  { id: 'E', name: 'Extrude', task: 'Filament flow', icon: 'extrude', status: 'idle' },
+  { id: 'L', name: 'Layer', task: 'Z-stepping', icon: 'layer', status: 'idle' },
+  { id: 'I', name: 'Infill', task: 'Pattern gen', icon: 'infill', status: 'idle' },
+  { id: 'S', name: 'Spiral', task: 'Golden curves', icon: 'spiral', status: 'idle' },
+  { id: 'M', name: 'Mesh', task: 'Triangulate', icon: 'mesh', status: 'idle' },
+];
+
+// ═══════════════════════════════════════════════════════════════════
+// 📐 IRRATIONAL SHAPES - Print Queue
+// ═══════════════════════════════════════════════════════════════════
+const SHAPES = [
+  { name: 'Golden Spiral', icon: '🌀', ratio: 'φ', generator: 'goldenSpiral' },
+  { name: 'Fibonacci Tower', icon: '🗼', ratio: 'Fₙ', generator: 'fibonacciTower' },
+  { name: 'Penrose Rhombus', icon: '💎', ratio: 'φ', generator: 'penroseTile' },
+  { name: 'Silver Rectangle', icon: '⬜', ratio: 'σ', generator: 'silverRect' },
+  { name: 'Bronze Helix', icon: '🧬', ratio: 'β', generator: 'bronzeHelix' },
+  { name: 'φ-Icosahedron', icon: '⬡', ratio: 'φ', generator: 'phiIcosa' },
+  { name: 'Root-2 Grid', icon: '▦', ratio: '√2', generator: 'sqrt2Grid' },
+  { name: 'Metallic Wave', icon: '〰️', ratio: 'Mₙ', generator: 'metallicWave' },
+];
+
+// ═══════════════════════════════════════════════════════════════════
+// 🧊 IRRATIONAL DATABASE
+// ═══════════════════════════════════════════════════════════════════
+const IRRATIONALS = [
+  { symbol: 'φ', name: 'Golden', value: PHI, tier: 0, cost: 0 },
+  { symbol: 'φ⁻¹', name: 'Inverse', value: PHI_INV, tier: 0, cost: 0 },
+  { symbol: '√5', name: 'Root 5', value: SQRT5, tier: 0, cost: 1 },
+  { symbol: 'σ', name: 'Silver', value: SIGMA, tier: 1, cost: 2 },
+  { symbol: 'β', name: 'Bronze', value: BETA, tier: 1, cost: 4 },
+  { symbol: '√2', name: 'Root 2', value: SQRT2, tier: 2, cost: 2 },
+  { symbol: '√3', name: 'Root 3', value: SQRT3, tier: 2, cost: 3 },
+  { symbol: 'π', name: 'Pi', value: Math.PI, tier: 3, cost: 10 },
+];
+
+// ═══════════════════════════════════════════════════════════════════
+// 🖨️ PRINTER STATE
+// ═══════════════════════════════════════════════════════════════════
+const Printer = {
+  x: 0, y: 0, z: 0,
+  e: 0, // extrusion
+  feedrate: 60,
+  layerHeight: 0.2,
+  currentLayer: 0,
+  totalLayers: 50,
+  printing: false,
+  paused: false,
+  speed: 1.0,
+  infillType: 'phi-spiral',
+  gcode: [],
+  vertices: [],
+  triangles: [],
+  printedPath: [],
+  currentShape: 0,
+  progress: 0,
+  startTime: 0,
+  filamentUsed: 0,
+};
+
+// Canvas contexts
+let ctx, toolpathCtx;
+let animationId;
+
+// ═══════════════════════════════════════════════════════════════════
+// 🎨 RENDERING
+// ═══════════════════════════════════════════════════════════════════
+function initCanvas() {
+  const canvas = document.getElementById('print-canvas');
+  const container = canvas.parentElement;
+  canvas.width = container.clientWidth;
+  canvas.height = container.clientHeight;
+  ctx = canvas.getContext('2d');
+
+  const toolpath = document.getElementById('toolpath-mini');
+  toolpath.width = toolpath.parentElement.clientWidth;
+  toolpath.height = 80;
+  toolpathCtx = toolpath.getContext('2d');
+
+  window.addEventListener('resize', () => {
+    canvas.width = container.clientWidth;
+    canvas.height = container.clientHeight;
+  });
+}
+
+function render() {
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+  const cx = w / 2;
+  const cy = h / 2;
+  const scale = Math.min(w, h) / 300;
+
+  // Clear
+  ctx.fillStyle = '#030305';
+  ctx.fillRect(0, 0, w, h);
+
+  // Grid (φ-spaced)
+  ctx.strokeStyle = '#0a0a15';
+  ctx.lineWidth = 1;
+  const gridSpacing = 20 * PHI;
+  for (let x = cx % gridSpacing; x < w; x += gridSpacing) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, h);
+    ctx.stroke();
+  }
+  for (let y = cy % gridSpacing; y < h; y += gridSpacing) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+  }
+
+  // Build plate
+  ctx.strokeStyle = '#1a1a2a';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(cx - 100 * scale, cy - 100 * scale, 200 * scale, 200 * scale);
+
+  // Origin marker
+  ctx.fillStyle = '#ffd700';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Printed path
+  if (Printer.printedPath.length > 1) {
+    ctx.strokeStyle = '#ff6b35';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+
+    // Color by layer/z height
+    let lastZ = 0;
+    for (let i = 0; i < Printer.printedPath.length; i++) {
+      const p = Printer.printedPath[i];
+      const sx = cx + p.x * scale;
+      const sy = cy - p.y * scale;
+
+      if (i === 0 || Math.abs(p.z - lastZ) > 0.01) {
+        ctx.stroke();
+        ctx.beginPath();
+        // Color based on layer
+        const hue = (p.z / (Printer.totalLayers * Printer.layerHeight)) * 60;
+        ctx.strokeStyle = `hsl(${30 + hue}, 100%, 60%)`;
+        ctx.moveTo(sx, sy);
+      } else {
+        ctx.lineTo(sx, sy);
+      }
+      lastZ = p.z;
+    }
+    ctx.stroke();
+  }
+
+  // Current position (nozzle)
+  if (Printer.printing) {
+    const nx = cx + Printer.x * scale;
+    const ny = cy - Printer.y * scale;
+
+    // Nozzle glow
+    const gradient = ctx.createRadialGradient(nx, ny, 0, nx, ny, 20);
+    gradient.addColorStop(0, 'rgba(255, 107, 53, 0.8)');
+    gradient.addColorStop(1, 'rgba(255, 107, 53, 0)');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(nx, ny, 20, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Nozzle point
+    ctx.fillStyle = '#ff6b35';
+    ctx.beginPath();
+    ctx.arc(nx, ny, 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // φ-spiral overlay (faint)
+  if (Printer.infillType === 'phi-spiral') {
+    ctx.strokeStyle = 'rgba(230, 194, 0, 0.1)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let t = 0; t < Math.PI * 8; t += 0.05) {
+      const r = Math.pow(PHI, t / (Math.PI / 2)) * 2;
+      const x = cx + r * Math.cos(t);
+      const y = cy - r * Math.sin(t);
+      if (t === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  // Update position display
+  document.getElementById('pos-x').textContent = Printer.x.toFixed(2);
+  document.getElementById('pos-y').textContent = Printer.y.toFixed(2);
+  document.getElementById('pos-z').textContent = Printer.z.toFixed(2);
+  document.getElementById('extrusion').textContent = Printer.e.toFixed(2);
+  document.getElementById('feedrate').textContent = Printer.feedrate.toFixed(0);
+}
+
+function renderToolpath() {
+  const w = toolpathCtx.canvas.width;
+  const h = toolpathCtx.canvas.height;
+  const cx = w / 2;
+  const cy = h / 2;
+  const scale = Math.min(w, h) / 150;
+
+  toolpathCtx.fillStyle = '#000';
+  toolpathCtx.fillRect(0, 0, w, h);
+
+  // Mini toolpath preview
+  if (Printer.printedPath.length > 1) {
+    toolpathCtx.strokeStyle = '#ff6b35';
+    toolpathCtx.lineWidth = 1;
+    toolpathCtx.beginPath();
+    for (let i = 0; i < Printer.printedPath.length; i++) {
+      const p = Printer.printedPath[i];
+      const sx = cx + p.x * scale * 0.5;
+      const sy = cy - p.y * scale * 0.5;
+      if (i === 0) toolpathCtx.moveTo(sx, sy);
+      else toolpathCtx.lineTo(sx, sy);
+    }
+    toolpathCtx.stroke();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 🌀 IRRATIONAL SHAPE GENERATORS
+// ═══════════════════════════════════════════════════════════════════
+function generateShape(type, layer) {
+  const z = layer * Printer.layerHeight;
+  const points = [];
+
+  switch (type) {
+    case 'goldenSpiral':
+      // Golden spiral based on φ
+      for (let t = 0; t < Math.PI * 4; t += 0.1) {
+        const r = Math.pow(PHI, t / (Math.PI / 2)) * 3;
+        // Scale down per layer for a cone effect
+        const layerScale = 1 - (layer / Printer.totalLayers) * 0.5;
+        points.push({
+          x: r * Math.cos(t) * layerScale,
+          y: r * Math.sin(t) * layerScale,
+          z: z
+        });
+      }
+      break;
+
+    case 'fibonacciTower':
+      // Fibonacci sequence determines polygon sides
+      const fibs = [1, 1, 2, 3, 5, 8, 13, 21, 34];
+      const sides = fibs[layer % fibs.length] + 3;
+      const radius = 40 - layer * 0.3;
+      for (let i = 0; i <= sides; i++) {
+        const angle = (i / sides) * Math.PI * 2;
+        points.push({
+          x: radius * Math.cos(angle),
+          y: radius * Math.sin(angle),
+          z: z
+        });
+      }
+      break;
+
+    case 'penroseTile':
+      // Pentagon with φ-based internal structure
+      const pr = 50 - layer * 0.2;
+      for (let i = 0; i <= 5; i++) {
+        const angle = (i / 5) * Math.PI * 2 - Math.PI / 2;
+        points.push({
+          x: pr * Math.cos(angle),
+          y: pr * Math.sin(angle),
+          z: z
+        });
+        // Add inner point for star effect
+        if (i < 5) {
+          const innerAngle = angle + Math.PI / 5;
+          points.push({
+            x: pr * PHI_INV * Math.cos(innerAngle),
+            y: pr * PHI_INV * Math.sin(innerAngle),
+            z: z
+          });
+        }
+      }
+      break;
+
+    case 'silverRect':
+      // Silver ratio rectangle
+      const sw = 40;
+      const sh = sw * SIGMA;
+      const rotation = layer * 0.1;
+      const corners = [[-sw/2, -sh/2], [sw/2, -sh/2], [sw/2, sh/2], [-sw/2, sh/2], [-sw/2, -sh/2]];
+      for (const [cx, cy] of corners) {
+        points.push({
+          x: cx * Math.cos(rotation) - cy * Math.sin(rotation),
+          y: cx * Math.sin(rotation) + cy * Math.cos(rotation),
+          z: z
+        });
+      }
+      break;
+
+    case 'bronzeHelix':
+      // Helix with bronze ratio pitch
+      const helixR = 30;
+      const pitch = BETA * 2;
+      for (let t = 0; t < Math.PI * 2; t += 0.2) {
+        points.push({
+          x: helixR * Math.cos(t + layer * 0.3),
+          y: helixR * Math.sin(t + layer * 0.3),
+          z: z
+        });
+      }
+      break;
+
+    case 'phiIcosa':
+      // Icosahedron cross-section (uses φ)
+      const ir = 35;
+      // Icosahedron vertices use φ in their coordinates
+      const theta = layer * PHI_INV;
+      for (let i = 0; i <= 5; i++) {
+        const angle = (i / 5) * Math.PI * 2 + theta;
+        points.push({
+          x: ir * Math.cos(angle),
+          y: ir * Math.sin(angle),
+          z: z
+        });
+      }
+      break;
+
+    case 'sqrt2Grid':
+      // Diagonal grid pattern based on √2
+      const gs = 60;
+      const diag = gs / SQRT2;
+      // Zigzag based on layer
+      const yOffset = (layer % 2) * diag / 2;
+      for (let x = -gs/2; x <= gs/2; x += diag/2) {
+        points.push({ x: x, y: -gs/2 + yOffset, z: z });
+        points.push({ x: x, y: gs/2 + yOffset, z: z });
+      }
+      break;
+
+    case 'metallicWave':
+      // Wave using metallic ratios
+      const metalRatios = [PHI, SIGMA, BETA];
+      const mr = metalRatios[layer % 3];
+      for (let t = -50; t <= 50; t += 2) {
+        points.push({
+          x: t,
+          y: 20 * Math.sin(t / (mr * 5)),
+          z: z
+        });
+      }
+      break;
+  }
+
+  return points;
+}
+
+function generateInfill(type, layer, bounds) {
+  const z = layer * Printer.layerHeight;
+  const points = [];
+  const spacing = 5;
+
+  switch (type) {
+    case 'phi-spiral':
+      // Infill with φ-based spiral
+      for (let t = 0; t < Math.PI * 6; t += 0.3) {
+        const r = t * PHI;
+        if (r > 45) break;
+        points.push({
+          x: r * Math.cos(t),
+          y: r * Math.sin(t),
+          z: z
+        });
+      }
+      break;
+
+    case 'fibonacci':
+      // Fibonacci-spaced grid
+      const fibs = [1, 2, 3, 5, 8, 13, 21];
+      for (let i = 0; i < fibs.length; i++) {
+        const y = fibs[i] * 3 - 40;
+        for (let x = -40; x <= 40; x += spacing * PHI) {
+          points.push({ x, y, z });
+        }
+      }
+      break;
+
+    case 'penrose':
+      // Penrose-style quasicrystal
+      for (let i = 0; i < 36; i++) {
+        const angle = (i / 36) * Math.PI * 2;
+        const r1 = 10 + (i % 5) * 8;
+        const r2 = r1 * PHI_INV;
+        points.push({ x: r1 * Math.cos(angle), y: r1 * Math.sin(angle), z });
+        points.push({ x: r2 * Math.cos(angle + 0.1), y: r2 * Math.sin(angle + 0.1), z });
+      }
+      break;
+  }
+
+  return points;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 🖨️ PRINT ENGINE
+// ═══════════════════════════════════════════════════════════════════
+let printStep = 0;
+let currentPoints = [];
+let pointIndex = 0;
+
+function startPrint() {
+  if (Printer.printing) return;
+
+  Printer.printing = true;
+  Printer.paused = false;
+  Printer.startTime = Date.now();
+  Printer.printedPath = [];
+  Printer.currentLayer = 0;
+  Printer.filamentUsed = 0;
+  Printer.gcode = [];
+  Printer.x = 0;
+  Printer.y = 0;
+  Printer.z = 0;
+  Printer.e = 0;
+  printStep = 0;
+  pointIndex = 0;
+
+  document.getElementById('print-status').textContent = 'PRINTING';
+  document.getElementById('btn-print').textContent = '⏹ STOP';
+
+  updateAgent('G', 'printing', 'Generating G-Code');
+  updateAgent('E', 'printing', 'Extruding');
+  log('🖨️ Print started - φ-based geometry', 'gcode');
+
+  // Generate first layer
+  const shape = SHAPES[Printer.currentShape];
+  currentPoints = generateShape(shape.generator, 0);
+
+  printLoop();
+}
+
+function printLoop() {
+  if (!Printer.printing || Printer.paused) return;
+
+  // Process multiple points per frame for speed
+  const pointsPerFrame = Math.ceil(3 * Printer.speed);
+
+  for (let i = 0; i < pointsPerFrame && pointIndex < currentPoints.length; i++) {
+    const point = currentPoints[pointIndex];
+
+    // Move to point
+    const dx = point.x - Printer.x;
+    const dy = point.y - Printer.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    Printer.x = point.x;
+    Printer.y = point.y;
+    Printer.z = point.z;
+    Printer.e += dist * 0.05; // Extrusion amount
+    Printer.filamentUsed += dist * 0.001;
+
+    // Add to printed path
+    Printer.printedPath.push({ x: point.x, y: point.y, z: point.z });
+
+    // Generate G-Code
+    Printer.gcode.push(`G1 X${point.x.toFixed(3)} Y${point.y.toFixed(3)} Z${point.z.toFixed(3)} E${Printer.e.toFixed(4)} F${Printer.feedrate}`);
+
+    pointIndex++;
+  }
+
+  // Layer complete?
+  if (pointIndex >= currentPoints.length) {
+    Printer.currentLayer++;
+    log(`📐 Layer ${Printer.currentLayer} complete (z=${Printer.z.toFixed(2)})`, 'layer');
+
+    if (Printer.currentLayer >= Printer.totalLayers) {
+      // Print complete
+      finishPrint();
+      return;
+    }
+
+    // Generate next layer
+    const shape = SHAPES[Printer.currentShape];
+    currentPoints = generateShape(shape.generator, Printer.currentLayer);
+
+    // Add infill
+    const infill = generateInfill(Printer.infillType, Printer.currentLayer);
+    currentPoints = currentPoints.concat(infill);
+
+    pointIndex = 0;
+    updateAgent('L', 'printing', `Layer ${Printer.currentLayer}`);
+  }
+
+  // Update progress
+  Printer.progress = (Printer.currentLayer / Printer.totalLayers) * 100;
+  updateStats();
+  render();
+  renderToolpath();
+
+  animationId = requestAnimationFrame(printLoop);
+}
+
+function pausePrint() {
+  if (!Printer.printing) return;
+
+  Printer.paused = !Printer.paused;
+
+  if (Printer.paused) {
+    document.getElementById('print-status').textContent = 'PAUSED';
+    log('⏸ Print paused', 'phi');
+  } else {
+    document.getElementById('print-status').textContent = 'PRINTING';
+    log('▶ Print resumed', 'phi');
+    printLoop();
+  }
+}
+
+function finishPrint() {
+  Printer.printing = false;
+  document.getElementById('print-status').textContent = 'COMPLETE';
+  document.getElementById('btn-print').textContent = '▶ START PRINT';
+
+  for (const agent of AGENTS) {
+    updateAgent(agent.id, 'active');
+  }
+
+  const elapsed = ((Date.now() - Printer.startTime) / 1000).toFixed(1);
+  log(`✓ Print complete! ${Printer.gcode.length} G-Code lines, ${elapsed}s`, 'gcode');
+
+  updateStats();
+  render();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 🎛️ CONTROLS
+// ═══════════════════════════════════════════════════════════════════
+function updateSpeed(val) {
+  Printer.speed = parseFloat(val);
+  // φ-scaled display
+  const phiScaled = (Printer.speed * PHI).toFixed(2);
+  document.getElementById('speed-val').textContent = `${val}x (${phiScaled}φ)`;
+}
+
+function updateLayerHeight(val) {
+  Printer.layerHeight = parseFloat(val);
+  Printer.totalLayers = Math.ceil(10 / Printer.layerHeight); // 10mm tall object
+  document.getElementById('layer-val').textContent = `${val}mm`;
+  document.getElementById('total-layers').textContent = Printer.totalLayers;
+}
+
+function updateInfill(val) {
+  Printer.infillType = val;
+  document.getElementById('infill-type').textContent = document.getElementById('infill-select').selectedOptions[0].text;
+  log(`🔧 Infill: ${val}`, 'phi');
+}
+
+function selectShape(index) {
+  Printer.currentShape = index;
+  document.querySelectorAll('.queue-item').forEach((el, i) => {
+    el.classList.toggle('active', i === index);
+  });
+  log(`📐 Selected: ${SHAPES[index].name}`, 'phi');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 📊 STATS & UI
+// ═══════════════════════════════════════════════════════════════════
+function updateStats() {
+  document.getElementById('current-layer').textContent = Printer.currentLayer;
+  document.getElementById('total-layers').textContent = Printer.totalLayers;
+  document.getElementById('print-progress').style.width = `${Printer.progress}%`;
+  document.getElementById('progress-pct').textContent = Printer.progress.toFixed(1);
+  document.getElementById('stat-vertices').textContent = Printer.printedPath.length;
+  document.getElementById('stat-gcode').textContent = Printer.gcode.length;
+  document.getElementById('stat-filament').textContent = Printer.filamentUsed.toFixed(2) + 'm';
+  document.getElementById('vertex-count').textContent = Printer.printedPath.length;
+  document.getElementById('tri-count').textContent = Math.floor(Printer.printedPath.length / 3);
+  document.getElementById('phi-ratio').textContent = PHI.toFixed(6);
+
+  // ETA calculation
+  if (Printer.printing && Printer.progress > 0) {
+    const elapsed = (Date.now() - Printer.startTime) / 1000;
+    const total = elapsed / (Printer.progress / 100);
+    const remaining = total - elapsed;
+    const mins = Math.floor(remaining / 60);
+    const secs = Math.floor(remaining % 60);
+    document.getElementById('eta').textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+    document.getElementById('stat-time').textContent = `${Math.floor(elapsed / 60)}:${Math.floor(elapsed % 60).toString().padStart(2, '0')}`;
+  }
+}
+
+function updateAgent(id, status, task = null) {
+  const agent = AGENTS.find(a => a.id === id);
+  if (agent) {
+    agent.status = status;
+    if (task) agent.task = task;
+    renderAgents();
+  }
+}
+
+function renderAgents() {
+  const container = document.getElementById('agents-list');
+  container.innerHTML = AGENTS.map(a => `
+    <div class="agent ${a.status}">
+      <div class="agent-icon ${a.icon}">${a.id}</div>
+      <div class="agent-name">${a.name}</div>
+      <div class="agent-status">${a.task}</div>
+    </div>
+  `).join('');
+}
+
+function renderShapeQueue() {
+  const container = document.getElementById('shape-queue');
+  container.innerHTML = SHAPES.map((s, i) => `
+    <div class="queue-item ${i === 0 ? 'active' : ''}" onclick="selectShape(${i})">
+      <div class="queue-icon">${s.icon}</div>
+      <div class="queue-name">${s.name}</div>
+      <div class="queue-ratio">${s.ratio}</div>
+    </div>
+  `).join('');
+}
+
+function renderIrrationalDB() {
+  const container = document.getElementById('irrational-db');
+  container.innerHTML = IRRATIONALS.map(ir => `
+    <div class="irrational-item t${ir.tier}">
+      <div class="irr-symbol">${ir.symbol}</div>
+      <div class="irr-value">${ir.value.toFixed(10)}</div>
+      <div class="irr-cost">${ir.cost}Φu</div>
+    </div>
+  `).join('');
+}
+
+function log(message, type = 'phi') {
+  const footer = document.getElementById('log-footer');
+  const entry = document.createElement('span');
+  entry.className = `log-entry ${type}`;
+  entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+  footer.appendChild(entry);
+
+  // Keep last 10 entries
+  while (footer.children.length > 10) {
+    footer.removeChild(footer.firstChild);
+  }
+
+  footer.scrollLeft = footer.scrollWidth;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 🚀 INIT
+// ═══════════════════════════════════════════════════════════════════
+function init() {
+  initCanvas();
+  renderAgents();
+  renderShapeQueue();
+  renderIrrationalDB();
+  updateStats();
+  render();
+
+  log('🌀 KONOMI v2 initialized - φ is home', 'phi');
+  log(`φ = ${PHI.toString().substring(0, 20)}...`, 'phi');
+
+  // Continuous render when not printing
+  function idleRender() {
+    if (!Printer.printing) {
+      render();
+    }
+    requestAnimationFrame(idleRender);
+  }
+  idleRender();
+}
+
+window.onload = init;
+</script>
+</body>
+</html>
