@@ -142,5 +142,13 @@
     "icon": "🎮",
     "color": "#00ff00",
     "tags": ["Gamepad", "Flight", "Controller", "HUD"]
+  },
+  {
+    "file": "synth-wave-v2.html",
+    "title": "Synth Wave v2",
+    "description": "EDM generator with genre presets (Daft Punk, Deadmau5, Techno, House, Trance, Dubstep), music agents (drums/bass/lead/FX), and auto-generation",
+    "icon": "🎧",
+    "color": "#ff00ff",
+    "tags": ["EDM", "Auto-Gen", "Agents", "Presets"]
   }
 ]
