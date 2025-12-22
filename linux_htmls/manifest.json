@@ -158,5 +158,21 @@
     "icon": "🤖",
     "color": "#00ffaa",
     "tags": ["Drones", "AI-Assist", "Easy-Mode", "Agents"]
+  },
+  {
+    "file": "synth-wave-v3.html",
+    "title": "Synth Wave v3",
+    "description": "Vocal synthesis with formant voices (soprano/alto/tenor/bass/robot), choir agent, lyric generator, vocoder, and EDM presets",
+    "icon": "🎤",
+    "color": "#ff00ff",
+    "tags": ["Vocals", "Formant", "Choir", "Lyrics"]
+  },
+  {
+    "file": "drone-sight-v5.html",
+    "title": "Drone Sight v5",
+    "description": "Swarm control with intuitive controls - left stick flies any direction, right stick/mouse for camera, triggers for up/down, swarm formation",
+    "icon": "🚁",
+    "color": "#00ffff",
+    "tags": ["Swarm", "Intuitive", "Formation", "Easy"]
   }
 ]
