@@ -1,5 +1,13 @@
 [
   {
+    "file": "claude-os.html",
+    "title": "ClaudeOS",
+    "description": "Mini Linux sandbox with boot sequence, auto-installs Node.js/npm/Claude Code, full bash shell, neofetch, package manager, virtual filesystem",
+    "icon": "🐧",
+    "color": "#0f0",
+    "tags": ["Linux", "Shell", "Boot", "Auto-Install", "Sandbox"]
+  },
+  {
     "file": "claude-code-env-v3.html",
     "title": "Claude Code Env v3",
     "description": "Simulated Node.js terminal - no WebContainers, works instantly! Virtual FS, npm simulation, Monaco editor, full shell commands",

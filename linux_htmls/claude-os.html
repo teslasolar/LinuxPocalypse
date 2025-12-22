@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>ClaudeOS - Mini Linux Sandbox</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;color:#0f0;font-family:'Courier New',monospace;height:100vh;display:flex;flex-direction:column}
+#term{flex:1}
+.xterm{height:100%}
+.xterm-viewport{background:#000!important}
+</style>
+</head>
+<body>
+<div id="term"></div>
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.8.0/lib/addon-fit.min.js"></script>
+<script>
+window.addEventListener('load',()=>{
+const t=new Terminal({
+  theme:{background:'#000',foreground:'#0f0',cursor:'#0f0',cursorAccent:'#000',
+    green:'#0f0',yellow:'#ff0',blue:'#0af',magenta:'#f0f',cyan:'#0ff',red:'#f55',white:'#fff'},
+  fontSize:14,cursorBlink:true,cursorStyle:'block',fontFamily:'Courier New,monospace'
+});
+const fit=new FitAddon.FitAddon();
+t.loadAddon(fit);
+t.open(document.getElementById('term'));
+fit.fit();
+window.onresize=()=>fit.fit();
+
+// Virtual FS
+const fs={
+  '/etc/os-release':'NAME="ClaudeOS"\nVERSION="1.0"\nID=claudeos',
+  '/etc/hostname':'claude-sandbox',
+  '/home/user/.bashrc':'export PS1="\\u@\\h:\\w$ "',
+  '/home/user/.profile':'# ClaudeOS User Profile',
+  '/usr/bin/node':'#!/bin/node\n# Node.js v20.10.0',
+  '/usr/bin/npm':'#!/bin/npm\n# npm 10.2.0',
+  '/usr/bin/claude':'#!/bin/claude\n# Claude Code CLI v1.0.38',
+  '/var/log/boot.log':'',
+  '/proc/version':'Linux version 6.1.0-claude (gcc 12.2.0)',
+  '/proc/cpuinfo':'processor: 0\nmodel name: Claude Virtual CPU\ncpu MHz: 3000',
+  '/proc/meminfo':'MemTotal: 16384000 kB\nMemFree: 12000000 kB',
+};
+const dirs=['/home/user','/etc','/usr/bin','/var/log','/proc','/tmp'];
+const pkgs={installed:['coreutils','bash','nodejs','npm'],available:['lodash','express','axios','chalk','commander']};
+let cwd='/home/user';
+let user='user';
+let buf='';
+let history=[];
+let histIdx=-1;
+let booted=false;
+
+// Boot sequence
+async function boot(){
+  const delay=ms=>new Promise(r=>setTimeout(r,ms));
+  const log=s=>{t.writeln(s);fs['/var/log/boot.log']+=s+'\n'};
+
+  t.writeln('\x1b[1;32m');
+  t.writeln('╔═══════════════════════════════════════════════════════════╗');
+  t.writeln('║                                                           ║');
+  t.writeln('║   \x1b[1;36m██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗\x1b[32m       ║');
+  t.writeln('║   \x1b[1;36m██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝\x1b[32m       ║');
+  t.writeln('║   \x1b[1;36m██║     ██║     ███████║██║   ██║██║  ██║█████╗\x1b[32m         ║');
+  t.writeln('║   \x1b[1;36m██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝\x1b[32m         ║');
+  t.writeln('║   \x1b[1;36m╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗\x1b[32m       ║');
+  t.writeln('║   \x1b[1;36m ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝\x1b[32m       ║');
+  t.writeln('║                        \x1b[33mOS\x1b[32m                                  ║');
+  t.writeln('║                                                           ║');
+  t.writeln('╚═══════════════════════════════════════════════════════════╝\x1b[0m');
+  t.writeln('');
+  await delay(500);
+
+  log('\x1b[33m[    0.000000]\x1b[0m ClaudeOS Kernel 6.1.0-claude starting...');
+  await delay(200);
+  log('\x1b[33m[    0.001234]\x1b[0m CPU: Claude Virtual CPU @ 3.0GHz');
+  await delay(150);
+  log('\x1b[33m[    0.002345]\x1b[0m Memory: 16GB available');
+  await delay(150);
+  log('\x1b[33m[    0.003456]\x1b[0m Mounting virtual filesystem...');
+  await delay(200);
+  log('\x1b[33m[    0.004567]\x1b[0m \x1b[32m[  OK  ]\x1b[0m Mounted /proc');
+  await delay(100);
+  log('\x1b[33m[    0.005678]\x1b[0m \x1b[32m[  OK  ]\x1b[0m Mounted /etc');
+  await delay(100);
+  log('\x1b[33m[    0.006789]\x1b[0m \x1b[32m[  OK  ]\x1b[0m Mounted /home');
+  await delay(150);
+  log('\x1b[33m[    0.007890]\x1b[0m Initializing package manager...');
+  await delay(200);
+
+  t.writeln('');
+  t.writeln('\x1b[1;36m>>> Auto-installing development environment...\x1b[0m');
+  t.writeln('');
+  await delay(300);
+
+  // Install Node.js
+  t.write('\x1b[33m[pkg]\x1b[0m Installing nodejs... ');
+  await delay(400);
+  t.writeln('\x1b[32m✓\x1b[0m');
+
+  // Install npm
+  t.write('\x1b[33m[pkg]\x1b[0m Installing npm... ');
+  await delay(300);
+  t.writeln('\x1b[32m✓\x1b[0m');
+
+  // Install Claude Code
+  t.write('\x1b[33m[pkg]\x1b[0m Installing claude-code... ');
+  await delay(500);
+  t.writeln('\x1b[32m✓\x1b[0m');
+  pkgs.installed.push('claude-code');
+
+  await delay(200);
+  t.writeln('');
+  t.writeln('\x1b[32m[  OK  ]\x1b[0m Development environment ready');
+  t.writeln('\x1b[32m[  OK  ]\x1b[0m Starting login service');
+  await delay(300);
+
+  t.writeln('');
+  t.writeln('\x1b[1;37mClaudeOS 1.0 LTS claude-sandbox tty1\x1b[0m');
+  t.writeln('');
+  t.writeln('\x1b[90mType "help" for available commands\x1b[0m');
+  t.writeln('');
+  booted=true;
+  prompt();
+}
+
+function prompt(){
+  t.write('\x1b[1;32m'+user+'@claude\x1b[0m:\x1b[1;34m'+cwd.replace('/home/user','~')+'\x1b[0m$ ');
+}
+
+// Command execution
+function exec(cmd){
+  if(!cmd.trim())return;
+  history.push(cmd);
+  histIdx=history.length;
+
+  const parts=cmd.trim().split(/\s+/);
+  const c=parts[0];
+  const args=parts.slice(1);
+
+  const commands={
+    help:()=>{
+      t.writeln('\x1b[1;33mClaudeOS Commands:\x1b[0m');
+      t.writeln('  \x1b[36mls\x1b[0m [-la]           List directory contents');
+      t.writeln('  \x1b[36mcd\x1b[0m <dir>           Change directory');
+      t.writeln('  \x1b[36mpwd\x1b[0m                Print working directory');
+      t.writeln('  \x1b[36mcat\x1b[0m <file>         Display file contents');
+      t.writeln('  \x1b[36mtouch\x1b[0m <file>       Create empty file');
+      t.writeln('  \x1b[36mmkdir\x1b[0m <dir>        Create directory');
+      t.writeln('  \x1b[36mrm\x1b[0m <file>          Remove file');
+      t.writeln('  \x1b[36mecho\x1b[0m <text>        Print text');
+      t.writeln('  \x1b[36mnode\x1b[0m <file>        Run JavaScript');
+      t.writeln('  \x1b[36mnpm\x1b[0m <cmd>          Node package manager');
+      t.writeln('  \x1b[36mclaude\x1b[0m             Claude Code CLI');
+      t.writeln('  \x1b[36mpkg\x1b[0m <cmd>          Package manager');
+      t.writeln('  \x1b[36mps\x1b[0m                 List processes');
+      t.writeln('  \x1b[36mfree\x1b[0m               Memory usage');
+      t.writeln('  \x1b[36muname\x1b[0m [-a]         System info');
+      t.writeln('  \x1b[36mwhoami\x1b[0m             Current user');
+      t.writeln('  \x1b[36mdate\x1b[0m               Current date/time');
+      t.writeln('  \x1b[36mclear\x1b[0m              Clear screen');
+      t.writeln('  \x1b[36mneofetch\x1b[0m           System info display');
+      t.writeln('  \x1b[36mexit\x1b[0m               Logout');
+    },
+    ls:()=>{
+      const la=args.includes('-la')||args.includes('-l')||args.includes('-a');
+      const items=[];
+      // Files in cwd
+      Object.keys(fs).forEach(f=>{
+        if(f.startsWith(cwd+'/')&&f.split('/').length===cwd.split('/').length+1){
+          items.push({name:f.split('/').pop(),type:'f'});
+        }
+      });
+      // Subdirs
+      dirs.forEach(d=>{
+        if(d.startsWith(cwd+'/')&&d.split('/').length===cwd.split('/').length+1){
+          items.push({name:d.split('/').pop(),type:'d'});
+        }
+      });
+      if(la){
+        t.writeln('total '+items.length);
+        items.forEach(i=>{
+          const perm=i.type==='d'?'drwxr-xr-x':'−rw-r--r--';
+          const col=i.type==='d'?'\x1b[1;34m':'\x1b[0m';
+          t.writeln(perm+' 1 user user 4096 Dec 22 12:00 '+col+i.name+'\x1b[0m');
+        });
+      }else{
+        items.forEach(i=>{
+          const col=i.type==='d'?'\x1b[1;34m':'\x1b[0m';
+          t.write(col+i.name+'\x1b[0m  ');
+        });
+        if(items.length)t.writeln('');
+      }
+    },
+    cd:()=>{
+      const target=args[0]||'/home/user';
+      let newPath;
+      if(target==='~')newPath='/home/user';
+      else if(target==='..')newPath=cwd.split('/').slice(0,-1).join('/')||'/';
+      else if(target.startsWith('/'))newPath=target;
+      else newPath=cwd+'/'+target;
+      if(dirs.includes(newPath)||newPath==='/'){cwd=newPath}
+      else t.writeln('bash: cd: '+target+': No such directory');
+    },
+    pwd:()=>t.writeln(cwd),
+    cat:()=>{
+      const path=args[0]?.startsWith('/')?args[0]:cwd+'/'+args[0];
+      if(fs[path])t.writeln(fs[path]);
+      else t.writeln('cat: '+args[0]+': No such file');
+    },
+    touch:()=>{
+      if(!args[0])return t.writeln('touch: missing operand');
+      const path=cwd+'/'+args[0];
+      fs[path]='';
+      t.writeln('\x1b[32m✓\x1b[0m Created '+args[0]);
+    },
+    mkdir:()=>{
+      if(!args[0])return t.writeln('mkdir: missing operand');
+      dirs.push(cwd+'/'+args[0]);
+      t.writeln('\x1b[32m✓\x1b[0m Created directory '+args[0]);
+    },
+    rm:()=>{
+      const path=cwd+'/'+args[0];
+      if(fs[path]){delete fs[path];t.writeln('\x1b[32m✓\x1b[0m Removed '+args[0])}
+      else t.writeln('rm: '+args[0]+': No such file');
+    },
+    echo:()=>t.writeln(args.join(' ')),
+    clear:()=>t.clear(),
+    whoami:()=>t.writeln(user),
+    date:()=>t.writeln(new Date().toString()),
+    uname:()=>{
+      if(args[0]==='-a')t.writeln('Linux claude-sandbox 6.1.0-claude #1 SMP ClaudeOS x86_64 GNU/Linux');
+      else t.writeln('Linux');
+    },
+    free:()=>{
+      t.writeln('              total        used        free');
+      t.writeln('Mem:       16384000     4384000    12000000');
+      t.writeln('Swap:       4096000           0     4096000');
+    },
+    ps:()=>{
+      t.writeln('  PID TTY          TIME CMD');
+      t.writeln('    1 tty1     00:00:00 init');
+      t.writeln('   42 tty1     00:00:00 bash');
+      t.writeln('  '+Math.floor(Math.random()*900+100)+' tty1     00:00:00 ps');
+    },
+    node:()=>{
+      if(args[0]==='-v'||args[0]==='--version')return t.writeln('v20.10.0');
+      if(!args[0])return t.writeln('Usage: node <file.js>');
+      const path=cwd+'/'+args[0];
+      const code=fs[path];
+      if(!code)return t.writeln('node: '+args[0]+': No such file');
+      t.writeln('\x1b[90m> Executing '+args[0]+'...\x1b[0m');
+      code.split('\n').forEach(line=>{
+        const m=line.match(/console\.log\(['"`](.*)['"`]\)/);
+        if(m)t.writeln(m[1]);
+      });
+    },
+    npm:()=>{
+      if(args[0]==='-v')return t.writeln('10.2.0');
+      if(args[0]==='install'||args[0]==='i'){
+        const pkg=args[1];
+        if(!pkg)return t.writeln('\x1b[32m✓\x1b[0m up to date, audited 1 package');
+        t.writeln('\x1b[90minstalling '+pkg+'...\x1b[0m');
+        setTimeout(()=>{
+          pkgs.installed.push(pkg);
+          t.writeln('\x1b[32m+ '+pkg+'@1.0.0\x1b[0m');
+          t.writeln('added 1 package');
+          prompt();
+        },600);
+        return'async';
+      }
+      if(args[0]==='list')return pkgs.installed.forEach(p=>t.writeln('├── '+p));
+      t.writeln('npm <command>\n\nCommands: install, list, -v');
+    },
+    claude:()=>{
+      if(args[0]==='--version'||args[0]==='-v')return t.writeln('claude-code 1.0.38');
+      if(args[0]==='--help'||args[0]==='-h'){
+        t.writeln('Claude Code CLI - AI Coding Assistant');
+        t.writeln('');
+        t.writeln('Usage: claude [options] [prompt]');
+        t.writeln('');
+        t.writeln('Options:');
+        t.writeln('  -v, --version    Show version');
+        t.writeln('  -h, --help       Show help');
+        t.writeln('  chat             Start interactive chat');
+        return;
+      }
+      if(args[0]==='chat'||!args[0]){
+        t.writeln('\x1b[1;35m╭──────────────────────────────────────╮\x1b[0m');
+        t.writeln('\x1b[1;35m│\x1b[0m  \x1b[1;36mClaude Code\x1b[0m - AI Coding Assistant  \x1b[1;35m│\x1b[0m');
+        t.writeln('\x1b[1;35m╰──────────────────────────────────────╯\x1b[0m');
+        t.writeln('');
+        t.writeln('\x1b[32m✓\x1b[0m Connected to Claude API');
+        t.writeln('\x1b[90mType your prompt or "exit" to quit\x1b[0m');
+        return;
+      }
+      t.writeln('\x1b[36mClaude:\x1b[0m Processing "'+args.join(' ')+'"...');
+    },
+    pkg:()=>{
+      if(args[0]==='list'){
+        t.writeln('\x1b[1;33mInstalled:\x1b[0m');
+        pkgs.installed.forEach(p=>t.writeln('  \x1b[32m✓\x1b[0m '+p));
+      }else if(args[0]==='search'){
+        t.writeln('\x1b[1;33mAvailable:\x1b[0m');
+        pkgs.available.forEach(p=>t.writeln('  '+p));
+      }else if(args[0]==='install'&&args[1]){
+        t.writeln('\x1b[90mInstalling '+args[1]+'...\x1b[0m');
+        setTimeout(()=>{
+          pkgs.installed.push(args[1]);
+          t.writeln('\x1b[32m✓\x1b[0m Installed '+args[1]);
+          prompt();
+        },500);
+        return'async';
+      }else{
+        t.writeln('pkg <command>\n\nCommands: list, search, install <name>');
+      }
+    },
+    neofetch:()=>{
+      t.writeln('\x1b[1;36m        ▄▄▄▄▄▄▄         \x1b[0m'+user+'@\x1b[1;36mclaude-sandbox\x1b[0m');
+      t.writeln('\x1b[1;36m     ▄█████████████▄    \x1b[0m──────────────────');
+      t.writeln('\x1b[1;36m   ▄███████████████▀    \x1b[1;36mOS:\x1b[0m ClaudeOS 1.0 LTS');
+      t.writeln('\x1b[1;36m  ▄█████████████▀       \x1b[1;36mKernel:\x1b[0m 6.1.0-claude');
+      t.writeln('\x1b[1;36m ████████████████       \x1b[1;36mUptime:\x1b[0m '+(Math.floor((Date.now()%86400000)/60000))+' mins');
+      t.writeln('\x1b[1;36m ████████████████       \x1b[1;36mPackages:\x1b[0m '+pkgs.installed.length);
+      t.writeln('\x1b[1;36m  ▀█████████████▄       \x1b[1;36mShell:\x1b[0m bash 5.2.15');
+      t.writeln('\x1b[1;36m   ▀███████████████▄    \x1b[1;36mTerminal:\x1b[0m xterm.js');
+      t.writeln('\x1b[1;36m     ▀█████████████▀    \x1b[1;36mCPU:\x1b[0m Claude Virtual @ 3.0GHz');
+      t.writeln('\x1b[1;36m        ▀▀▀▀▀▀▀         \x1b[1;36mMemory:\x1b[0m 4384MB / 16384MB');
+      t.writeln('');
+    },
+    exit:()=>{
+      t.writeln('logout');
+      setTimeout(()=>{t.writeln('\x1b[1;33mSession ended. Refresh to restart.\x1b[0m')},500);
+      booted=false;
+    },
+    sudo:()=>t.writeln('\x1b[32m'+user+' is in the sudoers file. Access granted.\x1b[0m'),
+    vim:()=>t.writeln('\x1b[90mvim: not installed. Try: pkg install vim\x1b[0m'),
+    nano:()=>t.writeln('\x1b[90mnano: not installed. Try: pkg install nano\x1b[0m'),
+    git:()=>{
+      if(args[0]==='--version')t.writeln('git version 2.42.0');
+      else t.writeln('git <command>\n\nCommands: init, status, add, commit, push');
+    },
+    curl:()=>t.writeln('\x1b[90mSimulated: curl '+args.join(' ')+'\x1b[0m'),
+    wget:()=>t.writeln('\x1b[90mSimulated: wget '+args.join(' ')+'\x1b[0m'),
+    man:()=>t.writeln('No manual entry for '+args[0]),
+    history:()=>history.forEach((h,i)=>t.writeln('  '+(i+1)+'  '+h)),
+  };
+
+  if(commands[c]){
+    const r=commands[c]();
+    if(r==='async')return;
+  }else{
+    t.writeln('bash: '+c+': command not found');
+  }
+}
+
+// Input handling
+t.onData(d=>{
+  if(!booted)return;
+  if(d==='\r'){
+    t.writeln('');
+    exec(buf);
+    buf='';
+    if(booted)prompt();
+  }else if(d==='\x7f'){
+    if(buf.length>0){buf=buf.slice(0,-1);t.write('\b \b')}
+  }else if(d==='\x03'){
+    t.writeln('^C');
+    buf='';
+    prompt();
+  }else if(d==='\x1b[A'){// Up arrow
+    if(histIdx>0){histIdx--;buf=history[histIdx];t.write('\x1b[2K\r');prompt();t.write(buf)}
+  }else if(d==='\x1b[B'){// Down arrow
+    if(histIdx<history.length-1){histIdx++;buf=history[histIdx];t.write('\x1b[2K\r');prompt();t.write(buf)}
+  }else if(d.charCodeAt(0)>=32){
+    buf+=d;
+    t.write(d);
+  }
+});
+
+// Start boot
+boot();
+});
+</script>
+</body>
+</html>
