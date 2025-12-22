@@ -8,6 +8,14 @@
     "tags": ["Unified", "All-Modes", "Mega", "Hub"]
   },
   {
+    "file": "origin-ranger.html",
+    "title": "Origin Ranger",
+    "description": "System & network discovery visualizer - detects CPU, GPU, RAM, screen, network type, local IP, storage, and simulates network topology scanning with 3D radar display",
+    "icon": "🔍",
+    "color": "#00ff00",
+    "tags": ["Network", "System", "Discovery", "Radar"]
+  },
+  {
     "file": "kappa-cubelinux-v8.html",
     "title": "κ.CubeLinux v8",
     "description": "3D HMI Worlds with immersive modal environments for each SCADA component - databases, APIs, PLCs, and AI neural cores",
