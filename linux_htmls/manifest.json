@@ -1,10 +1,18 @@
 [
   {
     "file": "kappa-cubelinux-v5.html",
-    "title": "\u03ba.CubeLinux v5",
-    "description": "SCADA Assembly simulation with \u03c6/\u03ba dynamics, Three.js 3D visualization, and industrial control systems",
-    "icon": "\ud83c\udf00",
+    "title": "κ.CubeLinux v5",
+    "description": "SCADA Assembly simulation with φ/κ dynamics, Three.js 3D visualization, and industrial control systems",
+    "icon": "🌀",
     "color": "#ffd700",
     "tags": ["3D", "SCADA", "Three.js", "Simulation"]
+  },
+  {
+    "file": "neural-genesis.html",
+    "title": "Neural Genesis",
+    "description": "Self-building neural network with organic growth mechanics, evolving topology, and energy-based spawning system",
+    "icon": "🧠",
+    "color": "#ff00ff",
+    "tags": ["3D", "Neural", "Self-Builder", "Evolution"]
   }
 ]

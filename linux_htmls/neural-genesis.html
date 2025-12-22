@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Neural Genesis v1</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#050510;overflow:hidden;font:10px monospace;color:#0ff}
+#c{position:fixed;inset:0;z-index:0}
+.p{position:absolute;background:rgba(5,10,30,.94);border:2px solid;border-radius:10px;padding:12px;z-index:10;backdrop-filter:blur(6px)}
+.t{background:#000;color:#0ff;padding:8px;height:100px;overflow-y:auto;white-space:pre-wrap;font-size:9px;border:1px solid #0ff4;border-radius:4px}
+button{background:linear-gradient(135deg,#0ff,#08f);color:#000;border:0;padding:6px 10px;margin:3px;font-size:9px;border-radius:4px;cursor:pointer;font-weight:bold;transition:all .2s}
+button:hover{transform:scale(1.05);box-shadow:0 0 15px #0ff6}
+.neural{background:linear-gradient(135deg,#f0f,#80f)}
+.organic{background:linear-gradient(135deg,#0f8,#0a6)}
+.g{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:6px 0}
+.s{padding:4px;text-align:center;border:1px solid;border-radius:4px;background:rgba(0,0,0,.5);font-size:9px}
+.bar{height:6px;background:#111;border-radius:3px;margin:3px 0}.fill{height:100%;border-radius:3px;transition:width .3s}
+.glow{color:#f0f;text-shadow:0 0 5px #f0f}
+.pulse{animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+</style></head><body><canvas id="c"></canvas>
+
+<div class="p" style="top:10px;left:10px;border-color:#f0f;width:280px">
+<div class="glow" style="text-align:center;font-size:12px">🧠 NEURAL GENESIS</div>
+<div id="stats"></div>
+<div id="genome" style="max-height:80px;overflow-y:auto;font-size:8px;margin-top:8px"></div>
+</div>
+
+<div class="p" style="top:10px;right:10px;border-color:#0ff;width:320px">
+<div style="color:#0ff;text-align:center;font-size:12px">⚡ GROWTH ENGINE</div>
+<div id="growth"></div><div id="log" class="t"></div>
+<div class="g">
+<button class="neural" onclick="N.spawn('neuron')">🔮Neuron</button>
+<button class="neural" onclick="N.spawn('synapse')">⚡Synapse</button>
+<button class="neural" onclick="N.spawn('cluster')">🌐Cluster</button>
+<button class="organic" onclick="N.spawn('dendrite')">🌿Dendrite</button>
+<button class="organic" onclick="N.spawn('axon')">🔗Axon</button>
+<button class="organic" onclick="N.spawn('soma')">💠Soma</button>
+<button onclick="N.pulse()">💫Pulse</button>
+<button onclick="N.evolve()">🧬Evolve</button>
+<button id="autoBtn" onclick="N.toggleAuto()">🤖Auto</button>
+</div>
+</div>
+
+<div class="p" style="bottom:10px;left:10px;border-color:#0f8;width:300px">
+<div style="color:#0f8;font-size:11px">📊 NETWORK TOPOLOGY</div>
+<div id="topo"></div>
+</div>
+
+<div class="p" style="bottom:10px;right:10px;border-color:#ff0;width:300px">
+<div style="color:#ff0;font-size:11px">🔬 ACTIVITY MONITOR</div>
+<div id="activity" style="max-height:90px;overflow-y:auto"></div>
+</div>
+
+<script>
+const φ=(1+Math.sqrt(5))/2,τ=Math.PI*2;
+
+// Neural types: [color, size, energy, growth_rate, connections_max]
+const TYPES={
+  neuron:[0xff00ff,1,100,1.2,6],
+  synapse:[0x00ffff,.6,60,.8,2],
+  cluster:[0xffff00,1.5,200,1.5,12],
+  dendrite:[0x00ff88,.4,40,2,3],
+  axon:[0xff8800,.5,80,1,2],
+  soma:[0x8800ff,2,300,1,8]
+};
+
+const N={
+  nodes:new Map(),
+  connections:[],
+  energy:1000,
+  generation:1,
+  mutations:0,
+  auto:false,
+  nodeId:0,
+
+  W:{
+    scene:null,camera:null,renderer:null,
+    meshes:[],connLines:[],particles:null,
+
+    init(){
+      this.scene=new THREE.Scene();
+      this.camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.1,1000);
+      this.renderer=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true});
+      this.renderer.setSize(innerWidth,innerHeight);
+      this.renderer.setClearColor(0x050510);
+      this.camera.position.set(0,60,100);
+      this.camera.lookAt(0,0,0);
+
+      // Ambient + point lights
+      this.scene.add(new THREE.AmbientLight(0x202040,.6));
+      const colors=[0xff00ff,0x00ffff,0x00ff88,0xffff00];
+      colors.forEach((c,i)=>{
+        const light=new THREE.PointLight(c,.6,100);
+        light.position.set(Math.cos(i*τ/4)*50,20,Math.sin(i*τ/4)*50);
+        this.scene.add(light);
+      });
+
+      // Central core
+      const coreGeo=new THREE.IcosahedronGeometry(5,2);
+      const coreMat=new THREE.MeshPhongMaterial({
+        color:0xf0f,emissive:0x808,transparent:true,opacity:.3,wireframe:true
+      });
+      this.core=new THREE.Mesh(coreGeo,coreMat);
+      this.scene.add(this.core);
+
+      // Grid floor
+      const grid=new THREE.GridHelper(200,40,0x0f0f30,0x080820);
+      grid.position.y=-30;
+      this.scene.add(grid);
+
+      // Particle field
+      const pGeo=new THREE.BufferGeometry();
+      const pCount=500;
+      const positions=new Float32Array(pCount*3);
+      const colors2=new Float32Array(pCount*3);
+      for(let i=0;i<pCount;i++){
+        positions[i*3]=(Math.random()-.5)*200;
+        positions[i*3+1]=(Math.random()-.5)*100;
+        positions[i*3+2]=(Math.random()-.5)*200;
+        const c=new THREE.Color().setHSL(.5+Math.random()*.3,.8,.5);
+        colors2[i*3]=c.r;colors2[i*3+1]=c.g;colors2[i*3+2]=c.b;
+      }
+      pGeo.setAttribute('position',new THREE.BufferAttribute(positions,3));
+      pGeo.setAttribute('color',new THREE.BufferAttribute(colors2,3));
+      this.particles=new THREE.Points(pGeo,new THREE.PointsMaterial({size:1,vertexColors:true,transparent:true,opacity:.4}));
+      this.scene.add(this.particles);
+
+      this.scene.fog=new THREE.FogExp2(0x050510,.006);
+      this.animate();
+    },
+
+    createNode(type,pos){
+      const[color,size,energy,growth,maxConn]=TYPES[type];
+      const baseSize=size*4;
+
+      const geos={
+        neuron:new THREE.IcosahedronGeometry(baseSize,1),
+        synapse:new THREE.OctahedronGeometry(baseSize),
+        cluster:new THREE.DodecahedronGeometry(baseSize,0),
+        dendrite:new THREE.ConeGeometry(baseSize*.7,baseSize*2,5),
+        axon:new THREE.CylinderGeometry(baseSize*.3,baseSize*.3,baseSize*3,6),
+        soma:new THREE.SphereGeometry(baseSize,16,12)
+      };
+
+      const mat=new THREE.MeshPhongMaterial({
+        color,emissive:color,emissiveIntensity:.4,
+        transparent:true,opacity:.85,shininess:100
+      });
+
+      const mesh=new THREE.Mesh(geos[type],mat);
+      mesh.position.set(...pos);
+      this.scene.add(mesh);
+
+      // Glow shell
+      const glowMat=new THREE.MeshBasicMaterial({color,transparent:true,opacity:.15,side:THREE.BackSide});
+      const glow=new THREE.Mesh(geos[type].clone(),glowMat);
+      glow.scale.setScalar(1.4);
+      mesh.add(glow);
+
+      // Orbiting rings for clusters and soma
+      if(type==='cluster'||type==='soma'){
+        const ring=new THREE.Mesh(
+          new THREE.TorusGeometry(baseSize*1.8,.3,8,32),
+          new THREE.MeshBasicMaterial({color,transparent:true,opacity:.3})
+        );
+        ring.rotation.x=Math.PI/2;
+        mesh.add(ring);
+        mesh.ring=ring;
+      }
+
+      this.meshes.push({mesh,type,energy,phase:Math.random()*τ});
+      return mesh;
+    },
+
+    createConnection(from,to,color){
+      const points=[from.position.clone(),to.position.clone()];
+      const mid=new THREE.Vector3().lerpVectors(from.position,to.position,.5);
+      mid.y+=10+Math.random()*10;
+
+      const curve=new THREE.QuadraticBezierCurve3(from.position.clone(),mid,to.position.clone());
+      const geo=new THREE.TubeGeometry(curve,20,.2,8,false);
+      const mat=new THREE.MeshBasicMaterial({color,transparent:true,opacity:.4});
+      const tube=new THREE.Mesh(geo,mat);
+      this.scene.add(tube);
+
+      // Flow particle
+      const flowGeo=new THREE.SphereGeometry(.6,8,8);
+      const flow=new THREE.Mesh(flowGeo,new THREE.MeshBasicMaterial({color,transparent:true,opacity:.9}));
+      flow.curve=curve;flow.t=0;
+      this.scene.add(flow);
+
+      this.connLines.push({tube,flow,curve,from,to});
+      return tube;
+    },
+
+    animate(){
+      requestAnimationFrame(()=>this.animate());
+      const t=Date.now()*.001;
+
+      // Core rotation
+      if(this.core){
+        this.core.rotation.x=t*.2;
+        this.core.rotation.y=t*.3;
+        this.core.material.emissiveIntensity=.3+Math.sin(t*2)*.2;
+      }
+
+      // Node animations
+      this.meshes.forEach((n,i)=>{
+        n.mesh.rotation.y=t*.5+n.phase;
+        n.mesh.rotation.x=Math.sin(t+n.phase)*.3;
+        n.mesh.material.emissiveIntensity=.3+Math.sin(t*2+n.phase)*.2;
+        n.mesh.position.y+=Math.sin(t*1.5+n.phase)*.02;
+        if(n.mesh.ring){
+          n.mesh.ring.rotation.z=t;
+        }
+      });
+
+      // Connection flow animation
+      this.connLines.forEach(c=>{
+        if(c.flow&&c.curve){
+          c.flow.t=(c.flow.t+.015)%1;
+          const pt=c.curve.getPoint(c.flow.t);
+          c.flow.position.copy(pt);
+          c.flow.material.opacity=.5+Math.sin(c.flow.t*Math.PI)*.5;
+        }
+      });
+
+      // Particles drift
+      if(this.particles){
+        const pos=this.particles.geometry.attributes.position.array;
+        for(let i=0;i<pos.length;i+=3){
+          pos[i]+=Math.sin(t+i)*.05;
+          pos[i+1]+=Math.cos(t*.5+i)*.03;
+          pos[i+2]+=Math.sin(t*.7+i)*.04;
+        }
+        this.particles.geometry.attributes.position.needsUpdate=true;
+      }
+
+      // Camera orbit
+      const radius=100+Math.sin(t*.2)*20;
+      this.camera.position.x=Math.cos(t*.1)*radius;
+      this.camera.position.z=Math.sin(t*.1)*radius;
+      this.camera.position.y=50+Math.sin(t*.15)*20;
+      this.camera.lookAt(0,0,0);
+
+      this.renderer.render(this.scene,this.camera);
+    }
+  },
+
+  spawn(type){
+    if(this.energy<TYPES[type][2]){
+      this.log(`⚠ Need ${TYPES[type][2]} energy for ${type}`);
+      return;
+    }
+
+    // Position based on existing nodes
+    const angle=Math.random()*τ;
+    const dist=20+Math.random()*40+this.nodes.size*2;
+    const pos=[Math.cos(angle)*dist,Math.random()*30-15,Math.sin(angle)*dist];
+
+    const id=++this.nodeId;
+    const mesh=this.W.createNode(type,pos);
+    const node={id,type,mesh,energy:TYPES[type][2],connections:[],born:Date.now()};
+
+    this.nodes.set(id,node);
+    this.energy-=TYPES[type][2];
+
+    // Auto-connect to nearby nodes
+    this.autoConnect(node);
+
+    this.log(`+${type}#${id} [-${TYPES[type][2]}⚡]`);
+    this.updateUI();
+  },
+
+  autoConnect(node){
+    const maxConn=TYPES[node.type][4];
+    const candidates=[...this.nodes.values()].filter(n=>n.id!==node.id&&n.connections.length<TYPES[n.type][4]);
+
+    // Sort by distance
+    candidates.sort((a,b)=>{
+      const da=node.mesh.position.distanceTo(a.mesh.position);
+      const db=node.mesh.position.distanceTo(b.mesh.position);
+      return da-db;
+    });
+
+    // Connect to nearest nodes
+    const toConnect=candidates.slice(0,Math.min(2,maxConn));
+    toConnect.forEach(target=>{
+      if(node.connections.length<maxConn&&target.connections.length<TYPES[target.type][4]){
+        const color=TYPES[node.type][0];
+        this.W.createConnection(node.mesh,target.mesh,color);
+        node.connections.push(target.id);
+        target.connections.push(node.id);
+        this.connections.push({from:node.id,to:target.id});
+      }
+    });
+  },
+
+  pulse(){
+    if(this.energy<50){
+      this.log('⚠ Need 50⚡ for pulse');
+      return;
+    }
+    this.energy-=50;
+
+    // Energize all nodes
+    let bonus=0;
+    this.nodes.forEach(node=>{
+      const mult=1+node.connections.length*.2;
+      const gain=Math.round(10*mult);
+      node.energy+=gain;
+      bonus+=gain;
+    });
+
+    this.energy+=Math.round(bonus*φ*.1);
+    this.log(`💫 Pulse! +${bonus}⚡ distributed`);
+    this.updateUI();
+  },
+
+  evolve(){
+    if(this.generation>=10){
+      this.log('⚠ Max evolution reached');
+      return;
+    }
+    if(this.nodes.size<5){
+      this.log('⚠ Need 5+ nodes to evolve');
+      return;
+    }
+
+    this.generation++;
+    this.mutations+=Math.floor(Math.random()*3)+1;
+
+    // Boost all node energies
+    this.nodes.forEach(node=>{
+      node.energy=Math.round(node.energy*1.2);
+    });
+
+    // Gain energy
+    this.energy+=Math.round(100*this.generation);
+
+    this.log(`🧬 Gen ${this.generation}! +${this.mutations} mutations`);
+    this.updateUI();
+  },
+
+  toggleAuto(){
+    this.auto=!this.auto;
+    document.getElementById('autoBtn').style.background=this.auto?'#0f0':'linear-gradient(135deg,#0ff,#08f)';
+    this.log(this.auto?'🤖 Auto-growth ON':'🤖 Auto-growth OFF');
+  },
+
+  tick(){
+    // Passive energy regen
+    const regen=Math.round(5+this.nodes.size*2+this.generation*3);
+    this.energy+=regen;
+
+    // Node energy decay & growth
+    this.nodes.forEach(node=>{
+      node.energy-=2;
+      if(node.energy<=0){
+        this.log(`💀 ${node.type}#${node.id} depleted`);
+        // Don't actually remove for visual continuity
+        node.energy=1;
+      }
+    });
+
+    // Auto-spawn
+    if(this.auto&&this.energy>200&&this.nodes.size<50){
+      const types=Object.keys(TYPES);
+      const type=types[Math.floor(Math.random()*types.length)];
+      if(this.energy>=TYPES[type][2]){
+        this.spawn(type);
+      }
+    }
+
+    this.updateUI();
+  },
+
+  log(msg){
+    const el=document.getElementById('log');
+    el.textContent+=msg+'\n';
+    el.scrollTop=el.scrollHeight;
+  },
+
+  updateUI(){
+    const avgEnergy=this.nodes.size?Math.round([...this.nodes.values()].reduce((a,n)=>a+n.energy,0)/this.nodes.size):0;
+
+    document.getElementById('stats').innerHTML=`
+      <div class="g">
+        <div class="s" style="border-color:#f0f">⚡${this.energy}</div>
+        <div class="s" style="border-color:#0ff">🔮${this.nodes.size}</div>
+        <div class="s" style="border-color:#0f8">🔗${this.connections.length}</div>
+      </div>
+      <div style="font-size:9px;color:#888">Gen ${this.generation} | ${this.mutations} mutations</div>
+      <div class="bar"><div class="fill" style="width:${Math.min(100,this.energy/50)}%;background:linear-gradient(90deg,#f0f,#0ff)"></div></div>
+    `;
+
+    // Genome display
+    const typeCounts={};
+    this.nodes.forEach(n=>typeCounts[n.type]=(typeCounts[n.type]||0)+1);
+    document.getElementById('genome').innerHTML=Object.entries(typeCounts).map(([t,c])=>
+      `<span style="color:#${TYPES[t][0].toString(16).padStart(6,'0')}">${t}:${c}</span>`
+    ).join(' | ');
+
+    document.getElementById('growth').innerHTML=`
+      <div style="font-size:9px">Avg Node Energy: <b style="color:#0f8">${avgEnergy}</b></div>
+      <div style="font-size:9px">Network Density: <b style="color:#ff0">${this.nodes.size?((this.connections.length*2/this.nodes.size)*100).toFixed(1):0}%</b></div>
+    `;
+
+    document.getElementById('topo').innerHTML=`
+      <div class="g">
+        <div class="s" style="border-color:#f0f">Neurons: ${typeCounts.neuron||0}</div>
+        <div class="s" style="border-color:#0ff">Synapses: ${typeCounts.synapse||0}</div>
+        <div class="s" style="border-color:#ff0">Clusters: ${typeCounts.cluster||0}</div>
+      </div>
+      <div class="g">
+        <div class="s" style="border-color:#0f8">Dendrites: ${typeCounts.dendrite||0}</div>
+        <div class="s" style="border-color:#f80">Axons: ${typeCounts.axon||0}</div>
+        <div class="s" style="border-color:#80f">Somas: ${typeCounts.soma||0}</div>
+      </div>
+    `;
+
+    // Activity - show recent nodes
+    const recent=[...this.nodes.values()].slice(-8);
+    document.getElementById('activity').innerHTML=recent.map(n=>
+      `<div style="font-size:8px;color:#${TYPES[n.type][0].toString(16).padStart(6,'0')}">
+        ${n.type}#${n.id} ⚡${n.energy} 🔗${n.connections.length}
+      </div>`
+    ).join('');
+  },
+
+  init(){
+    this.W.init();
+    this.log('🧠 Neural Genesis v1');
+    this.log('Building neural network...');
+    this.updateUI();
+
+    // Initial spawns
+    setTimeout(()=>this.spawn('soma'),500);
+    setTimeout(()=>this.spawn('neuron'),1000);
+    setTimeout(()=>this.spawn('neuron'),1500);
+    setTimeout(()=>this.spawn('synapse'),2000);
+
+    setInterval(()=>this.tick(),1500);
+  }
+};
+
+onload=()=>setTimeout(()=>N.init(),100);
+onresize=()=>{N.W.renderer.setSize(innerWidth,innerHeight);N.W.camera.aspect=innerWidth/innerHeight;N.W.camera.updateProjectionMatrix()};
+</script></body></html>
