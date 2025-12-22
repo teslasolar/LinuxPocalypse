@@ -326,8 +326,18 @@ function openFile(p){
   }
 }
 
-// Init
-SH.init();
+// Init - wait for everything to load
+window.addEventListener('load', function() {
+  if (typeof Terminal === 'undefined') {
+    document.getElementById('term').innerHTML = '<div style="padding:20px;color:#ff7b72">Error: xterm.js failed to load. Check console.</div>';
+    return;
+  }
+  if (typeof FitAddon === 'undefined') {
+    document.getElementById('term').innerHTML = '<div style="padding:20px;color:#ff7b72">Error: FitAddon failed to load.</div>';
+    return;
+  }
+  SH.init();
+});
 </script>
 </body>
 </html>
