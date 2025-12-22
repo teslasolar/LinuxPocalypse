@@ -53,7 +53,8 @@ button.active{background:#0f0;color:#000;box-shadow:0 0 10px #0f0}
 <div id="compass-strip">N · · · NE · · · E · · · SE · · · S · · · SW · · · W · · · NW · · · N</div>
 </div>
 
-<div id="control-hint">LEFT STICK: Fly Any Direction | RIGHT STICK: Look Around | TRIGGERS: Up/Down</div>
+<div id="control-hint">LEFT STICK: All Flight (L3 to toggle Vertical) | RIGHT STICK: Look Around</div>
+<div id="mode-indicator" style="position:fixed;top:95px;left:50%;transform:translateX(-50%);padding:5px 15px;border-radius:4px;font-size:14px;font-weight:bold;background:#001a00;border:2px solid #0f0;color:#0f0">MODE: HORIZONTAL ↔</div>
 
 <div class="p" style="top:8px;left:8px;width:200px">
 <div style="color:#0f0;text-align:center;font-size:14px;margin-bottom:8px">🚁 DRONE SIGHT <span style="color:#0ff">v5</span></div>
@@ -75,27 +76,22 @@ WASD + Mouse or Gamepad
 <div class="p" style="top:8px;right:8px;width:300px">
 <div style="color:#f80;text-align:center;font-size:11px;margin-bottom:8px">🕹️ CONTROLS</div>
 <div id="controller">
-<!-- Left Stick - Flight -->
-<div class="stick" style="left:20px;top:50px"><div class="stick-dot" id="lstick"></div></div>
-<div class="stick-label" style="left:15px;top:105px">✈️ FLIGHT</div>
+<!-- Left Stick - ALL Flight -->
+<div class="stick" id="lstick-ring" style="left:20px;top:45px"><div class="stick-dot" id="lstick"></div></div>
+<div class="stick-label" id="lstick-label" style="left:5px;top:100px;width:80px">✈️ ALL FLIGHT</div>
+<div style="position:absolute;left:25px;top:20px;font-size:8px;color:#0ff">L3=Toggle</div>
 
 <!-- Right Stick - Camera -->
-<div class="stick" style="right:40px;top:50px"><div class="stick-dot" id="rstick"></div></div>
-<div class="stick-label" style="right:35px;top:105px">👁️ CAMERA</div>
-
-<!-- Triggers -->
-<div class="trigger" style="left:10px;top:10px"><div class="trigger-fill" id="lt-fill" style="width:0%"></div></div>
-<div style="position:absolute;left:25px;top:12px;font-size:9px;color:#08f;pointer-events:none">↓ DOWN</div>
-
-<div class="trigger" style="right:10px;top:10px"><div class="trigger-fill" id="rt-fill" style="width:0%"></div></div>
-<div style="position:absolute;right:25px;top:12px;font-size:9px;color:#0f0;pointer-events:none">↑ UP</div>
+<div class="stick" style="right:40px;top:45px"><div class="stick-dot" id="rstick"></div></div>
+<div class="stick-label" style="right:35px;top:100px">👁️ CAMERA</div>
 
 <!-- Buttons -->
-<div class="btn-circle" id="btn-a" style="right:20px;top:55px;border-color:#0f0">A</div>
-<div class="btn-circle" id="btn-rb" style="right:10px;top:38px;border-color:#f80">RB</div>
+<div class="btn-circle" id="btn-a" style="right:20px;top:50px;border-color:#0f0">A</div>
+<div class="btn-circle" id="btn-rb" style="right:10px;top:30px;border-color:#f80">RB</div>
+<div class="btn-circle" id="btn-l3" style="left:33px;top:58px;border-color:#0ff;width:14px;height:14px;font-size:6px">L3</div>
 </div>
 <div style="font-size:9px;color:#666;text-align:center;margin-top:5px">
-LStick: Move in any direction | RStick: Look | LT/RT: Down/Up | RB: Fire | A: Add Drone
+LStick: ALL movement | L3: Toggle Horiz↔Vert | RStick: Look | RB: Fire | A: Add Drone
 </div>
 </div>
 
@@ -107,10 +103,9 @@ LStick: Move in any direction | RStick: Look | LT/RT: Down/Up | RB: Fire | A: Ad
 <div class="p" style="bottom:8px;right:8px;width:180px">
 <div style="color:#f0f;text-align:center;font-size:10px;margin-bottom:5px">🎮 KEYBOARD</div>
 <div style="font-size:9px;color:#888">
-<div><span style="color:#0f0">WASD</span> - Fly any direction</div>
+<div><span style="color:#0f0">WASD</span> - Fly (mode based)</div>
+<div><span style="color:#0f0">Q</span> - Toggle Horiz↔Vert</div>
 <div><span style="color:#0f0">Mouse</span> - Look around</div>
-<div><span style="color:#0f0">Space</span> - Go Up</div>
-<div><span style="color:#0f0">Shift</span> - Go Down</div>
 <div><span style="color:#0f0">Click</span> - Fire</div>
 <div><span style="color:#0f0">E</span> - Add drone to swarm</div>
 <div><span style="color:#0f0">Tab</span> - Switch drone</div>
@@ -128,6 +123,7 @@ const S={
   mouse:{x:0,y:0,locked:false},
   camYaw:0,camPitch:0,
   kills:0,
+  verticalMode:false,// false=horizontal (XZ), true=vertical (XY)
 
   init(){
     this.sc=new THREE.Scene();
@@ -224,6 +220,7 @@ const S={
     window.addEventListener('keydown',e=>{
       this.keys[e.code]=true;
       if(e.code==='KeyE')this.addDrone();
+      if(e.code==='KeyQ')this.toggleVerticalMode();
       if(e.code==='Tab'){e.preventDefault();this.switchDrone()}
     });
     window.addEventListener('keyup',e=>this.keys[e.code]=false);
@@ -315,6 +312,26 @@ const S={
     this.activeDrone=(this.activeDrone+1)%this.drones.length;
   },
 
+  toggleVerticalMode(){
+    this.verticalMode=!this.verticalMode;
+    const ind=document.getElementById('mode-indicator');
+    const ring=document.getElementById('lstick-ring');
+    const label=document.getElementById('lstick-label');
+    if(this.verticalMode){
+      ind.textContent='MODE: VERTICAL ↕';
+      ind.style.borderColor='#08f';
+      ind.style.color='#08f';
+      ring.style.borderColor='#08f';
+      label.innerHTML='🚀 UP/DOWN';
+    }else{
+      ind.textContent='MODE: HORIZONTAL ↔';
+      ind.style.borderColor='#0f0';
+      ind.style.color='#0f0';
+      ring.style.borderColor='#0f0';
+      label.innerHTML='✈️ ALL FLIGHT';
+    }
+  },
+
   addTarget(){
     const mesh=new THREE.Mesh(
       new THREE.OctahedronGeometry(4),
@@ -395,17 +412,19 @@ const S={
     // Buttons
     const wasRB=this.input.buttons.rb;
     const wasA=this.input.buttons.a;
+    const wasL3=this.input.buttons.l3;
     this.input.buttons.rb=gp.buttons[5]?.pressed;
     this.input.buttons.a=gp.buttons[0]?.pressed;
+    this.input.buttons.l3=gp.buttons[10]?.pressed;// L3 = left stick click
 
     if(this.input.buttons.rb&&!wasRB)this.fire();
     if(this.input.buttons.a&&!wasA)this.addDrone();
+    if(this.input.buttons.l3&&!wasL3)this.toggleVerticalMode();
 
     // Update UI
     document.getElementById('lstick').style.transform=`translate(${-50+this.input.lx*40}%,${-50+this.input.ly*40}%)`;
     document.getElementById('rstick').style.transform=`translate(${-50+this.input.rx*40}%,${-50+this.input.ry*40}%)`;
-    document.getElementById('lt-fill').style.width=this.input.lt*100+'%';
-    document.getElementById('rt-fill').style.width=this.input.rt*100+'%';
+    document.getElementById('btn-l3').classList.toggle('active',this.input.buttons.l3);
   },
 
   updateDroneCount(){
@@ -423,8 +442,6 @@ const S={
     let ly=this.input.ly||(this.keys.KeyW?-1:this.keys.KeyS?1:0);
     let rx=this.input.rx;
     let ry=this.input.ry;
-    let up=this.input.rt||(this.keys.Space?.8:0);
-    let down=this.input.lt||(this.keys.ShiftLeft?.8:0);
 
     // Right stick controls camera (gamepad)
     if(!this.mouse.locked){
@@ -433,25 +450,32 @@ const S={
       this.camPitch=T.clamp(this.camPitch,-Math.PI/3,Math.PI/3);
     }
 
-    // MOVEMENT - Left stick moves in camera-relative direction
-    // This is the key change: movement is in world XZ plane relative to camera yaw
+    // MOVEMENT - Left stick controls ALL movement
+    // L3 toggles between horizontal (XZ) and vertical (XY) modes
     const moveSpeed=.4;
     const moveDir=T.v3(0,0,0);
 
-    // Forward/back (in camera direction)
-    if(ly!==0){
-      moveDir.x+=Math.sin(this.camYaw)*(-ly)*moveSpeed;
-      moveDir.z+=Math.cos(this.camYaw)*(-ly)*moveSpeed;
+    if(this.verticalMode){
+      // VERTICAL MODE: Y-axis = up/down, X-axis = strafe
+      moveDir.y=(-ly)*moveSpeed;// stick up = go up
+      // Still allow strafe in vertical mode
+      if(lx!==0){
+        moveDir.x+=Math.cos(this.camYaw)*lx*moveSpeed;
+        moveDir.z+=-Math.sin(this.camYaw)*lx*moveSpeed;
+      }
+    }else{
+      // HORIZONTAL MODE: standard XZ movement
+      // Forward/back (in camera direction)
+      if(ly!==0){
+        moveDir.x+=Math.sin(this.camYaw)*(-ly)*moveSpeed;
+        moveDir.z+=Math.cos(this.camYaw)*(-ly)*moveSpeed;
+      }
+      // Strafe left/right
+      if(lx!==0){
+        moveDir.x+=Math.cos(this.camYaw)*lx*moveSpeed;
+        moveDir.z+=-Math.sin(this.camYaw)*lx*moveSpeed;
+      }
     }
-
-    // Strafe left/right
-    if(lx!==0){
-      moveDir.x+=Math.cos(this.camYaw)*lx*moveSpeed;
-      moveDir.z+=-Math.sin(this.camYaw)*lx*moveSpeed;
-    }
-
-    // Vertical - triggers
-    moveDir.y=(up-down)*moveSpeed;
 
     // Apply movement
     drone.vel.add(moveDir);
