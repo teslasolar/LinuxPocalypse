@@ -14,5 +14,13 @@
     "icon": "🧠",
     "color": "#ff00ff",
     "tags": ["3D", "Neural", "Self-Builder", "Evolution"]
+  },
+  {
+    "file": "voxel-forge.html",
+    "title": "VoxelForge 3D",
+    "description": "3D printer simulation with layer-by-layer voxel building, multiple filament types, print queue, and G-code output",
+    "icon": "🖨️",
+    "color": "#ff8800",
+    "tags": ["3D", "Printing", "Voxel", "Layer-Builder"]
   }
 ]

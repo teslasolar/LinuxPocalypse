@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VoxelForge 3D</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#1a1a2e;overflow:hidden;font:10px monospace;color:#0ff}
+#c{position:fixed;inset:0;z-index:0}
+.p{position:absolute;background:rgba(20,20,40,.95);border:2px solid;border-radius:10px;padding:12px;z-index:10;backdrop-filter:blur(6px)}
+.t{background:#0a0a15;color:#0f0;padding:8px;height:90px;overflow-y:auto;white-space:pre-wrap;font-size:9px;border:1px solid #0f04;border-radius:4px}
+button{background:linear-gradient(135deg,#f80,#c60);color:#fff;border:0;padding:6px 10px;margin:3px;font-size:9px;border-radius:4px;cursor:pointer;font-weight:bold;transition:all .2s}
+button:hover{transform:scale(1.05);box-shadow:0 0 15px #f806}
+.cyan{background:linear-gradient(135deg,#0ff,#08f)}
+.green{background:linear-gradient(135deg,#0f8,#0a5)}
+.purple{background:linear-gradient(135deg,#f0f,#80f)}
+.g{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:6px 0}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:6px 0}
+.s{padding:5px;text-align:center;border:1px solid;border-radius:4px;background:rgba(0,0,0,.4);font-size:9px}
+.bar{height:8px;background:#111;border-radius:4px;margin:4px 0;overflow:hidden}.fill{height:100%;border-radius:4px;transition:width .3s}
+.hot{color:#f80;text-shadow:0 0 5px #f80}
+.slider{width:100%;margin:4px 0}
+input[type=range]{-webkit-appearance:none;width:100%;height:6px;background:#333;border-radius:3px;outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;background:#f80;border-radius:50%;cursor:pointer}
+</style></head><body><canvas id="c"></canvas>
+
+<div class="p" style="top:10px;left:10px;border-color:#f80;width:300px">
+<div class="hot" style="text-align:center;font-size:13px">🖨️ VOXELFORGE 3D</div>
+<div id="status"></div>
+<div id="progress"></div>
+<div id="gcode" class="t"></div>
+</div>
+
+<div class="p" style="top:10px;right:10px;border-color:#0ff;width:320px">
+<div style="color:#0ff;text-align:center;font-size:12px">📐 PRINT QUEUE</div>
+<div style="font-size:9px;margin:8px 0">SELECT MODEL:</div>
+<div class="g">
+<button onclick="P.queue('cube')">📦Cube</button>
+<button onclick="P.queue('pyramid')">🔺Pyramid</button>
+<button onclick="P.queue('dome')">🔵Dome</button>
+<button onclick="P.queue('tower')">🗼Tower</button>
+<button onclick="P.queue('spiral')">🌀Spiral</button>
+<button onclick="P.queue('arch')">🌉Arch</button>
+<button onclick="P.queue('crystal')">💎Crystal</button>
+<button onclick="P.queue('tree')">🌲Tree</button>
+<button onclick="P.queue('wave')">🌊Wave</button>
+</div>
+<div id="queueList" style="max-height:60px;overflow-y:auto;font-size:8px;margin:8px 0;padding:5px;background:#0002;border-radius:4px"></div>
+<div class="g">
+<button class="cyan" onclick="P.start()">▶️Start</button>
+<button class="green" onclick="P.pause()">⏸️Pause</button>
+<button class="purple" onclick="P.clear()">🗑️Clear</button>
+</div>
+</div>
+
+<div class="p" style="bottom:10px;left:10px;border-color:#0f8;width:300px">
+<div style="color:#0f8;font-size:11px">⚙️ PRINTER SETTINGS</div>
+<div style="font-size:9px;margin-top:8px">
+<div>Speed: <span id="speedVal">100</span>%</div>
+<input type="range" id="speed" min="25" max="200" value="100" oninput="P.setSpeed(this.value)">
+<div>Layer Height: <span id="layerVal">0.2</span>mm</div>
+<input type="range" id="layer" min="1" max="5" value="2" oninput="P.setLayer(this.value)">
+<div>Infill: <span id="infillVal">20</span>%</div>
+<input type="range" id="infill" min="0" max="100" value="20" oninput="P.setInfill(this.value)">
+</div>
+<div id="temps" class="g" style="margin-top:10px"></div>
+</div>
+
+<div class="p" style="bottom:10px;right:10px;border-color:#f0f;width:300px">
+<div style="color:#f0f;font-size:11px">🎨 FILAMENT</div>
+<div class="g4" id="filaments"></div>
+<div id="filamentInfo" style="font-size:9px;margin-top:8px"></div>
+<div id="stats" style="font-size:9px;margin-top:8px"></div>
+</div>
+
+<script>
+const τ=Math.PI*2;
+
+// Filament types: [name, color, temp, strength]
+const FILAMENTS={
+  pla:['PLA',0x00ff88,200,1],
+  abs:['ABS',0xff8800,240,1.3],
+  petg:['PETG',0x00ffff,230,1.5],
+  tpu:['TPU',0xff00ff,220,.8],
+  nylon:['Nylon',0xffff00,260,2],
+  carbon:['Carbon',0x444444,250,2.5],
+  glow:['Glow',0x88ff00,205,1],
+  metal:['Metal',0xaaaaaa,280,3]
+};
+
+// Model generators - return array of {x,y,z,size} voxels
+const MODELS={
+  cube:(s=8)=>{
+    const v=[];
+    for(let y=0;y<s;y++)for(let x=0;x<s;x++)for(let z=0;z<s;z++)
+      if(x===0||x===s-1||y===0||y===s-1||z===0||z===s-1)v.push({x:x-s/2,y,z:z-s/2,s:1});
+    return v;
+  },
+  pyramid:(s=10)=>{
+    const v=[];
+    for(let y=0;y<s;y++){
+      const w=s-y;
+      for(let x=0;x<w;x++)for(let z=0;z<w;z++)
+        if(x===0||x===w-1||z===0||z===w-1||y===0)v.push({x:x-w/2+.5,y,z:z-w/2+.5,s:1});
+    }
+    return v;
+  },
+  dome:(r=6)=>{
+    const v=[];
+    for(let y=0;y<=r;y++){
+      const rr=Math.sqrt(r*r-y*y);
+      for(let a=0;a<36;a++){
+        const x=Math.cos(a*τ/36)*rr;
+        const z=Math.sin(a*τ/36)*rr;
+        v.push({x,y,z,s:1});
+      }
+    }
+    return v;
+  },
+  tower:(h=15)=>{
+    const v=[];
+    for(let y=0;y<h;y++){
+      const r=3-Math.floor(y/5);
+      for(let a=0;a<12;a++){
+        v.push({x:Math.cos(a*τ/12)*r,y,z:Math.sin(a*τ/12)*r,s:1});
+      }
+      if(y%5===4)for(let a=0;a<16;a++)v.push({x:Math.cos(a*τ/16)*(r+1),y,z:Math.sin(a*τ/16)*(r+1),s:.8});
+    }
+    return v;
+  },
+  spiral:(h=12)=>{
+    const v=[];
+    for(let y=0;y<h*8;y++){
+      const a=y*.2;
+      const r=2+y*.05;
+      v.push({x:Math.cos(a)*r,y:y*.15,z:Math.sin(a)*r,s:.8});
+      if(y%4===0)v.push({x:Math.cos(a)*r*.5,y:y*.15,z:Math.sin(a)*r*.5,s:.6});
+    }
+    return v;
+  },
+  arch:(w=10)=>{
+    const v=[];
+    // Base pillars
+    for(let y=0;y<8;y++){
+      for(let z=-1;z<=1;z++){
+        v.push({x:-w/2,y,z,s:1});
+        v.push({x:w/2,y,z,s:1});
+      }
+    }
+    // Arch curve
+    for(let a=0;a<=18;a++){
+      const x=Math.cos(Math.PI*a/18)*w/2;
+      const y=8+Math.sin(Math.PI*a/18)*4;
+      for(let z=-1;z<=1;z++)v.push({x,y,z,s:1});
+    }
+    return v;
+  },
+  crystal:(h=12)=>{
+    const v=[];
+    for(let y=0;y<h;y++){
+      const r=y<h/2?y*.6:(h-y)*.6;
+      const pts=6;
+      for(let a=0;a<pts;a++){
+        v.push({x:Math.cos(a*τ/pts)*r,y,z:Math.sin(a*τ/pts)*r,s:1});
+        v.push({x:Math.cos((a+.5)*τ/pts)*r*.5,y,z:Math.sin((a+.5)*τ/pts)*r*.5,s:.7});
+      }
+    }
+    return v;
+  },
+  tree:(h=14)=>{
+    const v=[];
+    // Trunk
+    for(let y=0;y<6;y++)for(let x=-1;x<=1;x++)for(let z=-1;z<=1;z++)
+      if(Math.abs(x)+Math.abs(z)<=1)v.push({x,y,z,s:.8});
+    // Foliage layers
+    for(let layer=0;layer<3;layer++){
+      const by=5+layer*3;
+      const r=4-layer;
+      for(let y=0;y<3;y++){
+        const rr=r-y*.8;
+        for(let a=0;a<16;a++){
+          v.push({x:Math.cos(a*τ/16)*rr,y:by+y,z:Math.sin(a*τ/16)*rr,s:.9});
+        }
+      }
+    }
+    return v;
+  },
+  wave:(w=12)=>{
+    const v=[];
+    for(let x=0;x<w;x++){
+      for(let z=0;z<w;z++){
+        const h=3+Math.sin(x*.5)*2+Math.cos(z*.5)*2;
+        for(let y=0;y<h;y++)v.push({x:x-w/2,y,z:z-w/2,s:1});
+      }
+    }
+    return v;
+  }
+};
+
+const P={
+  printQueue:[],
+  currentPrint:null,
+  currentVoxels:[],
+  printedVoxels:[],
+  voxelIndex:0,
+  isPrinting:false,
+  isPaused:false,
+  filament:'pla',
+  speed:100,
+  layerHeight:.2,
+  infill:20,
+  temps:{bed:60,nozzle:200},
+  totalPrints:0,
+  totalVoxels:0,
+
+  W:{
+    scene:null,camera:null,renderer:null,
+    printer:null,head:null,bed:null,
+    voxelMeshes:[],activeVoxel:null,
+
+    init(){
+      this.scene=new THREE.Scene();
+      this.camera=new THREE.PerspectiveCamera(50,innerWidth/innerHeight,.1,1000);
+      this.renderer=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true});
+      this.renderer.setSize(innerWidth,innerHeight);
+      this.renderer.setClearColor(0x1a1a2e);
+      this.renderer.shadowMap.enabled=true;
+      this.camera.position.set(30,25,30);
+      this.camera.lookAt(0,8,0);
+
+      // Lighting
+      this.scene.add(new THREE.AmbientLight(0x404060,.6));
+      const sun=new THREE.DirectionalLight(0xffffff,.8);
+      sun.position.set(20,40,20);
+      sun.castShadow=true;
+      this.scene.add(sun);
+
+      // Printer frame
+      this.buildPrinter();
+
+      // Floor
+      const floor=new THREE.Mesh(
+        new THREE.PlaneGeometry(100,100),
+        new THREE.MeshPhongMaterial({color:0x1a1a2e})
+      );
+      floor.rotation.x=-Math.PI/2;
+      floor.position.y=-1;
+      floor.receiveShadow=true;
+      this.scene.add(floor);
+
+      // Grid
+      const grid=new THREE.GridHelper(60,30,0x333355,0x222244);
+      grid.position.y=-.5;
+      this.scene.add(grid);
+
+      this.scene.fog=new THREE.FogExp2(0x1a1a2e,.008);
+      this.animate();
+    },
+
+    buildPrinter(){
+      const frame=new THREE.Group();
+
+      // Corner pillars
+      const pillarGeo=new THREE.BoxGeometry(.5,25,.5);
+      const pillarMat=new THREE.MeshPhongMaterial({color:0x444444});
+      [[-10,-10],[10,-10],[10,10],[-10,10]].forEach(([x,z])=>{
+        const p=new THREE.Mesh(pillarGeo,pillarMat);
+        p.position.set(x,12,z);
+        frame.add(p);
+      });
+
+      // Top frame
+      const topMat=new THREE.MeshPhongMaterial({color:0x333333});
+      [[-10,10],[10,-10]].forEach(([a,b],i)=>{
+        const bar=new THREE.Mesh(new THREE.BoxGeometry(i?20.5:.5,0.5,i?.5:20.5),topMat);
+        bar.position.set(i?0:a,24.5,i?b:0);
+        frame.add(bar);
+      });
+
+      // Heated bed
+      this.bed=new THREE.Mesh(
+        new THREE.BoxGeometry(18,.3,18),
+        new THREE.MeshPhongMaterial({color:0x222222,emissive:0x331100,emissiveIntensity:.3})
+      );
+      this.bed.position.y=0;
+      this.bed.receiveShadow=true;
+      frame.add(this.bed);
+
+      // Bed surface pattern
+      const bedGrid=new THREE.GridHelper(18,18,0x444400,0x333300);
+      bedGrid.position.y=.2;
+      frame.add(bedGrid);
+
+      // Print head gantry
+      const gantry=new THREE.Group();
+      const gantryBar=new THREE.Mesh(new THREE.BoxGeometry(20,.8,.8),new THREE.MeshPhongMaterial({color:0x555555}));
+      gantry.add(gantryBar);
+
+      // Print head
+      this.head=new THREE.Group();
+      const headBody=new THREE.Mesh(
+        new THREE.BoxGeometry(3,4,3),
+        new THREE.MeshPhongMaterial({color:0x666666})
+      );
+      headBody.position.y=-2;
+      this.head.add(headBody);
+
+      // Nozzle
+      const nozzle=new THREE.Mesh(
+        new THREE.ConeGeometry(.3,1,8),
+        new THREE.MeshPhongMaterial({color:0xffaa00,emissive:0xff6600,emissiveIntensity:.5})
+      );
+      nozzle.rotation.x=Math.PI;
+      nozzle.position.y=-4.5;
+      this.head.add(nozzle);
+      this.head.nozzle=nozzle;
+
+      // Heat indicator
+      const heatGlow=new THREE.PointLight(0xff6600,.5,5);
+      heatGlow.position.y=-4;
+      this.head.add(heatGlow);
+      this.head.heatGlow=heatGlow;
+
+      gantry.add(this.head);
+      gantry.position.y=20;
+      frame.add(gantry);
+      this.gantry=gantry;
+
+      this.scene.add(frame);
+      this.printer=frame;
+    },
+
+    createVoxel(x,y,z,size,color,building=false){
+      const geo=new THREE.BoxGeometry(size*.95,size*.95,size*.95);
+      const mat=new THREE.MeshPhongMaterial({
+        color,
+        emissive:building?color:0x000000,
+        emissiveIntensity:building?.5:0,
+        transparent:building,
+        opacity:building?.7:1
+      });
+      const mesh=new THREE.Mesh(geo,mat);
+      mesh.position.set(x,y+size/2,z);
+      mesh.castShadow=true;
+      mesh.receiveShadow=true;
+      this.scene.add(mesh);
+      this.voxelMeshes.push(mesh);
+      return mesh;
+    },
+
+    clearVoxels(){
+      this.voxelMeshes.forEach(m=>this.scene.remove(m));
+      this.voxelMeshes=[];
+    },
+
+    animate(){
+      requestAnimationFrame(()=>this.animate());
+      const t=Date.now()*.001;
+
+      // Camera orbit
+      const r=40;
+      this.camera.position.x=Math.cos(t*.15)*r;
+      this.camera.position.z=Math.sin(t*.15)*r;
+      this.camera.position.y=20+Math.sin(t*.1)*5;
+      this.camera.lookAt(0,8,0);
+
+      // Head idle movement when not printing
+      if(!P.isPrinting&&this.head){
+        this.head.position.x=Math.sin(t)*2;
+        this.head.position.z=Math.cos(t*.7)*2;
+      }
+
+      // Bed heat glow
+      if(this.bed){
+        this.bed.material.emissiveIntensity=.2+Math.sin(t*2)*.1;
+      }
+
+      // Nozzle heat
+      if(this.head&&this.head.heatGlow){
+        this.head.heatGlow.intensity=.3+Math.sin(t*3)*.2;
+      }
+
+      this.renderer.render(this.scene,this.camera);
+    }
+  },
+
+  queue(model){
+    if(this.printQueue.length>=5){
+      this.log('⚠ Queue full (max 5)');
+      return;
+    }
+    this.printQueue.push({model,filament:this.filament});
+    this.log(`+ Queued: ${model} (${FILAMENTS[this.filament][0]})`);
+    this.updateUI();
+  },
+
+  start(){
+    if(this.isPrinting){
+      if(this.isPaused){
+        this.isPaused=false;
+        this.log('▶ Resumed');
+      }
+      return;
+    }
+    if(this.printQueue.length===0){
+      this.log('⚠ Queue empty');
+      return;
+    }
+
+    const job=this.printQueue.shift();
+    this.currentPrint=job;
+    this.currentVoxels=MODELS[job.model]().sort((a,b)=>a.y-b.y);
+    this.printedVoxels=[];
+    this.voxelIndex=0;
+    this.isPrinting=true;
+    this.isPaused=false;
+
+    this.temps.nozzle=FILAMENTS[job.filament][1];
+    this.W.clearVoxels();
+
+    this.log(`🖨️ Starting: ${job.model}`);
+    this.log(`Layers: ${Math.ceil(Math.max(...this.currentVoxels.map(v=>v.y)))+1}`);
+    this.log(`Voxels: ${this.currentVoxels.length}`);
+
+    this.printLoop();
+    this.updateUI();
+  },
+
+  printLoop(){
+    if(!this.isPrinting||this.isPaused)return;
+
+    if(this.voxelIndex>=this.currentVoxels.length){
+      this.finishPrint();
+      return;
+    }
+
+    const v=this.currentVoxels[this.voxelIndex];
+    const color=FILAMENTS[this.currentPrint.filament][1];
+
+    // Move head to position
+    if(this.W.head){
+      this.W.head.position.x=v.x;
+      this.W.head.position.z=v.z;
+      this.W.gantry.position.y=3+v.y+2;
+    }
+
+    // Create voxel with building effect
+    const mesh=this.W.createVoxel(v.x,v.y,v.z,v.s||1,color,true);
+
+    // Solidify after delay
+    setTimeout(()=>{
+      if(mesh){
+        mesh.material.emissiveIntensity=0;
+        mesh.material.transparent=false;
+        mesh.material.opacity=1;
+      }
+    },100);
+
+    this.voxelIndex++;
+    this.printedVoxels.push(v);
+
+    // G-code simulation
+    if(this.voxelIndex%10===0){
+      this.gcode(`G1 X${v.x.toFixed(1)} Y${v.z.toFixed(1)} Z${v.y.toFixed(1)} E${(this.voxelIndex*.1).toFixed(2)}`);
+    }
+
+    this.updateUI();
+
+    // Next voxel
+    const delay=Math.max(20,150-this.speed);
+    setTimeout(()=>this.printLoop(),delay);
+  },
+
+  finishPrint(){
+    this.isPrinting=false;
+    this.totalPrints++;
+    this.totalVoxels+=this.printedVoxels.length;
+    this.log(`✅ Complete: ${this.currentPrint.model}`);
+    this.log(`Voxels: ${this.printedVoxels.length}`);
+
+    // Start next in queue
+    if(this.printQueue.length>0){
+      setTimeout(()=>{
+        // Move completed print aside
+        this.W.voxelMeshes.forEach(m=>{
+          m.position.x+=20;
+          m.position.z+=Math.random()*10-5;
+        });
+        this.start();
+      },1000);
+    }
+
+    this.currentPrint=null;
+    this.updateUI();
+  },
+
+  pause(){
+    if(this.isPrinting){
+      this.isPaused=!this.isPaused;
+      this.log(this.isPaused?'⏸ Paused':'▶ Resumed');
+      if(!this.isPaused)this.printLoop();
+    }
+  },
+
+  clear(){
+    this.printQueue=[];
+    this.isPrinting=false;
+    this.isPaused=false;
+    this.currentPrint=null;
+    this.W.clearVoxels();
+    this.log('🗑️ Cleared all');
+    this.updateUI();
+  },
+
+  setSpeed(v){
+    this.speed=parseInt(v);
+    document.getElementById('speedVal').textContent=v;
+  },
+
+  setLayer(v){
+    this.layerHeight=v*.1;
+    document.getElementById('layerVal').textContent=this.layerHeight.toFixed(1);
+  },
+
+  setInfill(v){
+    this.infill=parseInt(v);
+    document.getElementById('infillVal').textContent=v;
+  },
+
+  setFilament(f){
+    this.filament=f;
+    this.temps.nozzle=FILAMENTS[f][1];
+    this.updateUI();
+  },
+
+  log(msg){
+    const el=document.getElementById('gcode');
+    const time=new Date().toLocaleTimeString().slice(0,5);
+    el.textContent+=`[${time}] ${msg}\n`;
+    el.scrollTop=el.scrollHeight;
+  },
+
+  gcode(cmd){
+    const el=document.getElementById('gcode');
+    el.textContent+=`${cmd}\n`;
+    el.scrollTop=el.scrollHeight;
+  },
+
+  updateUI(){
+    // Status
+    let status='IDLE';
+    let statusColor='#888';
+    if(this.isPrinting){
+      status=this.isPaused?'PAUSED':'PRINTING';
+      statusColor=this.isPaused?'#ff0':'#0f0';
+    }
+    document.getElementById('status').innerHTML=`
+      <div class="g">
+        <div class="s" style="border-color:${statusColor}"><span style="color:${statusColor}">${status}</span></div>
+        <div class="s" style="border-color:#0ff">${this.currentPrint?this.currentPrint.model:'--'}</div>
+        <div class="s" style="border-color:#f80">Q:${this.printQueue.length}</div>
+      </div>
+    `;
+
+    // Progress
+    const progress=this.currentVoxels.length?Math.round(this.voxelIndex/this.currentVoxels.length*100):0;
+    const currentLayer=this.printedVoxels.length?Math.max(...this.printedVoxels.map(v=>v.y)):0;
+    document.getElementById('progress').innerHTML=this.isPrinting?`
+      <div style="font-size:9px">Layer: ${Math.ceil(currentLayer)} | Voxel: ${this.voxelIndex}/${this.currentVoxels.length}</div>
+      <div class="bar"><div class="fill" style="width:${progress}%;background:linear-gradient(90deg,#f80,#0f0)"></div></div>
+      <div style="font-size:9px;color:#0f0">${progress}% Complete</div>
+    `:'<div style="color:#666;font-size:9px">No active print</div>';
+
+    // Queue
+    document.getElementById('queueList').innerHTML=this.printQueue.length?
+      this.printQueue.map((j,i)=>`<div style="color:#${FILAMENTS[j.filament][1].toString(16).padStart(6,'0')}">${i+1}. ${j.model} (${FILAMENTS[j.filament][0]})</div>`).join(''):
+      '<div style="color:#555">Queue empty</div>';
+
+    // Temps
+    document.getElementById('temps').innerHTML=`
+      <div class="s" style="border-color:#f60">🔥Nozzle<br><span class="hot">${this.temps.nozzle}°C</span></div>
+      <div class="s" style="border-color:#f80">🛏️Bed<br><span style="color:#f80">${this.temps.bed}°C</span></div>
+      <div class="s" style="border-color:#0f8">💨Fan<br><span style="color:#0f8">100%</span></div>
+    `;
+
+    // Filaments
+    document.getElementById('filaments').innerHTML=Object.entries(FILAMENTS).map(([k,v])=>
+      `<button style="background:#${v[1].toString(16).padStart(6,'0')};color:#000;font-size:8px;padding:4px" onclick="P.setFilament('${k}')">${v[0]}</button>`
+    ).join('');
+
+    const f=FILAMENTS[this.filament];
+    document.getElementById('filamentInfo').innerHTML=`
+      <div style="color:#${f[1].toString(16).padStart(6,'0')}">● ${f[0]}</div>
+      <div>Temp: ${f[1]}°C | Strength: ${f[3]}x</div>
+    `;
+
+    // Stats
+    document.getElementById('stats').innerHTML=`
+      <div>Total Prints: <b style="color:#0f0">${this.totalPrints}</b></div>
+      <div>Total Voxels: <b style="color:#0ff">${this.totalVoxels}</b></div>
+    `;
+  },
+
+  init(){
+    this.W.init();
+    this.log('🖨️ VoxelForge 3D initialized');
+    this.log('Select a model to print');
+    this.updateUI();
+  }
+};
+
+onload=()=>setTimeout(()=>P.init(),100);
+onresize=()=>{P.W.renderer.setSize(innerWidth,innerHeight);P.W.camera.aspect=innerWidth/innerHeight;P.W.camera.updateProjectionMatrix()};
+</script></body></html>
