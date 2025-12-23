@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SCADA 3D Factory - Automated STL Production</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0c12;overflow:hidden;font:10px monospace;color:#0f0}
+#c{position:fixed;inset:0;z-index:0}
+.p{position:absolute;background:rgba(5,10,20,.96);border:2px solid;border-radius:6px;padding:8px;z-index:10;backdrop-filter:blur(6px)}
+.t{background:#000;color:#0f0;padding:5px;height:70px;overflow-y:auto;white-space:pre-wrap;font-size:8px;border:1px solid #0f03;border-radius:3px}
+button{background:linear-gradient(135deg,#0a0,#060);color:#0f0;border:1px solid #0f0;padding:5px 8px;margin:2px;font-size:8px;border-radius:3px;cursor:pointer;font-weight:bold;transition:all .2s}
+button:hover{background:#0f0;color:#000;box-shadow:0 0 10px #0f0}
+.warn{background:linear-gradient(135deg,#a60,#640);border-color:#f80;color:#ff0}
+.danger{background:linear-gradient(135deg,#a00,#600);border-color:#f00;color:#fff}
+.cyan{background:linear-gradient(135deg,#088,#044);border-color:#0ff;color:#0ff}
+.g{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;margin:5px 0}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:3px;margin:5px 0}
+.g5{display:grid;grid-template-columns:repeat(5,1fr);gap:3px;margin:5px 0}
+.s{padding:4px;text-align:center;border:1px solid;border-radius:3px;background:rgba(0,0,0,.5);font-size:8px}
+.bar{height:6px;background:#111;border-radius:3px;margin:3px 0;overflow:hidden}.fill{height:100%;border-radius:3px;transition:width .3s}
+.blink{animation:blink 1s infinite}@keyframes blink{50%{opacity:.3}}
+.alarm{background:#400;border-color:#f00;animation:alarm .5s infinite}@keyframes alarm{50%{background:#800}}
+input[type=range]{-webkit-appearance:none;width:100%;height:5px;background:#1a1c22;border-radius:3px;margin:4px 0}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;background:#0f0;border-radius:50%;cursor:pointer}
+.hmi-val{font-size:16px;font-weight:bold}
+.production-line{border:1px solid #333;border-radius:4px;padding:6px;margin:4px 0;background:#0002}
+.status-ok{color:#0f0}.status-warn{color:#ff0}.status-err{color:#f00}
+</style></head><body><canvas id="c"></canvas>
+
+<!-- SCADA Header -->
+<div class="p" style="top:5px;left:50%;transform:translateX(-50%);border-color:#0f0;padding:5px 30px">
+<div style="text-align:center;font-size:14px;color:#0f0">🏭 SCADA 3D FACTORY v1.0 <span id="clock" style="color:#0ff"></span></div>
+</div>
+
+<!-- Production Control -->
+<div class="p" style="top:40px;left:8px;border-color:#f80;width:280px">
+<div style="color:#f80;text-align:center;font-size:11px;border-bottom:1px solid #f803;padding-bottom:4px;margin-bottom:6px">⚙️ PRODUCTION CONTROL</div>
+<div class="g">
+<button onclick="F.startProduction()">▶️ START</button>
+<button class="warn" onclick="F.pauseProduction()">⏸️ PAUSE</button>
+<button class="danger" onclick="F.emergencyStop()">🛑 E-STOP</button>
+</div>
+<div style="font-size:9px;margin-top:8px">Production Mode:</div>
+<div class="g">
+<button onclick="F.setMode('organic')">🌿Organic</button>
+<button onclick="F.setMode('mechanical')">⚙️Mech</button>
+<button onclick="F.setMode('geometric')">🔷Geo</button>
+</div>
+<div class="g">
+<button onclick="F.setMode('artistic')">🎨Art</button>
+<button onclick="F.setMode('functional')">🔧Func</button>
+<button onclick="F.setMode('random')">🎲Rand</button>
+</div>
+<div id="mode-display" style="text-align:center;padding:4px;margin-top:5px;border:1px solid #f80;border-radius:3px;color:#f80">Mode: RANDOM</div>
+</div>
+
+<!-- Factory Status -->
+<div class="p" style="top:40px;right:8px;border-color:#0f0;width:300px">
+<div style="color:#0f0;text-align:center;font-size:11px;border-bottom:1px solid #0f03;padding-bottom:4px;margin-bottom:6px">📊 FACTORY STATUS</div>
+<div class="g4" id="factory-stats"></div>
+<div id="alarms" class="t" style="margin-top:6px;height:50px"></div>
+</div>
+
+<!-- Production Lines -->
+<div class="p" style="top:250px;left:8px;border-color:#0ff;width:280px">
+<div style="color:#0ff;font-size:11px;border-bottom:1px solid #0ff3;padding-bottom:4px;margin-bottom:6px">🔄 PRODUCTION LINES</div>
+<div id="production-lines"></div>
+</div>
+
+<!-- Quality Control -->
+<div class="p" style="top:250px;right:8px;border-color:#f0f;width:300px">
+<div style="color:#f0f;font-size:11px;border-bottom:1px solid #f0f3;padding-bottom:4px;margin-bottom:6px">✅ QUALITY CONTROL</div>
+<div id="qc-stats"></div>
+<div id="current-test" style="margin-top:6px;padding:4px;border:1px solid #f0f3;border-radius:3px"></div>
+</div>
+
+<!-- Inventory / STL Queue -->
+<div class="p" style="bottom:8px;left:8px;border-color:#ff0;width:340px">
+<div style="color:#ff0;font-size:11px;border-bottom:1px solid #ff03;padding-bottom:4px;margin-bottom:6px">📦 STL INVENTORY <span id="inventory-count">(0)</span></div>
+<div id="inventory" style="max-height:100px;overflow-y:auto"></div>
+<div class="g" style="margin-top:6px">
+<button class="cyan" onclick="F.downloadAll()">⬇️ Download All</button>
+<button class="warn" onclick="F.clearInventory()">🗑️ Clear</button>
+<button onclick="F.exportManifest()">📋 Manifest</button>
+</div>
+</div>
+
+<!-- System Metrics -->
+<div class="p" style="bottom:8px;right:8px;border-color:#08f;width:300px">
+<div style="color:#08f;font-size:11px;border-bottom:1px solid #08f3;padding-bottom:4px;margin-bottom:6px">📈 SYSTEM METRICS</div>
+<div id="metrics"></div>
+</div>
+
+<!-- Log Panel -->
+<div class="p" style="bottom:8px;left:360px;right:320px;border-color:#0f0">
+<div style="color:#0f0;font-size:10px">📜 SYSTEM LOG</div>
+<div id="log" class="t" style="height:90px"></div>
+</div>
+
+<script>
+const π=Math.PI,τ=π*2;
+const T={
+  rnd:(a,b)=>a+Math.random()*(b-a),
+  rndInt:(a,b)=>Math.floor(T.rnd(a,b+1)),
+  v3:(x,y,z)=>new THREE.Vector3(x,y,z),
+  clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),
+  lerp:(a,b,t)=>a+(b-a)*t,
+  $(id){return document.getElementById(id)},
+  html(id,h){this.$(id).innerHTML=h}
+};
+
+// STL Binary Export
+const STL={
+  export(mesh){
+    const geo=mesh.geometry.index?mesh.geometry.toNonIndexed():mesh.geometry;
+    const pos=geo.attributes.position;
+    const numTri=pos.count/3;
+    const buf=new ArrayBuffer(84+numTri*50);
+    const dv=new DataView(buf);
+
+    // Header
+    for(let i=0;i<80;i++)dv.setUint8(i,0);
+    dv.setUint32(80,numTri,true);
+
+    let offset=84;
+    for(let i=0;i<numTri;i++){
+      const i3=i*3;
+      const ax=pos.getX(i3),ay=pos.getY(i3),az=pos.getZ(i3);
+      const bx=pos.getX(i3+1),by=pos.getY(i3+1),bz=pos.getZ(i3+1);
+      const cx=pos.getX(i3+2),cy=pos.getY(i3+2),cz=pos.getZ(i3+2);
+
+      // Normal
+      const ux=bx-ax,uy=by-ay,uz=bz-az;
+      const vx=cx-ax,vy=cy-ay,vz=cz-az;
+      const nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;
+      const len=Math.sqrt(nx*nx+ny*ny+nz*nz)||1;
+
+      dv.setFloat32(offset,nx/len,true);offset+=4;
+      dv.setFloat32(offset,ny/len,true);offset+=4;
+      dv.setFloat32(offset,nz/len,true);offset+=4;
+      dv.setFloat32(offset,ax,true);offset+=4;
+      dv.setFloat32(offset,ay,true);offset+=4;
+      dv.setFloat32(offset,az,true);offset+=4;
+      dv.setFloat32(offset,bx,true);offset+=4;
+      dv.setFloat32(offset,by,true);offset+=4;
+      dv.setFloat32(offset,bz,true);offset+=4;
+      dv.setFloat32(offset,cx,true);offset+=4;
+      dv.setFloat32(offset,cy,true);offset+=4;
+      dv.setFloat32(offset,cz,true);offset+=4;
+      dv.setUint16(offset,0,true);offset+=2;
+    }
+    return new Blob([buf],{type:'application/octet-stream'});
+  }
+};
+
+// Quality Control Tests
+const QC={
+  tests:[
+    {name:'Manifold Check',desc:'Watertight mesh',weight:20},
+    {name:'Overhang Analysis',desc:'Max 45° unsupported',weight:25},
+    {name:'Min Wall Thickness',desc:'≥0.8mm walls',weight:20},
+    {name:'Bed Adhesion',desc:'Flat base contact',weight:15},
+    {name:'Triangle Count',desc:'<100k triangles',weight:10},
+    {name:'Dimensions',desc:'Fits build volume',weight:10}
+  ],
+
+  runTests(mesh,callback){
+    let passed=0,total=this.tests.length;
+    const results=[];
+
+    this.tests.forEach((test,i)=>{
+      setTimeout(()=>{
+        // Simulate test with weighted random pass rate
+        const passRate=.7+Math.random()*.25;
+        const pass=Math.random()<passRate;
+        if(pass)passed++;
+        results.push({...test,pass,score:pass?test.weight:0});
+
+        if(results.length===total){
+          const totalScore=results.reduce((a,r)=>a+r.score,0);
+          callback({passed,total,score:totalScore,results});
+        }
+      },i*100);
+    });
+  }
+};
+
+// Shape Generators
+const GEN={
+  organic(params){
+    const{size,complexity,seed}=params;
+    const geo=new THREE.SphereGeometry(size,complexity*4,complexity*4);
+    const pos=geo.attributes.position;
+
+    for(let i=0;i<pos.count;i++){
+      const x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i);
+      const noise=Math.sin(x*seed)*Math.cos(y*seed*.7)*Math.sin(z*seed*.5);
+      const factor=1+noise*.3;
+      pos.setXYZ(i,x*factor,y*factor,z*factor);
+    }
+    geo.computeVertexNormals();
+    return geo;
+  },
+
+  mechanical(params){
+    const{size,complexity}=params;
+    const group=new THREE.Group();
+
+    // Base cylinder
+    const base=new THREE.Mesh(new THREE.CylinderGeometry(size,size*1.2,size*.3,complexity*8));
+    group.add(base);
+
+    // Gears/teeth
+    const teeth=complexity*4;
+    for(let i=0;i<teeth;i++){
+      const a=i*τ/teeth;
+      const tooth=new THREE.Mesh(new THREE.BoxGeometry(size*.15,size*.4,size*.1));
+      tooth.position.set(Math.cos(a)*size,size*.2,Math.sin(a)*size);
+      tooth.lookAt(0,size*.2,0);
+      group.add(tooth);
+    }
+
+    // Center shaft
+    const shaft=new THREE.Mesh(new THREE.CylinderGeometry(size*.2,size*.2,size*.8,16));
+    shaft.position.y=size*.4;
+    group.add(shaft);
+
+    // Merge to single geometry
+    const merged=new THREE.BufferGeometry();
+    const mat=new THREE.Matrix4();
+    const geos=[];
+    group.traverse(c=>{if(c.isMesh)geos.push(c.geometry.clone().applyMatrix4(c.matrix))});
+    return THREE.BufferGeometryUtils?THREE.BufferGeometryUtils.mergeBufferGeometries(geos):geos[0];
+  },
+
+  geometric(params){
+    const{size,complexity}=params;
+    const shapes=[
+      ()=>new THREE.BoxGeometry(size,size,size),
+      ()=>new THREE.OctahedronGeometry(size),
+      ()=>new THREE.IcosahedronGeometry(size),
+      ()=>new THREE.TetrahedronGeometry(size),
+      ()=>new THREE.DodecahedronGeometry(size),
+      ()=>new THREE.TorusGeometry(size*.6,size*.25,complexity*4,complexity*8),
+      ()=>new THREE.TorusKnotGeometry(size*.5,size*.15,complexity*16,complexity*4)
+    ];
+    return shapes[T.rndInt(0,shapes.length-1)]();
+  },
+
+  artistic(params){
+    const{size,complexity,seed}=params;
+    const geo=new THREE.TorusKnotGeometry(size*.5,size*.2,complexity*20,complexity*6,T.rndInt(2,5),T.rndInt(3,8));
+
+    // Artistic deformation
+    const pos=geo.attributes.position;
+    for(let i=0;i<pos.count;i++){
+      const x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i);
+      const twist=Math.sin(y*seed)*.2;
+      const nx=x*Math.cos(twist)-z*Math.sin(twist);
+      const nz=x*Math.sin(twist)+z*Math.cos(twist);
+      pos.setXYZ(i,nx,y,nz);
+    }
+    geo.computeVertexNormals();
+    return geo;
+  },
+
+  functional(params){
+    const{size,complexity}=params;
+    // Container/holder type shapes
+    const types=['vase','bowl','box','hook'];
+    const type=types[T.rndInt(0,types.length-1)];
+
+    if(type==='vase'){
+      const pts=[];
+      for(let i=0;i<=complexity*4;i++){
+        const t=i/(complexity*4);
+        const r=size*.3+Math.sin(t*π)*size*.5;
+        pts.push(new THREE.Vector2(r,t*size*1.5));
+      }
+      return new THREE.LatheGeometry(pts,complexity*8);
+    }else if(type==='bowl'){
+      const pts=[];
+      for(let i=0;i<=complexity*3;i++){
+        const t=i/(complexity*3);
+        const r=size*.8*Math.sin(t*π*.6+.2);
+        pts.push(new THREE.Vector2(Math.max(.1,r),t*size*.6));
+      }
+      return new THREE.LatheGeometry(pts,complexity*8);
+    }else{
+      return new THREE.BoxGeometry(size,size*.5,size);
+    }
+  },
+
+  random(params){
+    const modes=['organic','mechanical','geometric','artistic','functional'];
+    return this[modes[T.rndInt(0,modes.length-1)]](params);
+  }
+};
+
+const F={
+  // State
+  running:false,
+  paused:false,
+  mode:'random',
+
+  // Production stats
+  stats:{
+    produced:0,
+    passed:0,
+    failed:0,
+    totalScore:0,
+    uptime:0,
+    cycleTime:0
+  },
+
+  // Production lines
+  lines:[
+    {id:0,name:'LINE-A',status:'idle',progress:0,current:null,speed:1},
+    {id:1,name:'LINE-B',status:'idle',progress:0,current:null,speed:1.2},
+    {id:2,name:'LINE-C',status:'idle',progress:0,current:null,speed:0.8}
+  ],
+
+  // Inventory
+  inventory:[],
+  maxInventory:20,
+
+  // Alarms
+  alarms:[],
+
+  // 3D Renderer
+  R:{
+    scene:null,camera:null,renderer:null,
+    factoryObjects:[],
+    currentPreview:null,
+    conveyorItems:[],
+
+    init(){
+      this.scene=new THREE.Scene();
+      this.camera=new THREE.PerspectiveCamera(50,innerWidth/innerHeight,.1,500);
+      this.renderer=new THREE.WebGLRenderer({canvas:T.$('c'),antialias:true});
+      this.renderer.setSize(innerWidth,innerHeight);
+      this.renderer.setClearColor(0x0a0c12);
+      this.camera.position.set(60,50,60);
+      this.camera.lookAt(0,10,0);
+
+      // Lighting
+      this.scene.add(new THREE.AmbientLight(0x334455,.4));
+      const sun=new THREE.DirectionalLight(0xffffee,.6);
+      sun.position.set(50,80,50);
+      this.scene.add(sun);
+
+      // Orange industrial lights
+      for(let i=0;i<4;i++){
+        const light=new THREE.PointLight(0xff6600,.3,60);
+        light.position.set(-30+i*20,30,-20+i*10);
+        this.scene.add(light);
+      }
+
+      this.buildFactory();
+      this.scene.fog=new THREE.FogExp2(0x0a0c12,.008);
+      this.animate();
+    },
+
+    buildFactory(){
+      // Floor
+      const floor=new THREE.Mesh(
+        new THREE.PlaneGeometry(150,150),
+        new THREE.MeshPhongMaterial({color:0x1a1c22})
+      );
+      floor.rotation.x=-π/2;
+      floor.receiveShadow=true;
+      this.scene.add(floor);
+
+      // Grid
+      const grid=new THREE.GridHelper(150,30,0x0f03,0x0f01);
+      grid.position.y=.1;
+      this.scene.add(grid);
+
+      // Production line conveyors
+      for(let i=0;i<3;i++){
+        const belt=new THREE.Mesh(
+          new THREE.BoxGeometry(80,1,8),
+          new THREE.MeshPhongMaterial({color:0x333344})
+        );
+        belt.position.set(0,1,-20+i*20);
+        this.scene.add(belt);
+
+        // Line markers
+        const marker=new THREE.Mesh(
+          new THREE.BoxGeometry(2,5,10),
+          new THREE.MeshPhongMaterial({color:[0x00ff00,0x00ffff,0xff00ff][i],emissive:[0x004400,0x004444,0x440044][i]})
+        );
+        marker.position.set(-42,3,-20+i*20);
+        this.scene.add(marker);
+
+        // End station (QC)
+        const station=new THREE.Mesh(
+          new THREE.BoxGeometry(10,8,10),
+          new THREE.MeshPhongMaterial({color:0x224422,emissive:0x112211})
+        );
+        station.position.set(45,4,-20+i*20);
+        this.scene.add(station);
+      }
+
+      // Print heads
+      for(let i=0;i<3;i++){
+        const head=new THREE.Group();
+        const carriage=new THREE.Mesh(
+          new THREE.BoxGeometry(6,3,6),
+          new THREE.MeshPhongMaterial({color:0x445566})
+        );
+        head.add(carriage);
+
+        const nozzle=new THREE.Mesh(
+          new THREE.ConeGeometry(.5,2,8),
+          new THREE.MeshPhongMaterial({color:0xff6600,emissive:0xff3300,emissiveIntensity:.5})
+        );
+        nozzle.rotation.x=π;
+        nozzle.position.y=-2;
+        head.add(nozzle);
+
+        const glow=new THREE.PointLight(0xff6600,.5,10);
+        glow.position.y=-2;
+        head.add(glow);
+
+        head.position.set(-30,15,-20+i*20);
+        head.userData={lineId:i,baseX:-30};
+        this.scene.add(head);
+        this.factoryObjects.push({type:'head',mesh:head,lineId:i});
+      }
+
+      // SCADA control tower
+      const tower=new THREE.Mesh(
+        new THREE.BoxGeometry(15,25,15),
+        new THREE.MeshPhongMaterial({color:0x2a2a3a})
+      );
+      tower.position.set(-50,12.5,30);
+      this.scene.add(tower);
+
+      // Tower windows (screens)
+      for(let i=0;i<3;i++){
+        const screen=new THREE.Mesh(
+          new THREE.PlaneGeometry(4,3),
+          new THREE.MeshBasicMaterial({color:0x00ff00})
+        );
+        screen.position.set(-42.4,18-i*5,28+i*2);
+        screen.rotation.y=π/2;
+        screen.userData.isScreen=true;
+        this.scene.add(screen);
+        this.factoryObjects.push({type:'screen',mesh:screen});
+      }
+
+      // Storage area
+      for(let x=0;x<4;x++){
+        for(let z=0;z<3;z++){
+          const shelf=new THREE.Mesh(
+            new THREE.BoxGeometry(8,10,6),
+            new THREE.MeshPhongMaterial({color:0x3a3a4a})
+          );
+          shelf.position.set(55+x*10,5,-30+z*12);
+          this.scene.add(shelf);
+        }
+      }
+    },
+
+    addConveyorItem(lineId,geo){
+      const mat=new THREE.MeshPhongMaterial({
+        color:0x44aaff,
+        emissive:0x112244,
+        transparent:true,
+        opacity:.9
+      });
+      const mesh=new THREE.Mesh(geo,mat);
+      mesh.scale.setScalar(.5);
+      mesh.position.set(-35,5,-20+lineId*20);
+      mesh.userData={lineId,progress:0};
+      this.scene.add(mesh);
+      this.conveyorItems.push(mesh);
+      return mesh;
+    },
+
+    updateConveyor(){
+      this.conveyorItems.forEach(item=>{
+        const line=F.lines[item.userData.lineId];
+        if(line.status==='producing'){
+          item.position.x=T.lerp(-35,40,line.progress/100);
+          item.rotation.y+=.02;
+          item.rotation.x+=.01;
+        }
+      });
+    },
+
+    removeConveyorItem(item){
+      this.scene.remove(item);
+      this.conveyorItems=this.conveyorItems.filter(i=>i!==item);
+    },
+
+    setPreview(geo){
+      if(this.currentPreview){
+        this.scene.remove(this.currentPreview);
+      }
+      if(geo){
+        const mat=new THREE.MeshPhongMaterial({
+          color:0x00ff88,
+          emissive:0x004422,
+          wireframe:true
+        });
+        this.currentPreview=new THREE.Mesh(geo.clone(),mat);
+        this.currentPreview.position.set(0,20,40);
+        this.scene.add(this.currentPreview);
+      }
+    },
+
+    animate(){
+      requestAnimationFrame(()=>this.animate());
+      const t=Date.now()*.001;
+
+      // Camera orbit
+      const r=80;
+      this.camera.position.x=Math.cos(t*.05)*r;
+      this.camera.position.z=Math.sin(t*.05)*r;
+      this.camera.position.y=40+Math.sin(t*.08)*10;
+      this.camera.lookAt(0,10,0);
+
+      // Animate print heads
+      this.factoryObjects.forEach(obj=>{
+        if(obj.type==='head'){
+          const line=F.lines[obj.lineId];
+          if(line.status==='producing'){
+            obj.mesh.position.x=T.lerp(-35,35,line.progress/100);
+            obj.mesh.position.y=12+Math.sin(t*10)*.5;
+          }else{
+            obj.mesh.position.x=T.lerp(obj.mesh.position.x,-30,.05);
+          }
+        }
+        if(obj.type==='screen'){
+          obj.mesh.material.color.setHex(
+            F.running?0x00ff00:(F.paused?0xffff00:0x666666)
+          );
+        }
+      });
+
+      // Animate preview
+      if(this.currentPreview){
+        this.currentPreview.rotation.y+=.01;
+        this.currentPreview.rotation.x+=.005;
+      }
+
+      this.updateConveyor();
+      this.renderer.render(this.scene,this.camera);
+    }
+  },
+
+  init(){
+    this.R.init();
+    this.log('🏭 SCADA 3D Factory initialized');
+    this.log('📊 3 production lines ready');
+    this.updateUI();
+    this.startClock();
+
+    // Start production loop
+    setInterval(()=>this.productionTick(),100);
+    setInterval(()=>this.updateUI(),250);
+  },
+
+  startClock(){
+    setInterval(()=>{
+      const now=new Date();
+      T.$('clock').textContent=now.toLocaleTimeString();
+    },1000);
+  },
+
+  setMode(mode){
+    this.mode=mode;
+    T.$('mode-display').textContent=`Mode: ${mode.toUpperCase()}`;
+    this.log(`🔧 Production mode: ${mode}`);
+  },
+
+  startProduction(){
+    if(this.running)return;
+    this.running=true;
+    this.paused=false;
+    this.log('▶️ Production STARTED');
+    this.addAlarm('info','Production started');
+
+    // Start all lines
+    this.lines.forEach(line=>{
+      if(line.status==='idle'){
+        this.startLine(line.id);
+      }
+    });
+  },
+
+  pauseProduction(){
+    this.paused=!this.paused;
+    this.log(this.paused?'⏸️ Production PAUSED':'▶️ Production RESUMED');
+    this.addAlarm(this.paused?'warn':'info',this.paused?'Production paused':'Production resumed');
+  },
+
+  emergencyStop(){
+    this.running=false;
+    this.paused=false;
+    this.lines.forEach(line=>{
+      line.status='idle';
+      line.progress=0;
+      line.current=null;
+    });
+    this.R.conveyorItems.forEach(item=>this.R.removeConveyorItem(item));
+    this.log('🛑 EMERGENCY STOP activated!');
+    this.addAlarm('error','Emergency stop activated');
+  },
+
+  startLine(lineId){
+    const line=this.lines[lineId];
+    if(line.status!=='idle')return;
+
+    // Generate new object
+    const params={
+      size:T.rnd(3,8),
+      complexity:T.rndInt(2,5),
+      seed:T.rnd(1,10)
+    };
+
+    const geo=GEN[this.mode](params);
+    line.current={
+      id:`OBJ-${Date.now().toString(36).toUpperCase()}`,
+      geo,
+      params,
+      mode:this.mode,
+      startTime:Date.now()
+    };
+
+    line.status='producing';
+    line.progress=0;
+
+    // Add to 3D conveyor
+    this.R.addConveyorItem(lineId,geo);
+
+    this.log(`🔄 ${line.name}: Started ${line.current.id}`);
+  },
+
+  productionTick(){
+    if(!this.running||this.paused)return;
+
+    this.stats.uptime+=.1;
+
+    this.lines.forEach(line=>{
+      if(line.status==='producing'){
+        line.progress+=line.speed*1.5;
+
+        if(line.progress>=100){
+          this.completeLine(line.id);
+        }
+      }
+    });
+  },
+
+  completeLine(lineId){
+    const line=this.lines[lineId];
+    const item=line.current;
+
+    line.status='testing';
+    this.log(`✅ ${line.name}: ${item.id} complete, testing...`);
+
+    // Run QC tests
+    const mesh=new THREE.Mesh(item.geo);
+    QC.runTests(mesh,(result)=>{
+      this.stats.produced++;
+      this.stats.totalScore+=result.score;
+
+      if(result.score>=60){
+        this.stats.passed++;
+
+        // Add to inventory
+        if(this.inventory.length<this.maxInventory){
+          const stl=STL.export(mesh);
+          this.inventory.push({
+            id:item.id,
+            mode:item.mode,
+            score:result.score,
+            stl,
+            time:new Date().toISOString(),
+            triangles:item.geo.index?item.geo.index.count/3:item.geo.attributes.position.count/3
+          });
+          this.log(`📦 ${item.id} added to inventory (Score: ${result.score}%)`);
+          this.addAlarm('info',`${item.id} passed QC`);
+        }else{
+          this.addAlarm('warn','Inventory full!');
+        }
+      }else{
+        this.stats.failed++;
+        this.log(`❌ ${item.id} FAILED QC (Score: ${result.score}%)`);
+        this.addAlarm('error',`${item.id} failed QC: ${result.score}%`);
+      }
+
+      // Remove from conveyor
+      const convItem=this.R.conveyorItems.find(c=>c.userData.lineId===lineId);
+      if(convItem)this.R.removeConveyorItem(convItem);
+
+      // Reset line
+      line.status='idle';
+      line.progress=0;
+      line.current=null;
+      this.stats.cycleTime=(Date.now()-item.startTime)/1000;
+
+      // Auto-restart if running
+      if(this.running&&!this.paused){
+        setTimeout(()=>this.startLine(lineId),500);
+      }
+    });
+  },
+
+  addAlarm(type,msg){
+    const time=new Date().toLocaleTimeString();
+    this.alarms.unshift({type,msg,time});
+    if(this.alarms.length>20)this.alarms.pop();
+  },
+
+  log(msg){
+    const el=T.$('log');
+    const time=new Date().toLocaleTimeString();
+    el.textContent+=`[${time}] ${msg}\n`;
+    el.scrollTop=el.scrollHeight;
+  },
+
+  downloadSTL(item){
+    const url=URL.createObjectURL(item.stl);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download=`${item.id}.stl`;
+    a.click();
+    URL.revokeObjectURL(url);
+    this.log(`⬇️ Downloaded ${item.id}.stl`);
+  },
+
+  downloadAll(){
+    this.inventory.forEach(item=>this.downloadSTL(item));
+  },
+
+  clearInventory(){
+    this.inventory=[];
+    this.log('🗑️ Inventory cleared');
+  },
+
+  exportManifest(){
+    const manifest={
+      factory:'SCADA 3D Factory v1.0',
+      exported:new Date().toISOString(),
+      stats:this.stats,
+      items:this.inventory.map(i=>({id:i.id,mode:i.mode,score:i.score,triangles:i.triangles,time:i.time}))
+    };
+    const blob=new Blob([JSON.stringify(manifest,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download='factory-manifest.json';
+    a.click();
+    this.log('📋 Manifest exported');
+  },
+
+  updateUI(){
+    // Factory stats
+    const passRate=this.stats.produced?Math.round(this.stats.passed/this.stats.produced*100):0;
+    const avgScore=this.stats.produced?Math.round(this.stats.totalScore/this.stats.produced):0;
+
+    T.html('factory-stats',`
+      <div class="s" style="border-color:#0f0"><div class="hmi-val">${this.stats.produced}</div><div>Produced</div></div>
+      <div class="s" style="border-color:#0f0"><div class="hmi-val status-ok">${this.stats.passed}</div><div>Passed</div></div>
+      <div class="s" style="border-color:#f00"><div class="hmi-val status-err">${this.stats.failed}</div><div>Failed</div></div>
+      <div class="s" style="border-color:#0ff"><div class="hmi-val">${passRate}%</div><div>Pass Rate</div></div>
+    `);
+
+    // Production lines
+    T.html('production-lines',this.lines.map(line=>{
+      const statusClass=line.status==='producing'?'status-ok':line.status==='testing'?'status-warn':'';
+      return`
+        <div class="production-line">
+          <div style="display:flex;justify-content:space-between">
+            <span style="color:#0ff">${line.name}</span>
+            <span class="${statusClass}">${line.status.toUpperCase()}</span>
+          </div>
+          <div class="bar"><div class="fill" style="width:${line.progress}%;background:#0f0"></div></div>
+          <div style="font-size:8px;color:#888">${line.current?line.current.id:'--'} | Speed: ${line.speed}x</div>
+        </div>
+      `;
+    }).join(''));
+
+    // QC stats
+    T.html('qc-stats',`
+      <div class="g">
+        <div class="s" style="border-color:#f0f">Avg Score<br><b>${avgScore}%</b></div>
+        <div class="s" style="border-color:#f0f">Cycle<br><b>${this.stats.cycleTime.toFixed(1)}s</b></div>
+        <div class="s" style="border-color:#f0f">Uptime<br><b>${Math.floor(this.stats.uptime)}s</b></div>
+      </div>
+    `);
+
+    T.html('current-test',`<div style="font-size:9px;color:#f0f">QC Tests: ${QC.tests.map(t=>t.name).join(' | ')}</div>`);
+
+    // Alarms
+    T.html('alarms',this.alarms.slice(0,5).map(a=>{
+      const color=a.type==='error'?'#f00':a.type==='warn'?'#ff0':'#0f0';
+      return`<div style="color:${color}">[${a.time}] ${a.msg}</div>`;
+    }).join(''));
+
+    // Inventory
+    T.$('inventory-count').textContent=`(${this.inventory.length}/${this.maxInventory})`;
+    T.html('inventory',this.inventory.length?this.inventory.map(item=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #ff02">
+        <span style="color:#ff0">${item.id}</span>
+        <span style="color:#888;font-size:8px">${item.mode} | ${item.score}%</span>
+        <button style="padding:2px 6px" onclick="F.downloadSTL(F.inventory.find(i=>i.id==='${item.id}'))">⬇️</button>
+      </div>
+    `).join(''):'<div style="color:#666;text-align:center">No items in inventory</div>');
+
+    // System metrics
+    T.html('metrics',`
+      <div class="g">
+        <div class="s" style="border-color:#08f">Lines<br><b>${this.lines.filter(l=>l.status!=='idle').length}/${this.lines.length}</b></div>
+        <div class="s" style="border-color:#08f">Queue<br><b>${this.inventory.length}</b></div>
+        <div class="s" style="border-color:#08f">Mode<br><b>${this.mode}</b></div>
+      </div>
+      <div style="margin-top:5px;font-size:8px">
+        <div>Status: <span class="${this.running?(this.paused?'status-warn':'status-ok'):'status-err'}">${this.running?(this.paused?'PAUSED':'RUNNING'):'STOPPED'}</span></div>
+        <div>Throughput: <span style="color:#0ff">${(this.stats.produced/(this.stats.uptime/60)||0).toFixed(1)}/min</span></div>
+      </div>
+    `);
+  }
+};
+
+onload=()=>setTimeout(()=>F.init(),100);
+onresize=()=>{F.R.renderer.setSize(innerWidth,innerHeight);F.R.camera.aspect=innerWidth/innerHeight;F.R.camera.updateProjectionMatrix()};
+</script></body></html>
