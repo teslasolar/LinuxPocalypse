@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vision World v3 - Advanced Fleet Operations</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0a15;overflow:hidden;font:9px monospace;color:#0ff}
+#c{position:fixed;inset:0}
+.p{position:absolute;background:rgba(5,15,30,.96);border:1px solid #0af;border-radius:4px;padding:6px;z-index:10}
+button{background:linear-gradient(135deg,#08a,#046);color:#0ff;border:1px solid #0af;padding:3px 6px;margin:1px;border-radius:3px;cursor:pointer;font-size:8px}
+button:hover{background:#0af;color:#000}button.active{background:#0f0;color:#000}
+button.warn{background:linear-gradient(135deg,#a60,#530);border-color:#f80;color:#ff0}
+button.danger{background:linear-gradient(135deg,#a00,#500);border-color:#f00;color:#fff}
+.row{display:flex;gap:2px;margin:2px 0;flex-wrap:wrap}
+.stat{background:#001020;border:1px solid #068;border-radius:3px;padding:3px 5px;text-align:center;min-width:40px}
+.val{font-size:12px;font-weight:bold}.lbl{font-size:6px;opacity:.7}
+.amr-card{background:#001525;border:1px solid #0af3;border-radius:3px;padding:4px;margin:2px 0;cursor:pointer}
+.amr-card:hover{border-color:#0ff}.amr-card.selected{border-color:#0f0;box-shadow:0 0 6px #0f04}
+.amr-card.alarm{border-color:#f00;animation:pulse .5s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 5px #f00}50%{box-shadow:0 0 15px #f00}}
+.bar{height:3px;background:#112;border-radius:2px;margin:1px 0}.fill{height:100%;border-radius:2px;transition:width .3s}
+#floor-selector{display:flex;gap:2px}
+.floor-btn{padding:4px 8px;background:#001525;border:1px solid #0af3;cursor:pointer}
+.floor-btn.active{background:#0af;color:#000}
+#heatmap-canvas{position:fixed;inset:0;pointer-events:none;opacity:.3;z-index:1}
+#path-overlay{position:fixed;inset:0;pointer-events:none;z-index:2}
+.zone-indicator{position:absolute;border:2px dashed;border-radius:4px;pointer-events:none}
+#analytics{max-height:100px;overflow-y:auto}
+.metric{display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #0af2}
+#alarm-list{max-height:60px;overflow-y:auto}
+.alarm{padding:2px 4px;margin:1px 0;border-radius:2px;font-size:8px;animation:flash .3s infinite}
+@keyframes flash{0%,100%{opacity:1}50%{opacity:.5}}
+.alarm.critical{background:#600;color:#f00}.alarm.warning{background:#440;color:#f80}.alarm.info{background:#004;color:#08f}
+#conveyor-status{font-size:8px}
+.conveyor{display:flex;align-items:center;gap:4px;padding:2px;background:#001020;border-radius:2px;margin:2px 0}
+.conveyor-bar{flex:1;height:6px;background:#112;border-radius:3px;overflow:hidden}
+.conveyor-flow{height:100%;background:repeating-linear-gradient(90deg,#0f0,#0f0 10px,#080 10px,#080 20px);animation:flow 1s linear infinite}
+@keyframes flow{from{transform:translateX(-20px)}to{transform:translateX(0)}}
+</style></head><body>
+<canvas id="c"></canvas>
+<canvas id="heatmap-canvas"></canvas>
+<svg id="path-overlay" width="100%" height="100%"></svg>
+
+<!-- Header -->
+<div class="p" style="top:4px;left:50%;transform:translateX(-50%);padding:3px 15px;border-color:#0f0">
+<span style="color:#0f0;font-size:11px">🏭 VISION WORLD</span>
+<span style="color:#0ff;font-size:10px;margin-left:8px">v3</span>
+<span style="color:#888;margin-left:15px" id="clock"></span>
+<span style="color:#f00;margin-left:10px" id="alarm-indicator" style="display:none">⚠️ ALARM</span>
+</div>
+
+<!-- Floor Selector -->
+<div class="p" style="top:28px;left:50%;transform:translateX(-50%)">
+<div id="floor-selector">
+<div class="floor-btn active" onclick="W.setFloor(0)">F1</div>
+<div class="floor-btn" onclick="W.setFloor(1)">F2</div>
+<div class="floor-btn" onclick="W.setFloor(2)">F3</div>
+</div>
+</div>
+
+<!-- Fleet Status -->
+<div class="p" style="top:28px;left:5px;width:180px">
+<div style="color:#0ff;text-align:center;font-size:10px;margin-bottom:4px">📊 FLEET STATUS</div>
+<div class="row">
+<div class="stat"><div class="val" id="total-amrs">0</div><div class="lbl">AMRs</div></div>
+<div class="stat"><div class="val" id="active-amrs">0</div><div class="lbl">Active</div></div>
+<div class="stat"><div class="val" id="efficiency">0</div><div class="lbl">Eff%</div></div>
+</div>
+<div class="row">
+<div class="stat" style="border-color:#0f0"><div class="val" id="picks">0</div><div class="lbl">Picks</div></div>
+<div class="stat" style="border-color:#f80"><div class="val" id="drops">0</div><div class="lbl">Drops</div></div>
+<div class="stat" style="border-color:#f0f"><div class="val" id="scans">0</div><div class="lbl">Scans</div></div>
+</div>
+<div style="margin-top:4px;font-size:8px">
+<div>Throughput: <span style="color:#0f0" id="throughput">0</span>/hr</div>
+<div>Utilization: <span style="color:#0ff" id="utilization">0</span>%</div>
+<div>Collisions Avoided: <span style="color:#ff0" id="collisions">0</span></div>
+</div>
+</div>
+
+<!-- AMR Fleet -->
+<div class="p" style="top:28px;right:5px;width:200px;max-height:250px;overflow-y:auto">
+<div style="color:#f80;text-align:center;font-size:10px;margin-bottom:4px">🚗 AMR FLEET</div>
+<div class="row">
+<button onclick="W.addAMR('picker')">+Pick</button>
+<button onclick="W.addAMR('carrier')">+Carry</button>
+<button onclick="W.addAMR('scanner')">+Scan</button>
+<button onclick="W.addAMR('forklift')">+Fork</button>
+</div>
+<div id="amr-list"></div>
+</div>
+
+<!-- Traffic Zones -->
+<div class="p" style="top:290px;right:5px;width:200px">
+<div style="color:#ff0;text-align:center;font-size:10px;margin-bottom:4px">🚦 TRAFFIC CONTROL</div>
+<div class="row">
+<button onclick="W.addZone('priority')">+Priority</button>
+<button onclick="W.addZone('restricted')">+Restrict</button>
+<button onclick="W.togglePaths()">📍 Paths</button>
+</div>
+<div class="row">
+<button onclick="W.toggleHeatmap()">🔥 Heatmap</button>
+<button onclick="W.optimizeRoutes()">⚡ Optimize</button>
+</div>
+</div>
+
+<!-- Analytics -->
+<div class="p" style="top:400px;right:5px;width:200px">
+<div style="color:#0f0;text-align:center;font-size:10px;margin-bottom:4px">📈 ANALYTICS</div>
+<div id="analytics">
+<div class="metric"><span>Avg Pick Time</span><span id="avg-pick">0s</span></div>
+<div class="metric"><span>Avg Travel</span><span id="avg-travel">0m</span></div>
+<div class="metric"><span>Queue Depth</span><span id="queue-depth">0</span></div>
+<div class="metric"><span>Idle Rate</span><span id="idle-rate">0%</span></div>
+<div class="metric"><span>Battery Avg</span><span id="battery-avg">0%</span></div>
+</div>
+</div>
+
+<!-- Selected AMR -->
+<div class="p" style="bottom:5px;left:5px;width:180px">
+<div style="color:#0f0;text-align:center;font-size:10px;margin-bottom:4px">🎯 SELECTED AMR</div>
+<div id="selected-amr"><div style="color:#666;text-align:center">Click AMR to select</div></div>
+</div>
+
+<!-- LIDAR View -->
+<div class="p" style="bottom:5px;left:195px;width:130px">
+<div style="color:#0f0;text-align:center;font-size:9px;margin-bottom:3px">📡 LIDAR</div>
+<canvas id="lidar-canvas" width="110" height="110" style="border:1px solid #0f0;border-radius:50%"></canvas>
+</div>
+
+<!-- Conveyor System -->
+<div class="p" style="bottom:5px;left:335px;width:150px">
+<div style="color:#f0f;text-align:center;font-size:9px;margin-bottom:3px">🔄 CONVEYORS</div>
+<div id="conveyor-status"></div>
+</div>
+
+<!-- Alarms -->
+<div class="p" style="bottom:5px;right:215px;width:160px">
+<div style="color:#f00;text-align:center;font-size:9px;margin-bottom:3px">🚨 ALARMS</div>
+<div class="row">
+<button onclick="W.ackAlarms()">✓ Ack All</button>
+<button class="danger" onclick="W.emergencyStop()">⛔ E-STOP</button>
+</div>
+<div id="alarm-list"></div>
+</div>
+
+<!-- Task Queue -->
+<div class="p" style="bottom:5px;right:5px;width:200px">
+<div style="color:#ff0;text-align:center;font-size:9px;margin-bottom:3px">📋 ORDERS</div>
+<div class="row">
+<button onclick="W.addOrder()">+Order</button>
+<button onclick="W.batchOrders()">📦 Batch</button>
+<button class="warn" onclick="W.clearOrders()">Clear</button>
+</div>
+<div id="order-queue" style="max-height:60px;overflow-y:auto;font-size:8px"></div>
+</div>
+
+<!-- Controls -->
+<div class="p" style="top:180px;left:5px;width:180px">
+<div style="color:#f0f;text-align:center;font-size:9px;margin-bottom:3px">🎮 VIEW</div>
+<div class="row">
+<button id="btn-pause" onclick="W.togglePause()">⏸️ Pause</button>
+<button onclick="W.resetView()">🔄 Reset</button>
+<button onclick="W.topView()">⬆️ Top</button>
+</div>
+<div style="font-size:7px;color:#888;margin-top:3px">
+Scroll: Zoom | Drag: Rotate | Click: Select
+</div>
+</div>
+
+<script>
+const T={v3:(x,y,z)=>new THREE.Vector3(x,y,z),rnd:(a,b)=>a+Math.random()*(b-a),rndInt:(a,b)=>Math.floor(T.rnd(a,b+1)),clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),lerp:(a,b,t)=>a+(b-a)*t};
+
+const COLORS={picker:0x00ff88,carrier:0x00aaff,scanner:0xff00ff,forklift:0xffaa00};
+
+const W={
+  amrs:[],orders:[],shelves:[],stations:[],zones:[],conveyors:[],alarms:[],
+  floors:[],currentFloor:0,
+  selectedAMR:null,
+  paused:false,showPaths:true,showHeatmap:false,
+  heatmapData:new Float32Array(100*100),
+  stats:{picks:0,drops:0,scans:0,tasks:0,collisions:0,startTime:Date.now()},
+  pathLines:[],
+
+  init(){
+    this.sc=new THREE.Scene();
+    this.ca=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.1,2000);
+    this.rn=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true});
+    this.rn.setSize(innerWidth,innerHeight);
+    this.rn.setClearColor(0x0a0a15);
+    this.rn.shadowMap.enabled=true;
+    this.ca.position.set(120,180,120);
+    this.ca.lookAt(0,0,0);
+
+    // Lighting
+    this.sc.add(new THREE.AmbientLight(0x404060,.4));
+    const sun=new THREE.DirectionalLight(0xffffff,.5);
+    sun.position.set(100,200,100);sun.castShadow=true;
+    this.sc.add(sun);
+
+    // Build multi-floor warehouse
+    for(let f=0;f<3;f++)this.buildFloor(f);
+    this.buildConveyors();
+    this.buildElevators();
+
+    // Initial AMRs
+    ['picker','picker','picker','carrier','carrier','scanner','forklift'].forEach(t=>this.addAMR(t));
+
+    // Initial orders
+    for(let i=0;i<8;i++)this.addOrder();
+
+    // Controls
+    this.setupControls();
+
+    // Lidar canvas
+    this.lidarCtx=document.getElementById('lidar-canvas').getContext('2d');
+    this.heatmapCtx=document.getElementById('heatmap-canvas').getContext('2d');
+    document.getElementById('heatmap-canvas').width=innerWidth;
+    document.getElementById('heatmap-canvas').height=innerHeight;
+
+    setInterval(()=>document.getElementById('clock').textContent=new Date().toLocaleTimeString(),1000);
+
+    this.animate();
+    setInterval(()=>this.tick(),50);
+    setInterval(()=>this.updateUI(),150);
+    setInterval(()=>this.updateAnalytics(),1000);
+    setInterval(()=>this.checkAlarms(),2000);
+  },
+
+  buildFloor(floorNum){
+    const yOffset=floorNum*25;
+    const floor={shelves:[],stations:[],y:yOffset};
+
+    // Floor surface
+    const floorMesh=new THREE.Mesh(
+      new THREE.PlaneGeometry(220,220),
+      new THREE.MeshPhongMaterial({color:0x1a1a2a,transparent:true,opacity:floorNum===0?1:.7})
+    );
+    floorMesh.rotation.x=-Math.PI/2;
+    floorMesh.position.y=yOffset;
+    floorMesh.receiveShadow=true;
+    floorMesh.userData={isFloor:true,floorNum};
+    this.sc.add(floorMesh);
+    floor.mesh=floorMesh;
+
+    // Grid
+    const grid=new THREE.GridHelper(220,44,0x0af2,0x0af1);
+    grid.position.y=yOffset+.1;
+    this.sc.add(grid);
+    floor.grid=grid;
+
+    // Walls (only on ground floor for visibility)
+    if(floorNum===0){
+      const wallMat=new THREE.MeshPhongMaterial({color:0x334455,transparent:true,opacity:.5});
+      [[-110,0,0,3,15,220],[110,0,0,3,15,220],[0,0,-110,220,15,3]].forEach(([x,y,z,w,h,d])=>{
+        const wall=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),wallMat);
+        wall.position.set(x,h/2+yOffset,z);
+        this.sc.add(wall);
+      });
+    }
+
+    // Shelving units
+    const shelfMat=new THREE.MeshPhongMaterial({color:0x556677});
+    for(let row=0;row<4;row++){
+      for(let col=0;col<5;col++){
+        const shelf=new THREE.Group();
+        for(let i=0;i<2;i++){
+          const upright=new THREE.Mesh(new THREE.BoxGeometry(.8,10,.8),shelfMat);
+          upright.position.set(i*15-7.5,5,0);
+          shelf.add(upright);
+        }
+        for(let s=0;s<4;s++){
+          const plank=new THREE.Mesh(new THREE.BoxGeometry(16,.4,6),shelfMat);
+          plank.position.set(0,s*2.5+1.5,0);
+          shelf.add(plank);
+
+          for(let item=0;item<T.rndInt(2,4);item++){
+            const box=new THREE.Mesh(
+              new THREE.BoxGeometry(T.rnd(1,2.5),T.rnd(1,2.5),T.rnd(1,2.5)),
+              new THREE.MeshPhongMaterial({color:Math.random()*0xffffff})
+            );
+            box.position.set(T.rnd(-5,5),s*2.5+2.5,T.rnd(-1.5,1.5));
+            box.userData.isItem=true;
+            shelf.add(box);
+          }
+        }
+
+        shelf.position.set(-75+col*38,yOffset,-50+row*35);
+        shelf.userData={isShelf:true,id:`F${floorNum+1}-S${row}${col}`,floor:floorNum};
+        this.sc.add(shelf);
+        this.shelves.push(shelf);
+        floor.shelves.push(shelf);
+      }
+    }
+
+    // Stations
+    const stationTypes=[
+      {type:'pick',color:0x00ff00,x:-90},
+      {type:'drop',color:0xff8800,x:-50},
+      {type:'charge',color:0x00ffff,x:-10},
+      {type:'pack',color:0xff00ff,x:30},
+      {type:'ship',color:0xffff00,x:70}
+    ];
+
+    stationTypes.forEach(st=>{
+      const station=new THREE.Mesh(
+        new THREE.CylinderGeometry(4,4,.4,16),
+        new THREE.MeshPhongMaterial({color:st.color,emissive:st.color,emissiveIntensity:.2})
+      );
+      station.position.set(st.x,yOffset+.2,90);
+      station.userData={isStation:true,type:st.type,floor:floorNum};
+      this.sc.add(station);
+      this.stations.push(station);
+      floor.stations.push(station);
+
+      // Label post
+      const post=new THREE.Mesh(new THREE.CylinderGeometry(.3,.3,5),new THREE.MeshPhongMaterial({color:st.color}));
+      post.position.set(st.x,yOffset+2.5,90);
+      this.sc.add(post);
+    });
+
+    this.floors.push(floor);
+  },
+
+  buildConveyors(){
+    // Main conveyor lines
+    const conveyorMat=new THREE.MeshPhongMaterial({color:0x333344});
+    const beltMat=new THREE.MeshPhongMaterial({color:0x222233});
+
+    for(let i=0;i<3;i++){
+      const conveyor={
+        id:`C${i+1}`,
+        start:T.v3(-100,0,-80+i*40),
+        end:T.v3(80,0,-80+i*40),
+        speed:.5+Math.random()*.3,
+        active:true,
+        items:[]
+      };
+
+      // Frame
+      const frame=new THREE.Mesh(new THREE.BoxGeometry(180,1,4),conveyorMat);
+      frame.position.set(-10,.5,-80+i*40);
+      this.sc.add(frame);
+
+      // Belt (animated)
+      const belt=new THREE.Mesh(new THREE.BoxGeometry(178,.6,3),beltMat);
+      belt.position.set(-10,.8,-80+i*40);
+      conveyor.mesh=belt;
+      this.sc.add(belt);
+
+      // Items on belt
+      for(let j=0;j<3;j++){
+        const box=new THREE.Mesh(
+          new THREE.BoxGeometry(2,2,2),
+          new THREE.MeshPhongMaterial({color:Math.random()*0xffffff})
+        );
+        box.position.set(-80+j*30,2,-80+i*40);
+        box.userData.onConveyor=conveyor.id;
+        conveyor.items.push(box);
+        this.sc.add(box);
+      }
+
+      this.conveyors.push(conveyor);
+    }
+
+    this.updateConveyorStatus();
+  },
+
+  buildElevators(){
+    // Elevator shafts
+    const elevatorMat=new THREE.MeshPhongMaterial({color:0x445566,transparent:true,opacity:.6});
+
+    [[-95,80],[95,80]].forEach(([x,z],i)=>{
+      const shaft=new THREE.Mesh(new THREE.BoxGeometry(12,80,12),elevatorMat);
+      shaft.position.set(x,40,z);
+      this.sc.add(shaft);
+
+      // Platform
+      const platform=new THREE.Mesh(
+        new THREE.BoxGeometry(10,1,10),
+        new THREE.MeshPhongMaterial({color:0x0088ff,emissive:0x004488})
+      );
+      platform.position.set(x,1,z);
+      platform.userData={isElevator:true,id:`E${i+1}`,targetY:0};
+      this.sc.add(platform);
+    });
+  },
+
+  addAMR(type){
+    const amr=new THREE.Group();
+    const color=COLORS[type];
+
+    // Base
+    const baseW=type==='forklift'?7:5;
+    const baseH=type==='forklift'?2.5:1.8;
+    const base=new THREE.Mesh(
+      new THREE.BoxGeometry(baseW,baseH,7),
+      new THREE.MeshPhongMaterial({color:0x333344})
+    );
+    base.position.y=baseH/2+.5;
+    base.castShadow=true;
+    amr.add(base);
+
+    // Top/cab
+    const top=new THREE.Mesh(
+      new THREE.BoxGeometry(baseW-.5,1.2,5),
+      new THREE.MeshPhongMaterial({color})
+    );
+    top.position.y=baseH+1;
+    amr.add(top);
+
+    // Wheels
+    const wheelMat=new THREE.MeshPhongMaterial({color:0x222222});
+    [[-(baseW/2+.2),.6,-2.5],[-(baseW/2+.2),.6,2.5],[(baseW/2+.2),.6,-2.5],[(baseW/2+.2),.6,2.5]].forEach(([x,y,z])=>{
+      const wheel=new THREE.Mesh(new THREE.CylinderGeometry(.6,.6,.4,12),wheelMat);
+      wheel.rotation.z=Math.PI/2;
+      wheel.position.set(x,y,z);
+      amr.add(wheel);
+    });
+
+    // LIDAR
+    const lidar=new THREE.Mesh(
+      new THREE.CylinderGeometry(1,1,.4,16),
+      new THREE.MeshPhongMaterial({color:0x00ff00,emissive:0x004400})
+    );
+    lidar.position.y=baseH+2;
+    amr.add(lidar);
+
+    // Type-specific
+    if(type==='picker'){
+      const arm=new THREE.Mesh(new THREE.BoxGeometry(.5,3,.5),new THREE.MeshPhongMaterial({color:0x888888}));
+      arm.position.set(0,baseH+2.5,-3);
+      amr.add(arm);
+    }
+    if(type==='forklift'){
+      const mast=new THREE.Mesh(new THREE.BoxGeometry(.8,6,.8),new THREE.MeshPhongMaterial({color:0x666666}));
+      mast.position.set(0,4,-4);
+      amr.add(mast);
+      const forks=new THREE.Mesh(new THREE.BoxGeometry(4,.2,3),new THREE.MeshPhongMaterial({color:0x888888}));
+      forks.position.set(0,1,-5);
+      amr.add(forks);
+      amr.userData.forks=forks;
+    }
+
+    // Status light
+    const statusLight=new THREE.PointLight(color,.4,8);
+    statusLight.position.y=baseH+2.5;
+    amr.add(statusLight);
+
+    const idx=this.amrs.length;
+    amr.position.set(-80+idx*12,0,80);
+
+    amr.userData={
+      id:`${type.charAt(0).toUpperCase()}${String(idx+1).padStart(2,'0')}`,
+      type,color,
+      status:'idle',
+      battery:85+Math.random()*15,
+      speed:.25+Math.random()*.15,
+      target:null,
+      path:[],
+      order:null,
+      carrying:null,
+      floor:0,
+      lidarData:[],
+      scanRadius:25,
+      health:95+Math.random()*5,
+      mileage:Math.random()*1000,
+      statusLight
+    };
+
+    this.sc.add(amr);
+    this.amrs.push(amr);
+  },
+
+  addOrder(){
+    const shelf=this.shelves[T.rndInt(0,this.shelves.length-1)];
+    const dropStation=this.stations.find(s=>s.userData.type==='drop'&&s.userData.floor===0);
+
+    const order={
+      id:`ORD-${String(this.orders.length+1).padStart(4,'0')}`,
+      type:['pick','pick','pick','deliver','scan'][T.rndInt(0,4)],
+      from:shelf.position.clone(),
+      to:dropStation.position.clone(),
+      status:'pending',
+      priority:T.rndInt(1,5),
+      items:T.rndInt(1,5),
+      assignedTo:null,
+      created:Date.now()
+    };
+
+    this.orders.push(order);
+  },
+
+  batchOrders(){
+    // Group nearby orders for efficiency
+    const pending=this.orders.filter(o=>o.status==='pending');
+    pending.sort((a,b)=>a.from.distanceTo(b.from));
+
+    // Assign batches to carriers
+    const carriers=this.amrs.filter(a=>a.userData.type==='carrier'&&a.userData.status==='idle');
+    carriers.forEach((c,i)=>{
+      const batch=pending.slice(i*3,(i+1)*3);
+      if(batch.length>0){
+        batch.forEach(o=>{
+          o.status='batched';
+          o.assignedTo=c.userData.id;
+        });
+      }
+    });
+  },
+
+  clearOrders(){
+    this.orders=this.orders.filter(o=>o.status==='active');
+  },
+
+  addZone(type){
+    const colors={priority:0x00ff00,restricted:0xff0000};
+    const zone={
+      id:`Z${this.zones.length+1}`,
+      type,
+      center:T.v3(0,0,0),
+      radius:20,
+      active:true
+    };
+
+    const ring=new THREE.Mesh(
+      new THREE.RingGeometry(18,20,32),
+      new THREE.MeshBasicMaterial({color:colors[type],transparent:true,opacity:.4,side:THREE.DoubleSide})
+    );
+    ring.rotation.x=-Math.PI/2;
+    ring.position.y=.5;
+    zone.mesh=ring;
+    this.sc.add(ring);
+
+    this.zones.push(zone);
+  },
+
+  togglePaths(){
+    this.showPaths=!this.showPaths;
+    this.updatePathOverlay();
+  },
+
+  toggleHeatmap(){
+    this.showHeatmap=!this.showHeatmap;
+    document.getElementById('heatmap-canvas').style.display=this.showHeatmap?'block':'none';
+  },
+
+  optimizeRoutes(){
+    // Simple route optimization - reassign tasks to nearest AMRs
+    this.orders.filter(o=>o.status==='pending').forEach(order=>{
+      const suitableAMRs=this.amrs.filter(a=>{
+        if(a.userData.status!=='idle')return false;
+        if(order.type==='pick'&&a.userData.type!=='picker')return false;
+        if(order.type==='deliver'&&a.userData.type!=='carrier')return false;
+        return true;
+      });
+
+      if(suitableAMRs.length>0){
+        suitableAMRs.sort((a,b)=>a.position.distanceTo(order.from)-b.position.distanceTo(order.from));
+        this.assignOrder(suitableAMRs[0],order);
+      }
+    });
+  },
+
+  assignOrder(amr,order){
+    const d=amr.userData;
+    d.order=order;
+    d.target=order.from.clone();
+    d.status='moving';
+    order.status='active';
+    order.assignedTo=d.id;
+  },
+
+  setFloor(f){
+    this.currentFloor=f;
+    document.querySelectorAll('.floor-btn').forEach((btn,i)=>btn.classList.toggle('active',i===f));
+
+    // Adjust visibility
+    this.floors.forEach((floor,i)=>{
+      floor.mesh.material.opacity=i===f?1:i<f?.3:.1;
+      floor.grid.visible=i===f;
+      floor.shelves.forEach(s=>s.visible=i<=f);
+    });
+
+    // Move camera
+    this.ca.position.y=180+f*25;
+  },
+
+  checkAlarms(){
+    // Check for alarm conditions
+    this.amrs.forEach(amr=>{
+      const d=amr.userData;
+
+      if(d.battery<15&&!this.alarms.find(a=>a.source===d.id&&a.type==='battery')){
+        this.addAlarm('warning',`${d.id} Low Battery: ${Math.round(d.battery)}%`,d.id,'battery');
+      }
+
+      if(d.health<80&&!this.alarms.find(a=>a.source===d.id&&a.type==='health')){
+        this.addAlarm('warning',`${d.id} Needs Maintenance`,d.id,'health');
+      }
+    });
+
+    // Check for traffic jams
+    const positions=this.amrs.map(a=>a.position);
+    for(let i=0;i<positions.length;i++){
+      for(let j=i+1;j<positions.length;j++){
+        if(positions[i].distanceTo(positions[j])<5){
+          this.stats.collisions++;
+          if(Math.random()<.1){
+            this.addAlarm('info','Traffic congestion detected','system','traffic');
+          }
+        }
+      }
+    }
+  },
+
+  addAlarm(level,message,source,type){
+    this.alarms.unshift({id:Date.now(),level,message,source,type,time:new Date().toLocaleTimeString()});
+    if(this.alarms.length>20)this.alarms.pop();
+    this.updateAlarmList();
+    document.getElementById('alarm-indicator').style.display='inline';
+  },
+
+  ackAlarms(){
+    this.alarms=[];
+    this.updateAlarmList();
+    document.getElementById('alarm-indicator').style.display='none';
+  },
+
+  emergencyStop(){
+    this.paused=true;
+    this.amrs.forEach(a=>{a.userData.status='stopped';a.userData.statusLight.color.setHex(0xff0000)});
+    this.addAlarm('critical','EMERGENCY STOP ACTIVATED','system','estop');
+  },
+
+  updateLIDAR(amr){
+    const d=amr.userData;
+    d.lidarData=[];
+
+    for(let angle=0;angle<Math.PI*2;angle+=Math.PI/24){
+      const ray=new THREE.Raycaster();
+      const dir=T.v3(Math.cos(angle),0,Math.sin(angle));
+      ray.set(amr.position.clone().add(T.v3(0,1.5,0)),dir);
+
+      let minDist=d.scanRadius;
+
+      this.amrs.forEach(other=>{
+        if(other===amr)return;
+        const hit=ray.intersectObject(other,true);
+        if(hit.length>0&&hit[0].distance<minDist)minDist=hit[0].distance;
+      });
+
+      this.shelves.filter(s=>s.userData.floor===d.floor).forEach(shelf=>{
+        const hit=ray.intersectObject(shelf,true);
+        if(hit.length>0&&hit[0].distance<minDist)minDist=hit[0].distance;
+      });
+
+      d.lidarData.push({angle,dist:minDist});
+    }
+  },
+
+  moveAMR(amr){
+    const d=amr.userData;
+    if(!d.target||d.status==='idle'||d.status==='stopped')return;
+
+    const toTarget=d.target.clone().sub(amr.position);
+    toTarget.y=0;
+    const dist=toTarget.length();
+
+    // Update heatmap
+    const hx=Math.floor((amr.position.x+110)/2.2);
+    const hz=Math.floor((amr.position.z+110)/2.2);
+    if(hx>=0&&hx<100&&hz>=0&&hz<100){
+      this.heatmapData[hz*100+hx]+=.1;
+    }
+
+    if(dist<2){
+      if(d.order){
+        if(d.status==='moving'&&!d.carrying){
+          d.status='picking';
+          d.carrying={type:'box'};
+          this.stats.picks++;
+
+          if(!d.cargoMesh){
+            d.cargoMesh=new THREE.Mesh(
+              new THREE.BoxGeometry(1.5,1.5,1.5),
+              new THREE.MeshPhongMaterial({color:0xffaa00})
+            );
+            d.cargoMesh.position.y=4;
+            amr.add(d.cargoMesh);
+          }
+
+          setTimeout(()=>{
+            d.target=d.order.to.clone();
+            d.status='moving';
+          },800);
+
+        }else if(d.carrying){
+          d.status='idle';
+          d.carrying=null;
+          d.order.status='complete';
+          d.order=null;
+          this.stats.drops++;
+          this.stats.tasks++;
+
+          if(d.cargoMesh){
+            amr.remove(d.cargoMesh);
+            d.cargoMesh=null;
+          }
+        }
+      }else{
+        d.status='idle';
+        d.target=null;
+      }
+    }else{
+      const moveDir=toTarget.normalize();
+
+      // Obstacle avoidance
+      let avoid=T.v3();
+      d.lidarData.forEach(l=>{
+        if(l.dist<8){
+          const repel=T.v3(Math.cos(l.angle),0,Math.sin(l.angle)).multiplyScalar(8-l.dist);
+          avoid.sub(repel);
+        }
+      });
+
+      // Zone avoidance
+      this.zones.filter(z=>z.type==='restricted').forEach(z=>{
+        const toZone=z.center.clone().sub(amr.position);
+        if(toZone.length()<z.radius+5){
+          avoid.sub(toZone.normalize().multiplyScalar(5));
+        }
+      });
+
+      const finalDir=moveDir.add(avoid.multiplyScalar(.15)).normalize();
+      amr.position.add(finalDir.multiplyScalar(d.speed));
+      amr.rotation.y=Math.atan2(finalDir.x,finalDir.z);
+    }
+
+    // Battery drain
+    d.battery-=.0015;
+    d.mileage+=d.speed*.01;
+
+    if(d.battery<15){
+      const charger=this.stations.find(s=>s.userData.type==='charge'&&s.userData.floor===d.floor);
+      if(charger&&!d.charging){
+        d.target=charger.position.clone();
+        d.charging=true;
+        d.status='moving';
+      }
+    }
+
+    if(d.charging){
+      d.battery=Math.min(100,d.battery+.15);
+      if(d.battery>=100){
+        d.charging=false;
+        d.status='idle';
+      }
+    }
+  },
+
+  updateConveyors(){
+    this.conveyors.forEach(conv=>{
+      if(!conv.active)return;
+
+      conv.items.forEach(item=>{
+        item.position.x+=conv.speed;
+        if(item.position.x>conv.end.x){
+          item.position.x=conv.start.x;
+        }
+      });
+    });
+  },
+
+  tick(){
+    if(this.paused)return;
+
+    this.amrs.forEach(amr=>{
+      this.updateLIDAR(amr);
+
+      // Auto-assign orders
+      if(amr.userData.status==='idle'&&!amr.userData.order){
+        const pending=this.orders.find(o=>
+          o.status==='pending'&&
+          ((amr.userData.type==='picker'&&o.type==='pick')||
+           (amr.userData.type==='carrier'&&o.type==='deliver')||
+           (amr.userData.type==='scanner'&&o.type==='scan'))
+        );
+        if(pending)this.assignOrder(amr,pending);
+      }
+
+      this.moveAMR(amr);
+
+      // Update status light
+      const colors={idle:0x888888,moving:0x00ff00,picking:0xffff00,charging:0x00ffff,stopped:0xff0000};
+      amr.userData.statusLight.color.setHex(colors[amr.userData.status]||0xffffff);
+    });
+
+    this.updateConveyors();
+    this.updateLidarView();
+    if(this.showHeatmap)this.updateHeatmapView();
+    if(this.showPaths)this.updatePathOverlay();
+  },
+
+  setupControls(){
+    let dragging=false,lastX=0;
+    const canvas=document.getElementById('c');
+
+    canvas.addEventListener('mousedown',e=>{dragging=true;lastX=e.clientX});
+    canvas.addEventListener('mousemove',e=>{
+      if(!dragging)return;
+      this.ca.position.applyAxisAngle(T.v3(0,1,0),(lastX-e.clientX)*.005);
+      lastX=e.clientX;
+    });
+    canvas.addEventListener('mouseup',()=>dragging=false);
+    canvas.addEventListener('wheel',e=>{
+      const zoom=1+e.deltaY*.001;
+      this.ca.position.multiplyScalar(T.clamp(zoom,.8,1.2));
+    });
+
+    canvas.addEventListener('click',e=>{
+      if(dragging)return;
+      const mouse=new THREE.Vector2((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1);
+      const ray=new THREE.Raycaster();
+      ray.setFromCamera(mouse,this.ca);
+
+      for(let amr of this.amrs){
+        if(ray.intersectObject(amr,true).length>0){
+          this.selectAMR(amr);
+          return;
+        }
+      }
+
+      const floors=this.sc.children.filter(c=>c.userData.isFloor);
+      const hit=ray.intersectObjects(floors);
+      if(hit.length>0&&this.selectedAMR){
+        this.selectedAMR.userData.target=hit[0].point.clone();
+        this.selectedAMR.userData.status='moving';
+        this.selectedAMR.userData.order=null;
+      }
+    });
+
+    window.addEventListener('keydown',e=>{
+      if(e.code==='Space'){e.preventDefault();this.togglePause()}
+    });
+  },
+
+  selectAMR(amr){
+    this.selectedAMR=amr;
+    this.amrs.forEach(a=>a.children.forEach(c=>{if(c.material)c.material.emissive?.setHex(0)}));
+    amr.children[1].material.emissive.setHex(0x444444);
+  },
+
+  togglePause(){
+    this.paused=!this.paused;
+    document.getElementById('btn-pause').textContent=this.paused?'▶️ Resume':'⏸️ Pause';
+    document.getElementById('btn-pause').classList.toggle('active',this.paused);
+  },
+
+  resetView(){
+    this.ca.position.set(120,180,120);
+    this.ca.lookAt(0,0,0);
+  },
+
+  topView(){
+    this.ca.position.set(0,250,0);
+    this.ca.lookAt(0,0,0);
+  },
+
+  updateLidarView(){
+    if(!this.selectedAMR)return;
+    const ctx=this.lidarCtx;
+    const d=this.selectedAMR.userData;
+
+    ctx.fillStyle='#001a00';
+    ctx.fillRect(0,0,110,110);
+
+    ctx.fillStyle='#0f0';
+    ctx.beginPath();
+    ctx.arc(55,55,3,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.strokeStyle='#0f0';
+    ctx.lineWidth=1;
+    d.lidarData.forEach(l=>{
+      const r=l.dist*2;
+      const x=55+Math.cos(l.angle)*r;
+      const y=55+Math.sin(l.angle)*r;
+      ctx.beginPath();
+      ctx.arc(x,y,1.5,0,Math.PI*2);
+      ctx.stroke();
+    });
+  },
+
+  updateHeatmapView(){
+    const ctx=this.heatmapCtx;
+    const w=ctx.canvas.width,h=ctx.canvas.height;
+    ctx.clearRect(0,0,w,h);
+
+    const imgData=ctx.createImageData(100,100);
+    for(let i=0;i<this.heatmapData.length;i++){
+      const v=Math.min(255,this.heatmapData[i]*10);
+      imgData.data[i*4]=v;
+      imgData.data[i*4+1]=0;
+      imgData.data[i*4+2]=0;
+      imgData.data[i*4+3]=v/2;
+    }
+
+    ctx.putImageData(imgData,0,0);
+    ctx.drawImage(ctx.canvas,0,0,100,100,0,0,w,h);
+  },
+
+  updatePathOverlay(){
+    const svg=document.getElementById('path-overlay');
+    if(!this.showPaths){svg.innerHTML='';return}
+
+    let paths='';
+    this.amrs.forEach(amr=>{
+      if(!amr.userData.target)return;
+
+      const start=amr.position.clone().project(this.ca);
+      const end=amr.userData.target.clone().project(this.ca);
+
+      if(start.z<1&&end.z<1){
+        const x1=(start.x+1)/2*innerWidth;
+        const y1=(-start.y+1)/2*innerHeight;
+        const x2=(end.x+1)/2*innerWidth;
+        const y2=(-end.y+1)/2*innerHeight;
+
+        paths+=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#0f0" stroke-width="1" stroke-dasharray="4,4" opacity=".5"/>`;
+      }
+    });
+
+    svg.innerHTML=paths;
+  },
+
+  updateConveyorStatus(){
+    const el=document.getElementById('conveyor-status');
+    el.innerHTML=this.conveyors.map(c=>
+      `<div class="conveyor">
+        <span>${c.id}</span>
+        <div class="conveyor-bar"><div class="conveyor-flow" style="${c.active?'':'animation:none;background:#444'}"></div></div>
+        <span style="color:${c.active?'#0f0':'#f00'}">${c.active?'RUN':'OFF'}</span>
+      </div>`
+    ).join('');
+  },
+
+  updateAlarmList(){
+    const el=document.getElementById('alarm-list');
+    el.innerHTML=this.alarms.slice(0,5).map(a=>
+      `<div class="alarm ${a.level}">${a.time} ${a.message}</div>`
+    ).join('')||'<div style="color:#0f0;text-align:center">All Systems Normal</div>';
+  },
+
+  updateAnalytics(){
+    const elapsed=(Date.now()-this.stats.startTime)/3600000;
+    const active=this.amrs.filter(a=>a.userData.status!=='idle').length;
+    const avgBattery=this.amrs.reduce((s,a)=>s+a.userData.battery,0)/this.amrs.length;
+
+    document.getElementById('avg-pick').textContent=this.stats.picks>0?Math.round(elapsed*3600/this.stats.picks)+'s':'--';
+    document.getElementById('avg-travel').textContent=Math.round(this.amrs.reduce((s,a)=>s+a.userData.mileage,0)/this.amrs.length)+'m';
+    document.getElementById('queue-depth').textContent=this.orders.filter(o=>o.status==='pending').length;
+    document.getElementById('idle-rate').textContent=Math.round((this.amrs.length-active)/this.amrs.length*100)+'%';
+    document.getElementById('battery-avg').textContent=Math.round(avgBattery)+'%';
+  },
+
+  updateUI(){
+    const active=this.amrs.filter(a=>a.userData.status!=='idle').length;
+    const elapsed=(Date.now()-this.stats.startTime)/3600000;
+
+    document.getElementById('total-amrs').textContent=this.amrs.length;
+    document.getElementById('active-amrs').textContent=active;
+    document.getElementById('efficiency').textContent=Math.round(active/this.amrs.length*100);
+    document.getElementById('picks').textContent=this.stats.picks;
+    document.getElementById('drops').textContent=this.stats.drops;
+    document.getElementById('scans').textContent=this.stats.scans;
+    document.getElementById('throughput').textContent=elapsed>0?Math.round(this.stats.tasks/elapsed):'0';
+    document.getElementById('utilization').textContent=Math.round(active/this.amrs.length*100);
+    document.getElementById('collisions').textContent=this.stats.collisions;
+
+    // AMR list
+    document.getElementById('amr-list').innerHTML=this.amrs.map((amr,i)=>{
+      const d=amr.userData;
+      const sel=amr===this.selectedAMR?'selected':'';
+      const alarm=d.battery<20||d.health<80?'alarm':'';
+      const statusCol={idle:'#888',moving:'#0f0',picking:'#ff0',charging:'#0ff',stopped:'#f00'}[d.status];
+      return`
+        <div class="amr-card ${sel} ${alarm}" onclick="W.selectAMR(W.amrs[${i}])">
+          <div style="display:flex;justify-content:space-between">
+            <span style="color:#${d.color.toString(16)}">${d.id}</span>
+            <span style="color:${statusCol};font-size:8px">${d.status}</span>
+          </div>
+          <div class="bar"><div class="fill" style="width:${d.battery}%;background:${d.battery>20?'#0f0':'#f00'}"></div></div>
+        </div>
+      `;
+    }).join('');
+
+    // Selected AMR detail
+    if(this.selectedAMR){
+      const d=this.selectedAMR.userData;
+      document.getElementById('selected-amr').innerHTML=`
+        <div style="color:#${d.color.toString(16)};font-weight:bold">${d.id} (${d.type})</div>
+        <div style="font-size:8px;margin-top:3px">
+          <div>Status: <span style="color:#0f0">${d.status}</span></div>
+          <div>Battery: ${Math.round(d.battery)}%</div>
+          <div>Health: ${Math.round(d.health)}%</div>
+          <div>Mileage: ${Math.round(d.mileage)}m</div>
+          <div>Order: ${d.order?d.order.id:'None'}</div>
+        </div>
+        <div class="row" style="margin-top:4px">
+          <button onclick="W.selectedAMR.userData.status='idle'">Stop</button>
+          <button onclick="W.selectedAMR.userData.battery=100">Charge</button>
+        </div>
+      `;
+    }
+
+    // Orders
+    const pending=this.orders.filter(o=>o.status!=='complete').slice(0,8);
+    document.getElementById('order-queue').innerHTML=pending.map(o=>
+      `<div style="padding:2px;margin:1px 0;background:#001020;border-radius:2px;display:flex;justify-content:space-between">
+        <span>${o.id}</span>
+        <span style="color:${o.status==='active'?'#0f0':'#888'}">${o.status}</span>
+      </div>`
+    ).join('')||'<div style="color:#666;text-align:center">No orders</div>';
+  },
+
+  animate(){
+    requestAnimationFrame(()=>this.animate());
+    this.ca.lookAt(0,this.currentFloor*25,0);
+    this.rn.render(this.sc,this.ca);
+  }
+};
+
+onload=()=>W.init();
+onresize=()=>{
+  W.rn.setSize(innerWidth,innerHeight);
+  W.ca.aspect=innerWidth/innerHeight;
+  W.ca.updateProjectionMatrix();
+  W.heatmapCtx.canvas.width=innerWidth;
+  W.heatmapCtx.canvas.height=innerHeight;
+};
+</script></body></html>
