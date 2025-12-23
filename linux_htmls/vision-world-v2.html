@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vision World v2 - AMR Fleet Control</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0a15;overflow:hidden;font:10px monospace;color:#0ff}
+#c{position:fixed;inset:0}
+.p{position:absolute;background:rgba(5,15,30,.95);border:1px solid #0af;border-radius:5px;padding:8px;z-index:10}
+button{background:linear-gradient(135deg,#08a,#046);color:#0ff;border:1px solid #0af;padding:4px 8px;margin:2px;border-radius:3px;cursor:pointer;font-size:9px}
+button:hover{background:#0af;color:#000}button.active{background:#0f0;color:#000}
+.warn{background:linear-gradient(135deg,#a60,#530);border-color:#f80;color:#ff0}
+.danger{background:linear-gradient(135deg,#a00,#500);border-color:#f00;color:#fff}
+.row{display:flex;gap:3px;margin:3px 0;flex-wrap:wrap}
+.stat{background:#001020;border:1px solid #068;border-radius:3px;padding:4px 6px;text-align:center;min-width:50px}
+.val{font-size:13px;font-weight:bold}.lbl{font-size:7px;opacity:.7}
+.amr-card{background:#001525;border:1px solid #0af3;border-radius:4px;padding:5px;margin:3px 0}
+.amr-card.selected{border-color:#0f0;box-shadow:0 0 8px #0f04}
+.amr-name{color:#0ff;font-size:10px;font-weight:bold}
+.amr-status{font-size:8px;padding:2px 4px;border-radius:2px;display:inline-block}
+.status-idle{background:#333;color:#888}.status-moving{background:#060;color:#0f0}
+.status-picking{background:#660;color:#ff0}.status-charging{background:#606;color:#f0f}
+.bar{height:4px;background:#112;border-radius:2px;margin:2px 0}.fill{height:100%;border-radius:2px}
+#lidar-view{width:150px;height:150px;border:1px solid #0f0;border-radius:50%;background:#001a00;position:relative;overflow:hidden}
+.lidar-dot{position:absolute;width:3px;height:3px;background:#0f0;border-radius:50%;transform:translate(-50%,-50%)}
+#task-queue{max-height:120px;overflow-y:auto}
+.task-item{background:#001020;border:1px solid #0af3;border-radius:3px;padding:4px;margin:2px 0;font-size:8px;display:flex;justify-content:space-between}
+</style></head><body><canvas id="c"></canvas>
+
+<!-- Header -->
+<div class="p" style="top:5px;left:50%;transform:translateX(-50%);padding:4px 20px;border-color:#0f0">
+<span style="color:#0f0;font-size:12px">🤖 AMR FLEET CONTROL</span>
+<span style="color:#0ff;margin-left:15px" id="clock"></span>
+</div>
+
+<!-- Fleet Status -->
+<div class="p" style="top:35px;left:8px;width:200px">
+<div style="color:#0ff;text-align:center;font-size:11px;margin-bottom:5px">📊 FLEET STATUS</div>
+<div class="row">
+<div class="stat"><div class="val" id="total-amrs">0</div><div class="lbl">AMRs</div></div>
+<div class="stat"><div class="val" id="active-amrs">0</div><div class="lbl">Active</div></div>
+<div class="stat"><div class="val" id="tasks-done">0</div><div class="lbl">Tasks</div></div>
+</div>
+<div class="row">
+<div class="stat" style="border-color:#0f0"><div class="val" id="picks">0</div><div class="lbl">Picks</div></div>
+<div class="stat" style="border-color:#f80"><div class="val" id="drops">0</div><div class="lbl">Drops</div></div>
+</div>
+<div style="margin-top:5px;font-size:9px">
+<div>Throughput: <span style="color:#0f0" id="throughput">0</span>/hr</div>
+<div>Efficiency: <span style="color:#0ff" id="efficiency">0</span>%</div>
+</div>
+</div>
+
+<!-- AMR List -->
+<div class="p" style="top:35px;right:8px;width:220px;max-height:300px;overflow-y:auto">
+<div style="color:#f80;text-align:center;font-size:11px;margin-bottom:5px">🚗 AMR FLEET</div>
+<div class="row">
+<button onclick="W.addAMR('picker')">+Picker</button>
+<button onclick="W.addAMR('carrier')">+Carrier</button>
+<button onclick="W.addAMR('scanner')">+Scanner</button>
+</div>
+<div id="amr-list"></div>
+</div>
+
+<!-- Selected AMR Details -->
+<div class="p" style="bottom:8px;left:8px;width:200px">
+<div style="color:#0f0;text-align:center;font-size:11px;margin-bottom:5px">🎯 SELECTED AMR</div>
+<div id="selected-amr">
+<div style="color:#666;text-align:center">Click an AMR to select</div>
+</div>
+</div>
+
+<!-- LIDAR View -->
+<div class="p" style="bottom:8px;left:220px;width:170px">
+<div style="color:#0f0;text-align:center;font-size:10px;margin-bottom:4px">📡 LIDAR VIEW</div>
+<div id="lidar-view"></div>
+</div>
+
+<!-- Task Queue -->
+<div class="p" style="bottom:8px;right:8px;width:220px">
+<div style="color:#ff0;text-align:center;font-size:11px;margin-bottom:5px">📋 TASK QUEUE</div>
+<div class="row">
+<button onclick="W.addTask('pick')">+Pick</button>
+<button onclick="W.addTask('deliver')">+Deliver</button>
+<button onclick="W.addTask('scan')">+Scan</button>
+<button class="warn" onclick="W.clearTasks()">Clear</button>
+</div>
+<div id="task-queue"></div>
+</div>
+
+<!-- Controls -->
+<div class="p" style="top:200px;left:8px;width:200px">
+<div style="color:#f0f;text-align:center;font-size:10px;margin-bottom:4px">🎮 CONTROLS</div>
+<div style="font-size:8px;color:#888">
+<div>Scroll: Zoom | Drag: Rotate</div>
+<div>Click AMR: Select</div>
+<div>Click Floor: Move Selected</div>
+<div>Space: Pause/Resume</div>
+</div>
+<div class="row" style="margin-top:5px">
+<button id="btn-pause" onclick="W.togglePause()">⏸️ Pause</button>
+<button onclick="W.toggleVision()">👁️ Vision</button>
+</div>
+</div>
+
+<script>
+const T={v3:(x,y,z)=>new THREE.Vector3(x,y,z),rnd:(a,b)=>a+Math.random()*(b-a),rndInt:(a,b)=>Math.floor(T.rnd(a,b+1)),clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),lerp:(a,b,t)=>a+(b-a)*t,dist:(a,b)=>a.distanceTo(b)};
+
+const COLORS={picker:0x00ff88,carrier:0x00aaff,scanner:0xff00ff};
+
+const W={
+  amrs:[],
+  tasks:[],
+  shelves:[],
+  stations:[],
+  selectedAMR:null,
+  paused:false,
+  showVision:true,
+  stats:{picks:0,drops:0,tasks:0,startTime:Date.now()},
+
+  init(){
+    this.sc=new THREE.Scene();
+    this.ca=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.1,2000);
+    this.rn=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true});
+    this.rn.setSize(innerWidth,innerHeight);
+    this.rn.setClearColor(0x0a0a15);
+    this.rn.shadowMap.enabled=true;
+    this.ca.position.set(100,150,100);
+    this.ca.lookAt(0,0,0);
+
+    // Lighting
+    this.sc.add(new THREE.AmbientLight(0x404060,.4));
+    const light1=new THREE.DirectionalLight(0xffffff,.6);
+    light1.position.set(100,200,100);
+    light1.castShadow=true;
+    this.sc.add(light1);
+
+    // Warehouse lights
+    for(let x=-80;x<=80;x+=40){
+      for(let z=-80;z<=80;z+=40){
+        const light=new THREE.PointLight(0xffffee,.3,60);
+        light.position.set(x,25,z);
+        this.sc.add(light);
+      }
+    }
+
+    // Build warehouse
+    this.buildWarehouse();
+
+    // Initial AMRs
+    for(let i=0;i<3;i++)this.addAMR('picker');
+    for(let i=0;i<2;i++)this.addAMR('carrier');
+    this.addAMR('scanner');
+
+    // Initial tasks
+    for(let i=0;i<5;i++)this.addTask('pick');
+
+    // Controls
+    this.setupControls();
+
+    // Clock
+    setInterval(()=>{
+      document.getElementById('clock').textContent=new Date().toLocaleTimeString();
+    },1000);
+
+    this.animate();
+    setInterval(()=>this.tick(),50);
+    setInterval(()=>this.updateUI(),200);
+  },
+
+  buildWarehouse(){
+    // Floor
+    const floor=new THREE.Mesh(
+      new THREE.PlaneGeometry(250,250),
+      new THREE.MeshPhongMaterial({color:0x1a1a2a})
+    );
+    floor.rotation.x=-Math.PI/2;
+    floor.receiveShadow=true;
+    floor.userData.isFloor=true;
+    this.sc.add(floor);
+
+    // Grid
+    const grid=new THREE.GridHelper(250,50,0x0af2,0x0af1);
+    this.sc.add(grid);
+
+    // Walls
+    const wallMat=new THREE.MeshPhongMaterial({color:0x334455});
+    const wallH=15;
+    [[-125,0,0,5,wallH,250],[125,0,0,5,wallH,250],[0,0,-125,250,wallH,5],[0,0,125,250,wallH,5]].forEach(([x,y,z,w,h,d])=>{
+      const wall=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),wallMat);
+      wall.position.set(x,h/2,z);
+      this.sc.add(wall);
+    });
+
+    // Shelving units
+    const shelfMat=new THREE.MeshPhongMaterial({color:0x666677});
+    for(let row=0;row<5;row++){
+      for(let col=0;col<4;col++){
+        const shelf=new THREE.Group();
+        // Uprights
+        for(let i=0;i<2;i++){
+          const upright=new THREE.Mesh(new THREE.BoxGeometry(1,12,1),shelfMat);
+          upright.position.set(i*18-9,6,0);
+          shelf.add(upright);
+        }
+        // Shelves
+        for(let s=0;s<4;s++){
+          const plank=new THREE.Mesh(new THREE.BoxGeometry(20,0.5,8),shelfMat);
+          plank.position.set(0,s*3+1.5,0);
+          shelf.add(plank);
+
+          // Items on shelf
+          for(let item=0;item<T.rndInt(2,5);item++){
+            const box=new THREE.Mesh(
+              new THREE.BoxGeometry(T.rnd(1.5,3),T.rnd(1.5,3),T.rnd(1.5,3)),
+              new THREE.MeshPhongMaterial({color:Math.random()*0xffffff})
+            );
+            box.position.set(T.rnd(-7,7),s*3+3,T.rnd(-2,2));
+            box.userData.isItem=true;
+            shelf.add(box);
+          }
+        }
+
+        shelf.position.set(-80+col*50,0,-60+row*30);
+        shelf.userData.isShelf=true;
+        shelf.userData.id=`S${row}-${col}`;
+        this.sc.add(shelf);
+        this.shelves.push(shelf);
+      }
+    }
+
+    // Pick/Drop stations
+    const stationColors=[0x00ff00,0xff8800,0x00ffff];
+    const stationTypes=['pick','drop','charge'];
+    for(let i=0;i<3;i++){
+      const station=new THREE.Mesh(
+        new THREE.CylinderGeometry(5,5,0.5,16),
+        new THREE.MeshPhongMaterial({color:stationColors[i],emissive:stationColors[i],emissiveIntensity:.3})
+      );
+      station.position.set(-100+i*40,0.25,100);
+      station.userData.isStation=true;
+      station.userData.type=stationTypes[i];
+      this.sc.add(station);
+      this.stations.push(station);
+
+      // Label
+      const label=new THREE.Mesh(
+        new THREE.BoxGeometry(8,4,0.1),
+        new THREE.MeshBasicMaterial({color:stationColors[i]})
+      );
+      label.position.set(-100+i*40,8,100);
+      this.sc.add(label);
+    }
+  },
+
+  addAMR(type){
+    const amr=new THREE.Group();
+    const color=COLORS[type];
+
+    // Base
+    const base=new THREE.Mesh(
+      new THREE.BoxGeometry(6,2,8),
+      new THREE.MeshPhongMaterial({color:0x333344})
+    );
+    base.position.y=1.5;
+    base.castShadow=true;
+    amr.add(base);
+
+    // Top
+    const top=new THREE.Mesh(
+      new THREE.BoxGeometry(5,1.5,6),
+      new THREE.MeshPhongMaterial({color})
+    );
+    top.position.y=3;
+    amr.add(top);
+
+    // Wheels
+    const wheelMat=new THREE.MeshPhongMaterial({color:0x222222});
+    [[-3,0.8,-3],[-3,0.8,3],[3,0.8,-3],[3,0.8,3]].forEach(([x,y,z])=>{
+      const wheel=new THREE.Mesh(new THREE.CylinderGeometry(0.8,0.8,0.5,12),wheelMat);
+      wheel.rotation.z=Math.PI/2;
+      wheel.position.set(x,y,z);
+      amr.add(wheel);
+    });
+
+    // Sensors (LIDAR ring)
+    const lidar=new THREE.Mesh(
+      new THREE.CylinderGeometry(1.5,1.5,0.5,16),
+      new THREE.MeshPhongMaterial({color:0x00ff00,emissive:0x004400})
+    );
+    lidar.position.y=4;
+    amr.add(lidar);
+
+    // Status light
+    const statusLight=new THREE.PointLight(color,.5,10);
+    statusLight.position.y=4;
+    amr.add(statusLight);
+    amr.userData.statusLight=statusLight;
+
+    // Fork lift for picker
+    if(type==='picker'){
+      const fork=new THREE.Mesh(
+        new THREE.BoxGeometry(4,0.3,1),
+        new THREE.MeshPhongMaterial({color:0x888888})
+      );
+      fork.position.set(0,0.8,-4.5);
+      amr.add(fork);
+      amr.userData.fork=fork;
+    }
+
+    // Cargo area for carrier
+    if(type==='carrier'){
+      const cargo=new THREE.Mesh(
+        new THREE.BoxGeometry(5,0.3,5),
+        new THREE.MeshPhongMaterial({color:0x444455})
+      );
+      cargo.position.y=4;
+      amr.add(cargo);
+    }
+
+    // Scanner for scanner type
+    if(type==='scanner'){
+      const scanner=new THREE.Mesh(
+        new THREE.ConeGeometry(0.5,2,8),
+        new THREE.MeshPhongMaterial({color:0xff00ff,emissive:0x440044})
+      );
+      scanner.rotation.x=-Math.PI/2;
+      scanner.position.set(0,3,-4);
+      amr.add(scanner);
+    }
+
+    // Position
+    const idx=this.amrs.length;
+    amr.position.set(-100+idx*15,0,80);
+
+    amr.userData={
+      id:`AMR-${String(idx+1).padStart(2,'0')}`,
+      type,
+      color,
+      status:'idle',
+      battery:80+Math.random()*20,
+      target:null,
+      path:[],
+      speed:0.3+Math.random()*0.2,
+      carrying:null,
+      task:null,
+      lidarData:[],
+      scanRadius:30
+    };
+
+    this.sc.add(amr);
+    this.amrs.push(amr);
+    this.updateUI();
+  },
+
+  addTask(type){
+    const shelf=this.shelves[T.rndInt(0,this.shelves.length-1)];
+    const station=this.stations.find(s=>s.userData.type==='drop');
+
+    const task={
+      id:`T${String(this.tasks.length+1).padStart(3,'0')}`,
+      type,
+      from:type==='pick'?shelf.position.clone():station.position.clone(),
+      to:type==='pick'?station.position.clone():shelf.position.clone(),
+      status:'pending',
+      assignedTo:null,
+      priority:T.rndInt(1,5)
+    };
+
+    this.tasks.push(task);
+    this.updateTaskQueue();
+  },
+
+  clearTasks(){
+    this.tasks=this.tasks.filter(t=>t.status==='active');
+    this.updateTaskQueue();
+  },
+
+  assignTask(amr){
+    const d=amr.userData;
+    if(d.task||d.status!=='idle')return;
+
+    // Find suitable pending task
+    const task=this.tasks.find(t=>t.status==='pending'&&
+      (d.type==='picker'&&t.type==='pick')||
+      (d.type==='carrier'&&t.type==='deliver')||
+      (d.type==='scanner'&&t.type==='scan')
+    );
+
+    if(!task)return;
+
+    task.status='active';
+    task.assignedTo=d.id;
+    d.task=task;
+    d.target=task.from.clone();
+    d.status='moving';
+  },
+
+  updateLIDAR(amr){
+    const d=amr.userData;
+    d.lidarData=[];
+
+    // Simulate LIDAR sweep
+    for(let angle=0;angle<Math.PI*2;angle+=Math.PI/16){
+      const ray=new THREE.Raycaster();
+      const dir=T.v3(Math.cos(angle),0,Math.sin(angle));
+      ray.set(amr.position.clone().add(T.v3(0,2,0)),dir);
+
+      let minDist=d.scanRadius;
+      this.amrs.forEach(other=>{
+        if(other===amr)return;
+        const intersects=ray.intersectObject(other,true);
+        if(intersects.length>0&&intersects[0].distance<minDist){
+          minDist=intersects[0].distance;
+        }
+      });
+
+      this.shelves.forEach(shelf=>{
+        const intersects=ray.intersectObject(shelf,true);
+        if(intersects.length>0&&intersects[0].distance<minDist){
+          minDist=intersects[0].distance;
+        }
+      });
+
+      d.lidarData.push({angle,dist:minDist});
+    }
+  },
+
+  moveAMR(amr){
+    const d=amr.userData;
+    if(!d.target||d.status==='idle')return;
+
+    const toTarget=d.target.clone().sub(amr.position);
+    toTarget.y=0;
+    const dist=toTarget.length();
+
+    if(dist<2){
+      // Reached target
+      if(d.task){
+        if(d.status==='moving'){
+          // At pickup location
+          d.status='picking';
+          d.carrying={type:'box'};
+          this.stats.picks++;
+
+          // Create visual cargo
+          if(!d.cargoMesh){
+            d.cargoMesh=new THREE.Mesh(
+              new THREE.BoxGeometry(2,2,2),
+              new THREE.MeshPhongMaterial({color:0xffaa00})
+            );
+            d.cargoMesh.position.y=5;
+            amr.add(d.cargoMesh);
+          }
+
+          setTimeout(()=>{
+            d.target=d.task.to.clone();
+            d.status='moving';
+          },1000);
+
+        }else if(d.carrying){
+          // At dropoff
+          d.status='idle';
+          d.carrying=null;
+          d.task.status='complete';
+          d.task=null;
+          this.stats.drops++;
+          this.stats.tasks++;
+
+          if(d.cargoMesh){
+            amr.remove(d.cargoMesh);
+            d.cargoMesh=null;
+          }
+        }
+      }else{
+        d.status='idle';
+        d.target=null;
+      }
+    }else{
+      // Move towards target
+      const moveDir=toTarget.normalize();
+
+      // Simple obstacle avoidance using LIDAR
+      let avoidance=T.v3();
+      d.lidarData.forEach(l=>{
+        if(l.dist<10){
+          const repel=T.v3(Math.cos(l.angle),0,Math.sin(l.angle)).multiplyScalar(10-l.dist);
+          avoidance.sub(repel);
+        }
+      });
+
+      const finalDir=moveDir.add(avoidance.multiplyScalar(0.1)).normalize();
+      amr.position.add(finalDir.multiplyScalar(d.speed));
+
+      // Face movement direction
+      amr.rotation.y=Math.atan2(finalDir.x,finalDir.z);
+    }
+
+    // Battery drain
+    d.battery-=0.001;
+    if(d.battery<20){
+      // Go charge
+      const charger=this.stations.find(s=>s.userData.type==='charge');
+      if(charger&&!d.charging){
+        d.target=charger.position.clone();
+        d.charging=true;
+      }
+    }
+    if(d.charging&&d.battery>=100){
+      d.charging=false;
+      d.status='idle';
+    }
+    if(d.charging){
+      d.battery+=0.1;
+    }
+  },
+
+  tick(){
+    if(this.paused)return;
+
+    this.amrs.forEach(amr=>{
+      this.updateLIDAR(amr);
+      this.assignTask(amr);
+      this.moveAMR(amr);
+
+      // Update status light
+      const d=amr.userData;
+      const colors={idle:0x888888,moving:0x00ff00,picking:0xffff00,charging:0xff00ff};
+      amr.userData.statusLight.color.setHex(colors[d.status]||0xffffff);
+    });
+
+    this.updateLidarView();
+  },
+
+  setupControls(){
+    let isDragging=false,lastX=0,lastY=0;
+    const canvas=document.getElementById('c');
+
+    canvas.addEventListener('mousedown',e=>{
+      isDragging=true;
+      lastX=e.clientX;
+      lastY=e.clientY;
+    });
+
+    canvas.addEventListener('mousemove',e=>{
+      if(!isDragging)return;
+      const dx=e.clientX-lastX,dy=e.clientY-lastY;
+      this.ca.position.applyAxisAngle(T.v3(0,1,0),-dx*.005);
+      lastX=e.clientX;lastY=e.clientY;
+    });
+
+    canvas.addEventListener('mouseup',()=>isDragging=false);
+
+    canvas.addEventListener('wheel',e=>{
+      const zoom=1+e.deltaY*.001;
+      this.ca.position.multiplyScalar(zoom);
+    });
+
+    canvas.addEventListener('click',e=>{
+      if(isDragging)return;
+
+      const mouse=new THREE.Vector2(
+        (e.clientX/innerWidth)*2-1,
+        -(e.clientY/innerHeight)*2+1
+      );
+      const ray=new THREE.Raycaster();
+      ray.setFromCamera(mouse,this.ca);
+
+      // Check AMR clicks
+      for(let amr of this.amrs){
+        const hit=ray.intersectObject(amr,true);
+        if(hit.length>0){
+          this.selectAMR(amr);
+          return;
+        }
+      }
+
+      // Check floor click for move command
+      const floorHit=ray.intersectObjects(this.sc.children.filter(c=>c.userData.isFloor));
+      if(floorHit.length>0&&this.selectedAMR){
+        this.selectedAMR.userData.target=floorHit[0].point.clone();
+        this.selectedAMR.userData.status='moving';
+        this.selectedAMR.userData.task=null;
+      }
+    });
+
+    window.addEventListener('keydown',e=>{
+      if(e.code==='Space'){
+        e.preventDefault();
+        this.togglePause();
+      }
+    });
+  },
+
+  selectAMR(amr){
+    this.selectedAMR=amr;
+    this.updateSelectedAMR();
+  },
+
+  togglePause(){
+    this.paused=!this.paused;
+    document.getElementById('btn-pause').textContent=this.paused?'▶️ Resume':'⏸️ Pause';
+    document.getElementById('btn-pause').classList.toggle('active',this.paused);
+  },
+
+  toggleVision(){
+    this.showVision=!this.showVision;
+  },
+
+  updateLidarView(){
+    if(!this.selectedAMR)return;
+
+    const d=this.selectedAMR.userData;
+    const el=document.getElementById('lidar-view');
+    const center=75;
+    const scale=2.5;
+
+    let html=`<div class="lidar-dot" style="left:${center}px;top:${center}px;background:#fff;width:6px;height:6px"></div>`;
+
+    d.lidarData.forEach(l=>{
+      const x=center+Math.cos(l.angle)*l.dist*scale;
+      const y=center+Math.sin(l.angle)*l.dist*scale;
+      const intensity=1-l.dist/d.scanRadius;
+      html+=`<div class="lidar-dot" style="left:${x}px;top:${y}px;opacity:${intensity}"></div>`;
+    });
+
+    el.innerHTML=html;
+  },
+
+  updateSelectedAMR(){
+    const el=document.getElementById('selected-amr');
+    if(!this.selectedAMR){
+      el.innerHTML='<div style="color:#666;text-align:center">Click an AMR to select</div>';
+      return;
+    }
+
+    const d=this.selectedAMR.userData;
+    const statusColors={idle:'#888',moving:'#0f0',picking:'#ff0',charging:'#f0f'};
+
+    el.innerHTML=`
+      <div class="amr-name">${d.id} <span style="color:#888">(${d.type})</span></div>
+      <div class="amr-status" style="background:${statusColors[d.status]}40;color:${statusColors[d.status]}">${d.status.toUpperCase()}</div>
+      <div style="margin-top:5px">
+        <div style="font-size:8px">Battery:</div>
+        <div class="bar"><div class="fill" style="width:${d.battery}%;background:${d.battery>20?'#0f0':'#f00'}"></div></div>
+      </div>
+      <div style="font-size:8px;margin-top:3px">
+        <div>Speed: ${d.speed.toFixed(2)} m/s</div>
+        <div>Task: ${d.task?d.task.id:'None'}</div>
+        <div>Cargo: ${d.carrying?'Yes':'No'}</div>
+      </div>
+      <div class="row" style="margin-top:5px">
+        <button onclick="W.selectedAMR.userData.status='idle'">Stop</button>
+        <button onclick="W.selectedAMR.userData.battery=100">Charge</button>
+      </div>
+    `;
+  },
+
+  updateUI(){
+    document.getElementById('total-amrs').textContent=this.amrs.length;
+    document.getElementById('active-amrs').textContent=this.amrs.filter(a=>a.userData.status!=='idle').length;
+    document.getElementById('tasks-done').textContent=this.stats.tasks;
+    document.getElementById('picks').textContent=this.stats.picks;
+    document.getElementById('drops').textContent=this.stats.drops;
+
+    const elapsed=(Date.now()-this.stats.startTime)/3600000;
+    document.getElementById('throughput').textContent=elapsed>0?Math.round(this.stats.tasks/elapsed):'0';
+    document.getElementById('efficiency').textContent=this.amrs.length?Math.round(this.amrs.filter(a=>a.userData.status!=='idle').length/this.amrs.length*100):'0';
+
+    // AMR list
+    document.getElementById('amr-list').innerHTML=this.amrs.map(amr=>{
+      const d=amr.userData;
+      const sel=amr===this.selectedAMR?'selected':'';
+      const statusColors={idle:'#888',moving:'#0f0',picking:'#ff0',charging:'#f0f'};
+      return`
+        <div class="amr-card ${sel}" onclick="W.selectAMR(W.amrs[${this.amrs.indexOf(amr)}])">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span class="amr-name">${d.id}</span>
+            <span class="amr-status" style="background:${statusColors[d.status]}40;color:${statusColors[d.status]}">${d.status}</span>
+          </div>
+          <div class="bar" style="margin-top:3px"><div class="fill" style="width:${d.battery}%;background:#0f0"></div></div>
+        </div>
+      `;
+    }).join('');
+
+    this.updateTaskQueue();
+    this.updateSelectedAMR();
+  },
+
+  updateTaskQueue(){
+    const el=document.getElementById('task-queue');
+    const pending=this.tasks.filter(t=>t.status!=='complete');
+
+    el.innerHTML=pending.length?pending.slice(0,10).map(t=>`
+      <div class="task-item" style="border-color:${t.status==='active'?'#0f0':'#0af3'}">
+        <span>${t.id}</span>
+        <span style="color:#888">${t.type}</span>
+        <span style="color:${t.status==='active'?'#0f0':'#ff0'}">${t.status}</span>
+      </div>
+    `).join(''):'<div style="color:#666;text-align:center">No pending tasks</div>';
+  },
+
+  animate(){
+    requestAnimationFrame(()=>this.animate());
+
+    // Vision cones
+    if(this.showVision){
+      // Could add vision cone rendering here
+    }
+
+    this.ca.lookAt(0,0,0);
+    this.rn.render(this.sc,this.ca);
+  }
+};
+
+onload=()=>W.init();
+onresize=()=>{W.rn.setSize(innerWidth,innerHeight);W.ca.aspect=innerWidth/innerHeight;W.ca.updateProjectionMatrix()};
+</script></body></html>
