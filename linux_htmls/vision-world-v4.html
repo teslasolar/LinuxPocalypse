@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vision World v4 - Digital Twin Operations</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0a15;overflow:hidden;font:8px monospace;color:#0ff}
+#c{position:fixed;inset:0}
+.p{position:absolute;background:rgba(5,15,30,.96);border:1px solid #0af;border-radius:4px;padding:5px;z-index:10}
+button{background:linear-gradient(135deg,#08a,#046);color:#0ff;border:1px solid #0af;padding:2px 5px;margin:1px;border-radius:2px;cursor:pointer;font-size:7px}
+button:hover{background:#0af;color:#000}button.active{background:#0f0;color:#000}
+button.warn{background:linear-gradient(135deg,#a60,#530);border-color:#f80;color:#ff0}
+button.danger{background:linear-gradient(135deg,#a00,#500);border-color:#f00;color:#fff}
+.row{display:flex;gap:2px;margin:2px 0;flex-wrap:wrap}
+.stat{background:#001020;border:1px solid #068;border-radius:2px;padding:2px 4px;text-align:center;min-width:35px}
+.val{font-size:11px;font-weight:bold}.lbl{font-size:5px;opacity:.7}
+.amr-card{background:#001525;border:1px solid #0af3;border-radius:2px;padding:3px;margin:1px 0;cursor:pointer;font-size:7px}
+.amr-card.selected{border-color:#0f0}.amr-card.alarm{border-color:#f00}
+.bar{height:2px;background:#112;border-radius:1px;margin:1px 0}.fill{height:100%;border-radius:1px}
+#floor-selector{display:flex;gap:2px}
+.floor-btn{padding:3px 6px;background:#001525;border:1px solid #0af3;cursor:pointer;font-size:7px}
+.floor-btn.active{background:#0af;color:#000}
+#inventory-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;font-size:6px}
+.inv-cell{background:#001020;border:1px solid #0682;padding:2px;text-align:center}
+.inv-cell.low{border-color:#f80}.inv-cell.out{border-color:#f00}
+#energy-chart{height:40px;background:#001020;border:1px solid #068;display:flex;align-items:flex-end;gap:1px;padding:2px}
+.energy-bar{flex:1;background:#0f0;min-width:3px}
+#shift-timeline{height:20px;background:#001020;border:1px solid #068;position:relative;margin-top:3px}
+.shift-block{position:absolute;height:100%;opacity:.7}
+#rtls-canvas{width:100%;height:80px;border:1px solid #0f0}
+#dock-status{font-size:7px}
+.dock{padding:2px;margin:1px 0;background:#001020;border-radius:2px;display:flex;justify-content:space-between}
+.dock.active{border:1px solid #0f0}
+#twin-indicator{position:fixed;top:4px;right:4px;padding:3px 8px;background:#001030;border:1px solid #0f0;border-radius:3px;font-size:8px;z-index:20}
+#twin-indicator.synced{border-color:#0f0;color:#0f0}
+#twin-indicator.syncing{border-color:#ff0;color:#ff0;animation:blink .5s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.5}}
+.arm-status{font-size:7px;padding:2px;background:#001020;border-radius:2px;margin:1px 0}
+</style></head><body>
+<canvas id="c"></canvas>
+
+<!-- Digital Twin Indicator -->
+<div id="twin-indicator" class="synced">🔗 DIGITAL TWIN: SYNCED</div>
+
+<!-- Header -->
+<div class="p" style="top:4px;left:50%;transform:translateX(-50%);padding:2px 12px;border-color:#0f0">
+<span style="color:#0f0;font-size:10px">🏭 VISION WORLD</span>
+<span style="color:#0ff;font-size:9px;margin-left:6px">v4</span>
+<span style="color:#f0f;font-size:7px;margin-left:8px">Digital Twin</span>
+<span style="color:#888;margin-left:10px" id="clock"></span>
+</div>
+
+<!-- Floor Selector -->
+<div class="p" style="top:24px;left:50%;transform:translateX(-50%)">
+<div id="floor-selector">
+<div class="floor-btn active" onclick="W.setFloor(0)">F1</div>
+<div class="floor-btn" onclick="W.setFloor(1)">F2</div>
+<div class="floor-btn" onclick="W.setFloor(2)">F3</div>
+<div class="floor-btn" onclick="W.setFloor(3)">F4</div>
+</div>
+</div>
+
+<!-- Fleet Status -->
+<div class="p" style="top:24px;left:4px;width:160px">
+<div style="color:#0ff;text-align:center;font-size:9px;margin-bottom:3px">📊 FLEET</div>
+<div class="row">
+<div class="stat"><div class="val" id="total-amrs">0</div><div class="lbl">AMR</div></div>
+<div class="stat"><div class="val" id="total-agvs">0</div><div class="lbl">AGV</div></div>
+<div class="stat"><div class="val" id="active">0</div><div class="lbl">Act</div></div>
+<div class="stat"><div class="val" id="efficiency">0</div><div class="lbl">Eff%</div></div>
+</div>
+<div class="row">
+<div class="stat" style="border-color:#0f0"><div class="val" id="picks">0</div><div class="lbl">Pick</div></div>
+<div class="stat" style="border-color:#f80"><div class="val" id="drops">0</div><div class="lbl">Drop</div></div>
+<div class="stat" style="border-color:#f0f"><div class="val" id="arms">0</div><div class="lbl">Arm</div></div>
+</div>
+</div>
+
+<!-- Robot Fleet -->
+<div class="p" style="top:24px;right:4px;width:170px;max-height:200px;overflow-y:auto">
+<div style="color:#f80;text-align:center;font-size:9px;margin-bottom:3px">🤖 ROBOTS</div>
+<div class="row">
+<button onclick="W.addRobot('amr')">+AMR</button>
+<button onclick="W.addRobot('agv')">+AGV</button>
+<button onclick="W.addRobot('arm')">+Arm</button>
+</div>
+<div id="robot-list"></div>
+</div>
+
+<!-- Inventory -->
+<div class="p" style="top:235px;right:4px;width:170px">
+<div style="color:#ff0;text-align:center;font-size:9px;margin-bottom:3px">📦 INVENTORY</div>
+<div id="inventory-grid"></div>
+<div style="margin-top:3px;font-size:6px">
+Total SKUs: <span id="total-skus">0</span> | Low: <span style="color:#f80" id="low-stock">0</span> | Out: <span style="color:#f00" id="out-stock">0</span>
+</div>
+</div>
+
+<!-- Energy Management -->
+<div class="p" style="top:360px;right:4px;width:170px">
+<div style="color:#0f0;text-align:center;font-size:9px;margin-bottom:3px">⚡ ENERGY</div>
+<div id="energy-chart"></div>
+<div style="font-size:6px;margin-top:2px">
+Current: <span style="color:#0f0" id="current-energy">0</span>kW | Peak: <span id="peak-energy">0</span>kW | Cost: $<span id="energy-cost">0</span>/hr
+</div>
+</div>
+
+<!-- Shift Schedule -->
+<div class="p" style="top:440px;right:4px;width:170px">
+<div style="color:#f0f;text-align:center;font-size:9px;margin-bottom:3px">📅 SHIFTS</div>
+<div id="shift-timeline">
+<div class="shift-block" style="left:0;width:33%;background:#0a0">A</div>
+<div class="shift-block" style="left:33%;width:33%;background:#00a">B</div>
+<div class="shift-block" style="left:66%;width:34%;background:#a0a">C</div>
+</div>
+<div style="font-size:6px;margin-top:3px">
+Current: <span style="color:#0f0" id="current-shift">A</span> | Workers: <span id="workers">0</span> | Hours: <span id="shift-hours">0</span>
+</div>
+</div>
+
+<!-- RTLS Beacons -->
+<div class="p" style="bottom:4px;left:4px;width:160px">
+<div style="color:#0f0;text-align:center;font-size:9px;margin-bottom:3px">📡 RTLS</div>
+<canvas id="rtls-canvas"></canvas>
+<div style="font-size:6px;margin-top:2px">Beacons: <span id="beacon-count">0</span> | Accuracy: <span style="color:#0f0">±0.1m</span></div>
+</div>
+
+<!-- Robotic Arms -->
+<div class="p" style="bottom:4px;left:175px;width:130px">
+<div style="color:#f80;text-align:center;font-size:9px;margin-bottom:3px">🦾 ARMS</div>
+<div id="arm-list"></div>
+</div>
+
+<!-- Loading Docks -->
+<div class="p" style="bottom:4px;left:315px;width:140px">
+<div style="color:#ff0;text-align:center;font-size:9px;margin-bottom:3px">🚛 DOCKS</div>
+<div id="dock-status"></div>
+</div>
+
+<!-- Controls -->
+<div class="p" style="top:130px;left:4px;width:160px">
+<div style="color:#f0f;text-align:center;font-size:8px;margin-bottom:2px">🎮 VIEW</div>
+<div class="row">
+<button id="btn-pause" onclick="W.togglePause()">⏸️</button>
+<button onclick="W.resetView()">🔄</button>
+<button onclick="W.topView()">⬆️</button>
+<button onclick="W.followRobot()">👁️</button>
+</div>
+<div class="row">
+<button onclick="W.togglePaths()">📍Path</button>
+<button onclick="W.toggleTape()">🔵Tape</button>
+<button onclick="W.toggleBeacons()">📡RTLS</button>
+</div>
+</div>
+
+<!-- Selected Robot -->
+<div class="p" style="bottom:4px;right:4px;width:170px">
+<div style="color:#0f0;text-align:center;font-size:9px;margin-bottom:3px">🎯 SELECTED</div>
+<div id="selected-robot"><div style="color:#666;text-align:center">Click robot to select</div></div>
+</div>
+
+<script>
+const T={v3:(x,y,z)=>new THREE.Vector3(x,y,z),rnd:(a,b)=>a+Math.random()*(b-a),rndInt:(a,b)=>Math.floor(T.rnd(a,b+1)),clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),lerp:(a,b,t)=>a+(b-a)*t};
+
+const COLORS={amr:0x00ff88,agv:0xffaa00,arm:0xff00ff,picker:0x00aaff};
+
+const W={
+  robots:[],orders:[],shelves:[],stations:[],docks:[],arms:[],beacons:[],tapes:[],
+  inventory:[],
+  floors:[],currentFloor:0,
+  selectedRobot:null,
+  paused:false,showPaths:true,showTape:true,showBeacons:true,followMode:false,
+  stats:{picks:0,drops:0,armOps:0,tasks:0,energy:0,startTime:Date.now()},
+  shift:{current:'A',workers:12,hours:0},
+  twinSynced:true,
+
+  init(){
+    this.sc=new THREE.Scene();
+    this.ca=new THREE.PerspectiveCamera(50,innerWidth/innerHeight,.1,2000);
+    this.rn=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true});
+    this.rn.setSize(innerWidth,innerHeight);
+    this.rn.setClearColor(0x0a0a15);
+    this.rn.shadowMap.enabled=true;
+    this.ca.position.set(150,200,150);
+    this.ca.lookAt(0,0,0);
+
+    this.rtlsCtx=document.getElementById('rtls-canvas').getContext('2d');
+
+    // Lighting
+    this.sc.add(new THREE.AmbientLight(0x404060,.4));
+    const sun=new THREE.DirectionalLight(0xffffff,.5);
+    sun.position.set(100,200,100);sun.castShadow=true;
+    this.sc.add(sun);
+
+    // Build warehouse
+    for(let f=0;f<4;f++)this.buildFloor(f);
+    this.buildDocks();
+    this.buildTapeRoutes();
+    this.buildBeacons();
+    this.initInventory();
+
+    // Initial robots
+    for(let i=0;i<4;i++)this.addRobot('amr');
+    for(let i=0;i<3;i++)this.addRobot('agv');
+    for(let i=0;i<2;i++)this.addRobot('arm');
+
+    // Orders
+    for(let i=0;i<10;i++)this.addOrder();
+
+    this.setupControls();
+
+    setInterval(()=>document.getElementById('clock').textContent=new Date().toLocaleTimeString(),1000);
+    setInterval(()=>this.updateShift(),60000);
+    setInterval(()=>this.syncTwin(),5000);
+
+    this.animate();
+    setInterval(()=>this.tick(),50);
+    setInterval(()=>this.updateUI(),150);
+    setInterval(()=>this.updateEnergy(),1000);
+  },
+
+  buildFloor(floorNum){
+    const yOffset=floorNum*22;
+    const floor={shelves:[],stations:[],y:yOffset};
+
+    const floorMesh=new THREE.Mesh(
+      new THREE.PlaneGeometry(280,280),
+      new THREE.MeshPhongMaterial({color:0x1a1a2a,transparent:true,opacity:floorNum===0?1:.6})
+    );
+    floorMesh.rotation.x=-Math.PI/2;
+    floorMesh.position.y=yOffset;
+    floorMesh.receiveShadow=true;
+    floorMesh.userData={isFloor:true,floorNum};
+    this.sc.add(floorMesh);
+    floor.mesh=floorMesh;
+
+    const grid=new THREE.GridHelper(280,56,0x0af2,0x0af1);
+    grid.position.y=yOffset+.1;
+    this.sc.add(grid);
+    floor.grid=grid;
+
+    // Shelving
+    const shelfMat=new THREE.MeshPhongMaterial({color:0x556677});
+    for(let row=0;row<5;row++){
+      for(let col=0;col<6;col++){
+        const shelf=new THREE.Group();
+        for(let i=0;i<2;i++){
+          const upright=new THREE.Mesh(new THREE.BoxGeometry(.6,9,.6),shelfMat);
+          upright.position.set(i*12-6,4.5,0);
+          shelf.add(upright);
+        }
+        for(let s=0;s<4;s++){
+          const plank=new THREE.Mesh(new THREE.BoxGeometry(14,.3,5),shelfMat);
+          plank.position.set(0,s*2.2+1.2,0);
+          shelf.add(plank);
+        }
+        shelf.position.set(-100+col*35,yOffset,-70+row*30);
+        shelf.userData={isShelf:true,id:`F${floorNum+1}-${row}${col}`,floor:floorNum};
+        this.sc.add(shelf);
+        this.shelves.push(shelf);
+        floor.shelves.push(shelf);
+      }
+    }
+
+    // Stations
+    const stationTypes=[
+      {type:'pick',color:0x00ff00,x:-120},
+      {type:'pack',color:0xff8800,x:-80},
+      {type:'charge',color:0x00ffff,x:-40},
+      {type:'qc',color:0xff00ff,x:0},
+      {type:'ship',color:0xffff00,x:40}
+    ];
+
+    stationTypes.forEach(st=>{
+      const station=new THREE.Mesh(
+        new THREE.CylinderGeometry(3.5,3.5,.3,16),
+        new THREE.MeshPhongMaterial({color:st.color,emissive:st.color,emissiveIntensity:.2})
+      );
+      station.position.set(st.x,yOffset+.15,110);
+      station.userData={isStation:true,type:st.type,floor:floorNum};
+      this.sc.add(station);
+      this.stations.push(station);
+      floor.stations.push(station);
+    });
+
+    this.floors.push(floor);
+  },
+
+  buildDocks(){
+    const dockMat=new THREE.MeshPhongMaterial({color:0x444455});
+    for(let i=0;i<4;i++){
+      const dock=new THREE.Group();
+      const platform=new THREE.Mesh(new THREE.BoxGeometry(20,1,15),dockMat);
+      dock.add(platform);
+      const wall=new THREE.Mesh(new THREE.BoxGeometry(20,8,1),dockMat);
+      wall.position.set(0,4,-7);
+      dock.add(wall);
+
+      dock.position.set(80+i*25,.5,120);
+      dock.userData={id:`D${i+1}`,status:'empty',truck:null};
+      this.sc.add(dock);
+      this.docks.push(dock);
+
+      // Sometimes add truck
+      if(Math.random()>.5){
+        const truck=new THREE.Mesh(new THREE.BoxGeometry(8,6,18),new THREE.MeshPhongMaterial({color:0x0066aa}));
+        truck.position.set(80+i*25,3,135);
+        this.sc.add(truck);
+        dock.userData.status='loading';
+        dock.userData.truck=truck;
+      }
+    }
+    this.updateDockStatus();
+  },
+
+  buildTapeRoutes(){
+    const tapeMat=new THREE.MeshBasicMaterial({color:0x0066ff});
+    // Main lanes
+    const routes=[
+      [[-120,0,100],[120,0,100]], // Front
+      [[-120,0,-80],[120,0,-80]], // Back
+      [[-120,0,-80],[-120,0,100]], // Left
+      [[120,0,-80],[120,0,100]], // Right
+      [[0,0,-80],[0,0,100]], // Center
+    ];
+
+    routes.forEach(([start,end])=>{
+      const len=T.v3(...start).distanceTo(T.v3(...end));
+      const tape=new THREE.Mesh(new THREE.PlaneGeometry(2,len),tapeMat);
+      tape.rotation.x=-Math.PI/2;
+      tape.position.set((start[0]+end[0])/2,.05,(start[2]+end[2])/2);
+      if(start[0]===end[0])tape.rotation.z=Math.PI/2;
+      tape.userData.isTape=true;
+      this.sc.add(tape);
+      this.tapes.push(tape);
+    });
+  },
+
+  buildBeacons(){
+    const beaconMat=new THREE.MeshPhongMaterial({color:0x00ff00,emissive:0x004400});
+    for(let x=-120;x<=120;x+=40){
+      for(let z=-80;z<=100;z+=45){
+        const beacon=new THREE.Mesh(new THREE.CylinderGeometry(.3,.3,2,8),beaconMat);
+        beacon.position.set(x,1,z);
+        beacon.userData.isBeacon=true;
+        this.sc.add(beacon);
+        this.beacons.push(beacon);
+
+        const ring=new THREE.Mesh(
+          new THREE.RingGeometry(3,3.2,16),
+          new THREE.MeshBasicMaterial({color:0x00ff00,transparent:true,opacity:.2,side:THREE.DoubleSide})
+        );
+        ring.rotation.x=-Math.PI/2;
+        ring.position.set(x,.1,z);
+        beacon.userData.ring=ring;
+        this.sc.add(ring);
+      }
+    }
+    document.getElementById('beacon-count').textContent=this.beacons.length;
+  },
+
+  initInventory(){
+    for(let i=0;i<25;i++){
+      this.inventory.push({
+        sku:`SKU-${String(i+1).padStart(4,'0')}`,
+        qty:T.rndInt(0,100),
+        max:100,
+        location:this.shelves[i%this.shelves.length].userData.id
+      });
+    }
+    this.updateInventoryGrid();
+  },
+
+  addRobot(type){
+    if(type==='arm'){
+      this.addArm();
+      return;
+    }
+
+    const robot=new THREE.Group();
+    const color=COLORS[type];
+    const isAGV=type==='agv';
+
+    const baseW=isAGV?8:5;
+    const baseH=isAGV?2:1.5;
+    const base=new THREE.Mesh(
+      new THREE.BoxGeometry(baseW,baseH,isAGV?12:6),
+      new THREE.MeshPhongMaterial({color:0x333344})
+    );
+    base.position.y=baseH/2+.4;
+    base.castShadow=true;
+    robot.add(base);
+
+    const top=new THREE.Mesh(
+      new THREE.BoxGeometry(baseW-.5,1,isAGV?10:4),
+      new THREE.MeshPhongMaterial({color})
+    );
+    top.position.y=baseH+.8;
+    robot.add(top);
+
+    // Wheels
+    const wheelMat=new THREE.MeshPhongMaterial({color:0x222222});
+    const wPos=isAGV?[[-(baseW/2+.2),.5,-4],[-(baseW/2+.2),.5,4],[(baseW/2+.2),.5,-4],[(baseW/2+.2),.5,4]]:[[-(baseW/2+.2),.5,-2],[-(baseW/2+.2),.5,2],[(baseW/2+.2),.5,-2],[(baseW/2+.2),.5,2]];
+    wPos.forEach(([x,y,z])=>{
+      const wheel=new THREE.Mesh(new THREE.CylinderGeometry(.5,.5,.3,12),wheelMat);
+      wheel.rotation.z=Math.PI/2;
+      wheel.position.set(x,y,z);
+      robot.add(wheel);
+    });
+
+    // Sensors
+    if(isAGV){
+      // Tape sensor
+      const sensor=new THREE.Mesh(new THREE.BoxGeometry(3,.2,1),new THREE.MeshPhongMaterial({color:0x0066ff,emissive:0x002244}));
+      sensor.position.set(0,.2,-6);
+      robot.add(sensor);
+    }else{
+      // LIDAR
+      const lidar=new THREE.Mesh(new THREE.CylinderGeometry(.8,.8,.3,16),new THREE.MeshPhongMaterial({color:0x00ff00,emissive:0x004400}));
+      lidar.position.y=baseH+1.5;
+      robot.add(lidar);
+    }
+
+    const statusLight=new THREE.PointLight(color,.4,8);
+    statusLight.position.y=baseH+2;
+    robot.add(statusLight);
+
+    const idx=this.robots.length;
+    robot.position.set(-100+idx*15,0,90);
+
+    robot.userData={
+      id:`${type.toUpperCase()}-${String(idx+1).padStart(2,'0')}`,
+      type,color,
+      status:'idle',
+      battery:85+Math.random()*15,
+      speed:isAGV?.35:.3,
+      target:null,
+      order:null,
+      carrying:null,
+      floor:0,
+      onTape:isAGV,
+      tapeTarget:null,
+      statusLight
+    };
+
+    this.sc.add(robot);
+    this.robots.push(robot);
+  },
+
+  addArm(){
+    const arm=new THREE.Group();
+
+    // Base
+    const base=new THREE.Mesh(new THREE.CylinderGeometry(3,3.5,2,16),new THREE.MeshPhongMaterial({color:0x444455}));
+    base.position.y=1;
+    arm.add(base);
+
+    // Lower arm
+    const lower=new THREE.Mesh(new THREE.BoxGeometry(1.5,8,1.5),new THREE.MeshPhongMaterial({color:0xff8800}));
+    lower.position.y=6;
+    arm.add(lower);
+    arm.userData.lower=lower;
+
+    // Upper arm
+    const upper=new THREE.Mesh(new THREE.BoxGeometry(1,6,1),new THREE.MeshPhongMaterial({color:0xffaa00}));
+    upper.position.set(0,12,0);
+    arm.add(upper);
+    arm.userData.upper=upper;
+
+    // Gripper
+    const gripper=new THREE.Group();
+    const grip1=new THREE.Mesh(new THREE.BoxGeometry(.5,2,.3),new THREE.MeshPhongMaterial({color:0x666666}));
+    grip1.position.set(.4,0,0);
+    gripper.add(grip1);
+    const grip2=grip1.clone();
+    grip2.position.set(-.4,0,0);
+    gripper.add(grip2);
+    gripper.position.set(0,16,0);
+    arm.add(gripper);
+    arm.userData.gripper=gripper;
+
+    const idx=this.arms.length;
+    arm.position.set(-60+idx*60,0,110);
+
+    arm.userData={
+      id:`ARM-${String(idx+1).padStart(2,'0')}`,
+      type:'arm',
+      status:'idle',
+      ops:0,
+      cycle:0,
+      target:null
+    };
+
+    this.sc.add(arm);
+    this.arms.push(arm);
+    this.updateArmList();
+  },
+
+  addOrder(){
+    const shelf=this.shelves[T.rndInt(0,this.shelves.length-1)];
+    const station=this.stations.find(s=>s.userData.type==='pack');
+
+    this.orders.push({
+      id:`ORD-${String(this.orders.length+1).padStart(4,'0')}`,
+      type:'pick',
+      from:shelf.position.clone(),
+      to:station.position.clone(),
+      status:'pending',
+      items:T.rndInt(1,5)
+    });
+  },
+
+  setFloor(f){
+    this.currentFloor=f;
+    document.querySelectorAll('.floor-btn').forEach((btn,i)=>btn.classList.toggle('active',i===f));
+    this.floors.forEach((floor,i)=>{
+      floor.mesh.material.opacity=i===f?1:i<f?.3:.1;
+      floor.grid.visible=i===f;
+    });
+    this.ca.position.y=200+f*22;
+  },
+
+  togglePaths(){this.showPaths=!this.showPaths},
+  toggleTape(){
+    this.showTape=!this.showTape;
+    this.tapes.forEach(t=>t.visible=this.showTape);
+  },
+  toggleBeacons(){
+    this.showBeacons=!this.showBeacons;
+    this.beacons.forEach(b=>{b.visible=this.showBeacons;b.userData.ring.visible=this.showBeacons});
+  },
+
+  followRobot(){
+    this.followMode=!this.followMode;
+  },
+
+  moveRobot(robot){
+    const d=robot.userData;
+    if(!d.target||d.status==='idle')return;
+
+    // AGV follows tape
+    if(d.type==='agv'&&d.onTape){
+      // Simple tape following - move along X or Z axis
+      const toTarget=d.target.clone().sub(robot.position);
+      toTarget.y=0;
+
+      if(toTarget.length()<2){
+        d.status='idle';
+        d.target=null;
+        return;
+      }
+
+      // Snap to tape lanes
+      const onXLane=Math.abs(robot.position.z-100)<5||Math.abs(robot.position.z+80)<5;
+      const onZLane=Math.abs(robot.position.x)<5||Math.abs(robot.position.x-120)<5||Math.abs(robot.position.x+120)<5;
+
+      let moveDir=T.v3();
+      if(onXLane){
+        moveDir.x=Math.sign(toTarget.x);
+      }else if(onZLane){
+        moveDir.z=Math.sign(toTarget.z);
+      }else{
+        moveDir=toTarget.normalize();
+      }
+
+      robot.position.add(moveDir.multiplyScalar(d.speed));
+      robot.rotation.y=Math.atan2(moveDir.x,moveDir.z);
+    }else{
+      // AMR free navigation
+      const toTarget=d.target.clone().sub(robot.position);
+      toTarget.y=0;
+
+      if(toTarget.length()<2){
+        if(d.order&&d.status==='moving'&&!d.carrying){
+          d.status='picking';
+          d.carrying=true;
+          this.stats.picks++;
+          setTimeout(()=>{
+            d.target=d.order.to.clone();
+            d.status='moving';
+          },800);
+        }else if(d.carrying){
+          d.status='idle';
+          d.carrying=null;
+          d.order=null;
+          this.stats.drops++;
+          this.stats.tasks++;
+        }else{
+          d.status='idle';
+          d.target=null;
+        }
+        return;
+      }
+
+      const moveDir=toTarget.normalize();
+      robot.position.add(moveDir.multiplyScalar(d.speed));
+      robot.rotation.y=Math.atan2(moveDir.x,moveDir.z);
+    }
+
+    d.battery-=.001;
+    this.stats.energy+=.001;
+  },
+
+  updateArms(){
+    this.arms.forEach(arm=>{
+      const d=arm.userData;
+      d.cycle+=.02;
+
+      // Animated arm movement
+      d.lower.rotation.x=Math.sin(d.cycle)*.3;
+      d.upper.rotation.x=Math.sin(d.cycle*1.5)*.4;
+      d.gripper.rotation.z=Math.sin(d.cycle*2)*.2;
+
+      if(d.status==='working'){
+        d.ops++;
+        this.stats.armOps++;
+      }
+
+      // Random work cycles
+      if(Math.random()<.01){
+        d.status=d.status==='idle'?'working':'idle';
+      }
+    });
+  },
+
+  updateShift(){
+    this.shift.hours++;
+    if(this.shift.hours>=8){
+      this.shift.hours=0;
+      this.shift.current=this.shift.current==='A'?'B':this.shift.current==='B'?'C':'A';
+      this.shift.workers=T.rndInt(10,15);
+    }
+    document.getElementById('current-shift').textContent=this.shift.current;
+    document.getElementById('workers').textContent=this.shift.workers;
+    document.getElementById('shift-hours').textContent=this.shift.hours;
+  },
+
+  syncTwin(){
+    this.twinSynced=Math.random()>.1;
+    const el=document.getElementById('twin-indicator');
+    if(this.twinSynced){
+      el.className='synced';
+      el.textContent='🔗 DIGITAL TWIN: SYNCED';
+    }else{
+      el.className='syncing';
+      el.textContent='🔄 DIGITAL TWIN: SYNCING...';
+    }
+  },
+
+  updateEnergy(){
+    const currentPower=this.robots.filter(r=>r.userData.status!=='idle').length*5+this.arms.filter(a=>a.userData.status==='working').length*15;
+    this.stats.energy+=currentPower/3600;
+
+    const chart=document.getElementById('energy-chart');
+    const bars=chart.children;
+    if(bars.length>=24){
+      for(let i=0;i<23;i++){
+        bars[i].style.height=bars[i+1].style.height;
+      }
+      bars[23].style.height=Math.min(100,currentPower*2)+'%';
+    }else{
+      const bar=document.createElement('div');
+      bar.className='energy-bar';
+      bar.style.height=Math.min(100,currentPower*2)+'%';
+      chart.appendChild(bar);
+    }
+
+    document.getElementById('current-energy').textContent=currentPower;
+    document.getElementById('peak-energy').textContent=Math.max(currentPower,parseInt(document.getElementById('peak-energy').textContent)||0);
+    document.getElementById('energy-cost').textContent=(this.stats.energy*.12).toFixed(2);
+  },
+
+  tick(){
+    if(this.paused)return;
+
+    this.robots.forEach(robot=>{
+      if(robot.userData.status==='idle'&&!robot.userData.order){
+        const order=this.orders.find(o=>o.status==='pending');
+        if(order){
+          robot.userData.order=order;
+          robot.userData.target=order.from.clone();
+          robot.userData.status='moving';
+          order.status='active';
+        }
+      }
+      this.moveRobot(robot);
+      robot.userData.statusLight.color.setHex({idle:0x888888,moving:0x00ff00,picking:0xffff00}[robot.userData.status]||0xffffff);
+    });
+
+    this.updateArms();
+    this.updateRTLS();
+  },
+
+  updateRTLS(){
+    const ctx=this.rtlsCtx;
+    ctx.fillStyle='#001a00';
+    ctx.fillRect(0,0,160,80);
+
+    // Draw beacons
+    ctx.fillStyle='#0f04';
+    this.beacons.forEach(b=>{
+      const x=(b.position.x+140)/280*160;
+      const y=(b.position.z+100)/220*80;
+      ctx.beginPath();
+      ctx.arc(x,y,8,0,Math.PI*2);
+      ctx.fill();
+    });
+
+    // Draw robots
+    this.robots.forEach(r=>{
+      const x=(r.position.x+140)/280*160;
+      const y=(r.position.z+100)/220*80;
+      ctx.fillStyle=r.userData.type==='agv'?'#fa0':'#0f8';
+      ctx.beginPath();
+      ctx.arc(x,y,3,0,Math.PI*2);
+      ctx.fill();
+    });
+  },
+
+  updateInventoryGrid(){
+    const el=document.getElementById('inventory-grid');
+    let low=0,out=0;
+    el.innerHTML=this.inventory.slice(0,25).map(inv=>{
+      const pct=inv.qty/inv.max*100;
+      const cls=pct===0?'out':pct<20?'low':'';
+      if(pct===0)out++;else if(pct<20)low++;
+      return`<div class="inv-cell ${cls}">${inv.qty}</div>`;
+    }).join('');
+    document.getElementById('total-skus').textContent=this.inventory.length;
+    document.getElementById('low-stock').textContent=low;
+    document.getElementById('out-stock').textContent=out;
+  },
+
+  updateArmList(){
+    document.getElementById('arm-list').innerHTML=this.arms.map(a=>{
+      const d=a.userData;
+      return`<div class="arm-status">${d.id}: <span style="color:${d.status==='working'?'#0f0':'#888'}">${d.status}</span> | Ops: ${d.ops}</div>`;
+    }).join('');
+    document.getElementById('arms').textContent=this.stats.armOps;
+  },
+
+  updateDockStatus(){
+    document.getElementById('dock-status').innerHTML=this.docks.map(d=>{
+      const s=d.userData;
+      return`<div class="dock${s.status!=='empty'?' active':''}">${s.id}: <span style="color:${s.status==='loading'?'#0f0':'#888'}">${s.status}</span></div>`;
+    }).join('');
+  },
+
+  setupControls(){
+    let dragging=false,lastX=0;
+    const canvas=document.getElementById('c');
+
+    canvas.addEventListener('mousedown',e=>{dragging=true;lastX=e.clientX});
+    canvas.addEventListener('mousemove',e=>{
+      if(!dragging)return;
+      this.ca.position.applyAxisAngle(T.v3(0,1,0),(lastX-e.clientX)*.005);
+      lastX=e.clientX;
+    });
+    canvas.addEventListener('mouseup',()=>dragging=false);
+    canvas.addEventListener('wheel',e=>{
+      const zoom=1+e.deltaY*.001;
+      this.ca.position.multiplyScalar(T.clamp(zoom,.8,1.2));
+    });
+
+    canvas.addEventListener('click',e=>{
+      if(dragging)return;
+      const mouse=new THREE.Vector2((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1);
+      const ray=new THREE.Raycaster();
+      ray.setFromCamera(mouse,this.ca);
+
+      for(let robot of this.robots){
+        if(ray.intersectObject(robot,true).length>0){
+          this.selectRobot(robot);
+          return;
+        }
+      }
+    });
+
+    window.addEventListener('keydown',e=>{
+      if(e.code==='Space'){e.preventDefault();this.togglePause()}
+    });
+  },
+
+  selectRobot(robot){
+    this.selectedRobot=robot;
+    this.robots.forEach(r=>r.children.forEach(c=>{if(c.material)c.material.emissive?.setHex(0)}));
+    robot.children[1].material.emissive.setHex(0x444444);
+  },
+
+  togglePause(){
+    this.paused=!this.paused;
+    document.getElementById('btn-pause').textContent=this.paused?'▶️':'⏸️';
+    document.getElementById('btn-pause').classList.toggle('active',this.paused);
+  },
+
+  resetView(){this.ca.position.set(150,200,150);this.ca.lookAt(0,0,0)},
+  topView(){this.ca.position.set(0,280,0);this.ca.lookAt(0,0,0)},
+
+  updateUI(){
+    const amrs=this.robots.filter(r=>r.userData.type==='amr').length;
+    const agvs=this.robots.filter(r=>r.userData.type==='agv').length;
+    const active=this.robots.filter(r=>r.userData.status!=='idle').length;
+
+    document.getElementById('total-amrs').textContent=amrs;
+    document.getElementById('total-agvs').textContent=agvs;
+    document.getElementById('active').textContent=active;
+    document.getElementById('efficiency').textContent=Math.round(active/this.robots.length*100);
+    document.getElementById('picks').textContent=this.stats.picks;
+    document.getElementById('drops').textContent=this.stats.drops;
+
+    document.getElementById('robot-list').innerHTML=this.robots.map((r,i)=>{
+      const d=r.userData;
+      const sel=r===this.selectedRobot?'selected':'';
+      return`<div class="amr-card ${sel}" onclick="W.selectRobot(W.robots[${i}])">
+        <span style="color:#${d.color.toString(16)}">${d.id}</span>
+        <span style="color:${d.status==='idle'?'#888':'#0f0'}">${d.status}</span>
+      </div>`;
+    }).join('');
+
+    if(this.selectedRobot){
+      const d=this.selectedRobot.userData;
+      document.getElementById('selected-robot').innerHTML=`
+        <div style="color:#${d.color.toString(16)};font-weight:bold">${d.id}</div>
+        <div style="font-size:7px">Status: ${d.status} | Bat: ${Math.round(d.battery)}%</div>
+        <div class="row"><button onclick="W.selectedRobot.userData.status='idle'">Stop</button><button onclick="W.selectedRobot.userData.battery=100">Charge</button></div>
+      `;
+    }
+
+    this.updateArmList();
+  },
+
+  animate(){
+    requestAnimationFrame(()=>this.animate());
+
+    if(this.followMode&&this.selectedRobot){
+      const target=this.selectedRobot.position.clone().add(T.v3(30,40,30));
+      this.ca.position.lerp(target,.05);
+    }
+
+    this.ca.lookAt(0,this.currentFloor*22,0);
+    this.rn.render(this.sc,this.ca);
+  }
+};
+
+onload=()=>W.init();
+onresize=()=>{W.rn.setSize(innerWidth,innerHeight);W.ca.aspect=innerWidth/innerHeight;W.ca.updateProjectionMatrix()};
+</script></body></html>

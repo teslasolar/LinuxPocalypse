@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Drone Sight v8 - Swarm Intelligence</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}body{background:#000;overflow:hidden;font:9px monospace;color:#0f0}
+#c{position:fixed;inset:0}
+.p{position:absolute;background:rgba(0,15,10,.95);border:1px solid #0f0;border-radius:4px;padding:6px;z-index:10}
+button{background:linear-gradient(135deg,#080,#040);color:#0f0;border:1px solid #0f0;padding:3px 6px;margin:1px;border-radius:3px;cursor:pointer;font-size:8px}
+button:hover{background:#0f0;color:#000}button.active{background:#0f0;color:#000;box-shadow:0 0 6px #0f0}
+button.warn{background:linear-gradient(135deg,#a60,#530);border-color:#f80;color:#ff0}
+button.danger{background:linear-gradient(135deg,#800,#400);border-color:#f00;color:#fff}
+.row{display:flex;gap:3px;margin:2px 0;flex-wrap:wrap;align-items:center}
+.stat{background:#001a08;border:1px solid #0a0;border-radius:3px;padding:3px 5px;text-align:center;min-width:38px}
+.val{font-size:11px;font-weight:bold}.lbl{font-size:6px;opacity:.7}
+#hud{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;z-index:5}
+.crosshair{stroke:#0f0;stroke-width:1.5;fill:none}
+#speed-bar{position:fixed;right:20px;top:50%;transform:translateY(-50%);width:10px;height:140px;border:1px solid #0f0;background:#001a00}
+#speed-fill{position:absolute;bottom:0;width:100%;background:linear-gradient(to top,#0f0,#ff0,#f00);transition:height .1s}
+#altitude-bar{position:fixed;left:20px;top:50%;transform:translateY(-50%);width:10px;height:140px;border:1px solid #08f;background:#001020}
+#alt-fill{position:absolute;bottom:0;width:100%;background:#08f;transition:height .1s}
+#compass{position:fixed;top:40px;left:50%;transform:translateX(-50%);width:140px;height:20px;border:1px solid #0f0;background:#001a00;overflow:hidden}
+#compass-strip{position:absolute;white-space:nowrap;font-size:10px;top:2px}
+#minimap{width:90px;height:90px;border:1px solid #0f0;border-radius:50%;background:#001a00;position:relative;overflow:hidden}
+.minimap-blip{position:absolute;width:3px;height:3px;border-radius:50%;transform:translate(-50%,-50%)}
+#vision-mode{position:fixed;top:62px;left:50%;transform:translateX(-50%);padding:2px 8px;border-radius:3px;font-size:9px;background:#001a00;border:1px solid #0f0}
+#mesh-canvas{position:fixed;inset:0;pointer-events:none;z-index:3}
+#geofence-canvas{position:fixed;inset:0;pointer-events:none;z-index:2;opacity:.3}
+.pip{width:100px;height:65px;border:1px solid #0f0;background:#000;cursor:pointer;position:relative;margin:2px 0}
+.pip.selected{border:2px solid #0ff;box-shadow:0 0 8px #0ff}
+.pip-label{position:absolute;bottom:1px;left:1px;font-size:7px;background:rgba(0,0,0,.8);padding:1px 2px;border-radius:2px}
+.pip-status{position:absolute;top:1px;right:1px;width:5px;height:5px;border-radius:50%}
+#payload-indicator{position:fixed;bottom:40px;left:50%;transform:translateX(-50%);display:flex;gap:4px}
+.payload-slot{width:25px;height:25px;border:1px solid #0f0;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:12px;background:#001a08}
+.payload-slot.empty{opacity:.3}
+#target-box{position:fixed;pointer-events:none;z-index:6}
+#gimbal-indicator{position:fixed;bottom:8px;left:50%;transform:translateX(-50%);width:60px;height:60px;border:1px solid #0f0;border-radius:50%;background:#001a00}
+</style></head><body>
+<canvas id="c"></canvas>
+<canvas id="mesh-canvas"></canvas>
+<canvas id="geofence-canvas"></canvas>
+
+<svg id="hud" width="140" height="140">
+<circle class="crosshair" cx="70" cy="70" r="18" opacity="0.6"/>
+<circle class="crosshair" cx="70" cy="70" r="35" opacity="0.3"/>
+<line class="crosshair" x1="40" y1="70" x2="52" y2="70"/>
+<line class="crosshair" x1="88" y1="70" x2="100" y2="70"/>
+<line class="crosshair" x1="70" y1="40" x2="70" y2="52"/>
+<line class="crosshair" x1="70" y1="88" x2="70" y2="100"/>
+<circle class="crosshair" cx="70" cy="70" r="2"/>
+<!-- Lead indicator -->
+<circle id="lead-indicator" cx="70" cy="70" r="4" fill="none" stroke="#f00" stroke-width="1" opacity="0"/>
+</svg>
+
+<svg id="target-box" width="100%" height="100%"></svg>
+
+<div id="speed-bar"><div id="speed-fill" style="height:30%"></div></div>
+<div id="altitude-bar"><div id="alt-fill" style="height:50%"></div></div>
+<div id="compass"><div id="compass-strip">N · · NE · · E · · SE · · S · · SW · · W · · NW · · N</div></div>
+<div id="vision-mode">NORMAL</div>
+
+<!-- Payload Indicator -->
+<div id="payload-indicator"></div>
+
+<!-- Gimbal Indicator -->
+<canvas id="gimbal-indicator"></canvas>
+
+<!-- Main Status -->
+<div class="p" style="top:6px;left:6px;width:155px">
+<div style="color:#0f0;text-align:center;font-size:10px;margin-bottom:2px">🚁 DRONE SIGHT <span style="color:#0ff">v8</span></div>
+<div style="color:#f0f;text-align:center;font-size:8px;margin-bottom:4px">🧠 Swarm Intelligence</div>
+<div class="row">
+<div class="stat"><div class="val" id="altitude">0</div><div class="lbl">Alt</div></div>
+<div class="stat"><div class="val" id="speed">0</div><div class="lbl">Spd</div></div>
+<div class="stat"><div class="val" id="heading">N</div><div class="lbl">HDG</div></div>
+</div>
+<div class="row">
+<div class="stat" style="border-color:#0ff"><div class="val" id="drones">1</div><div class="lbl">Swarm</div></div>
+<div class="stat" style="border-color:#f00"><div class="val" id="threats">0</div><div class="lbl">Tgt</div></div>
+<div class="stat" style="border-color:#f0f"><div class="val" id="battery">100</div><div class="lbl">Bat%</div></div>
+</div>
+<div style="margin-top:3px;font-size:7px">
+<div>Mesh: <span style="color:#0f0" id="mesh-status">ACTIVE</span> | Nodes: <span id="mesh-nodes">0</span></div>
+<div>Geofence: <span style="color:#0f0" id="geo-status">OK</span></div>
+</div>
+</div>
+
+<!-- Drone PIPs -->
+<div class="p" style="top:6px;right:6px;width:115px;max-height:280px;overflow-y:auto">
+<div style="color:#0ff;text-align:center;font-size:9px;margin-bottom:3px">📡 SWARM VIEW</div>
+<div id="pip-container"></div>
+</div>
+
+<!-- Vision Modes -->
+<div class="p" style="top:6px;left:170px;width:160px">
+<div style="color:#0ff;text-align:center;font-size:9px;margin-bottom:3px">👁️ VISION</div>
+<div class="row">
+<button id="vis-normal" class="active" onclick="S.setVision('normal')">📷Norm</button>
+<button id="vis-thermal" onclick="S.setVision('thermal')">🔥Therm</button>
+<button id="vis-ir" onclick="S.setVision('ir')">🌡️IR</button>
+</div>
+<div class="row">
+<button id="vis-sar" onclick="S.setVision('sar')">📡SAR</button>
+<button id="vis-night" onclick="S.setVision('night')">🌙NVG</button>
+<button id="vis-fpv" onclick="S.setVision('fpv')">🏎️FPV</button>
+</div>
+</div>
+
+<!-- Swarm Intelligence -->
+<div class="p" style="top:100px;left:6px;width:155px">
+<div style="color:#f0f;text-align:center;font-size:9px;margin-bottom:3px">🧠 SWARM AI</div>
+<div class="row">
+<button onclick="S.swarmMode('follow')">👥Follow</button>
+<button onclick="S.swarmMode('spread')">🔷Spread</button>
+<button onclick="S.swarmMode('surround')">⭕Surr</button>
+</div>
+<div class="row">
+<button onclick="S.swarmMode('hunt')">🎯Hunt</button>
+<button onclick="S.swarmMode('relay')">📶Relay</button>
+</div>
+<div style="font-size:7px;color:#888;margin-top:3px">
+Mode: <span style="color:#0f0" id="swarm-mode">FOLLOW</span>
+</div>
+</div>
+
+<!-- Payload System -->
+<div class="p" style="top:200px;left:6px;width:155px">
+<div style="color:#ff0;text-align:center;font-size:9px;margin-bottom:3px">📦 PAYLOAD</div>
+<div class="row">
+<button onclick="S.loadPayload('📦')">📦Pkg</button>
+<button onclick="S.loadPayload('📷')">📷Cam</button>
+<button onclick="S.loadPayload('📡')">📡Sens</button>
+</div>
+<div class="row">
+<button onclick="S.dropPayload()" class="warn">⬇️ Drop</button>
+<button onclick="S.releaseAll()" class="danger">💥 All</button>
+</div>
+</div>
+
+<!-- Geofencing -->
+<div class="p" style="top:300px;left:6px;width:155px">
+<div style="color:#f80;text-align:center;font-size:9px;margin-bottom:3px">🚧 GEOFENCE</div>
+<div class="row">
+<button onclick="S.addGeofence('circle')">⭕Add</button>
+<button onclick="S.addGeofence('rect')">▢Rect</button>
+<button onclick="S.clearGeofences()">🗑️Clear</button>
+</div>
+<div style="font-size:7px;margin-top:3px">
+Zones: <span id="geo-count">0</span> | Violations: <span style="color:#f00" id="geo-violations">0</span>
+</div>
+</div>
+
+<!-- Target Tracking -->
+<div class="p" style="bottom:6px;right:6px;width:155px">
+<div style="color:#f00;text-align:center;font-size:9px;margin-bottom:3px">🎯 TRACKING</div>
+<div class="row">
+<button onclick="S.lockTarget()">🔒Lock</button>
+<button onclick="S.predictLead()">📐Lead</button>
+<button onclick="S.autoTrack()">🤖Auto</button>
+</div>
+<div id="track-info" style="font-size:7px;margin-top:3px;color:#888">No target locked</div>
+</div>
+
+<!-- Minimap -->
+<div class="p" style="bottom:6px;left:6px;width:110px">
+<div style="color:#0ff;text-align:center;font-size:8px;margin-bottom:2px">📡 RADAR</div>
+<div id="minimap"></div>
+</div>
+
+<!-- Controls -->
+<div class="p" style="bottom:6px;left:125px;width:130px">
+<div style="color:#ff0;text-align:center;font-size:8px;margin-bottom:2px">🎮 CTRL</div>
+<div style="font-size:6px;color:#888">
+<div><span style="color:#0f0">WASD</span>-Move <span style="color:#0f0">QZ</span>-Alt</div>
+<div><span style="color:#0f0">IJKL</span>-Gimbal <span style="color:#0f0">Click</span>-Fire</div>
+<div><span style="color:#0f0">Tab</span>-Switch <span style="color:#0f0">G</span>-Drop</div>
+<div><span style="color:#0f0">1-6</span>-Vision <span style="color:#0f0">M</span>-Mesh</div>
+</div>
+</div>
+
+<script>
+const T={v3:(x,y,z)=>new THREE.Vector3(x,y,z),rnd:(a,b)=>a+Math.random()*(b-a),clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),lerp:(a,b,t)=>a+(b-a)*t,dist:(a,b)=>a.distanceTo(b)};
+
+const S={
+  drones:[],targets:[],bullets:[],payloads:[],geofences:[],meshLines:[],
+  activeDrone:0,
+  input:{},mouse:{x:0,y:0,locked:false},
+  camYaw:0,camPitch:0,
+  gimbalPitch:0,gimbalYaw:0,
+  visionMode:'normal',swarmAI:'follow',
+  lockedTarget:null,autoTracking:false,showLead:false,
+  meshActive:true,geoViolations:0,
+  homeBase:T.v3(0,0,0),
+
+  init(){
+    this.sc=new THREE.Scene();
+    this.ca=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,5000);
+    this.rn=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true});
+    this.rn.setSize(innerWidth,innerHeight);
+    this.rn.setClearColor(0x1a2030);
+    this.rn.shadowMap.enabled=true;
+
+    this.meshCtx=document.getElementById('mesh-canvas').getContext('2d');
+    this.geoCtx=document.getElementById('geofence-canvas').getContext('2d');
+    this.gimbalCtx=document.getElementById('gimbal-indicator').getContext('2d');
+    document.getElementById('mesh-canvas').width=innerWidth;
+    document.getElementById('mesh-canvas').height=innerHeight;
+    document.getElementById('geofence-canvas').width=innerWidth;
+    document.getElementById('geofence-canvas').height=innerHeight;
+
+    // Lighting
+    this.ambient=new THREE.AmbientLight(0x404050,.5);
+    this.sc.add(this.ambient);
+    this.sun=new THREE.DirectionalLight(0xffffee,.8);
+    this.sun.position.set(200,400,200);
+    this.sun.castShadow=true;
+    this.sc.add(this.sun);
+
+    this.createTerrain();
+    this.createEnvironment();
+
+    // Initial swarm
+    for(let i=0;i<5;i++)this.addDrone();
+    this.homeBase=this.drones[0].position.clone();
+
+    // Targets
+    for(let i=0;i<8;i++)this.spawnTarget();
+
+    // Default geofence
+    this.addGeofence('circle');
+
+    this.setupInput();
+    this.animate();
+    setInterval(()=>this.updateUI(),100);
+    setInterval(()=>this.updateSwarmAI(),200);
+    setInterval(()=>this.checkGeofences(),500);
+  },
+
+  createTerrain(){
+    const geo=new THREE.PlaneGeometry(2000,2000,80,80);
+    const verts=geo.attributes.position.array;
+    for(let i=0;i<verts.length;i+=3){
+      const x=verts[i],z=verts[i+1];
+      verts[i+2]=Math.sin(x*.01)*12+Math.cos(z*.012)*10+Math.sin(x*.025+z*.018)*6;
+    }
+    geo.computeVertexNormals();
+    const ground=new THREE.Mesh(geo,new THREE.MeshPhongMaterial({color:0x1a3a1a}));
+    ground.rotation.x=-Math.PI/2;
+    ground.receiveShadow=true;
+    this.terrain=ground;
+    this.sc.add(ground);
+    this.sc.add(new THREE.GridHelper(2000,80,0x0f04,0x0f02));
+  },
+
+  createEnvironment(){
+    const buildingMat=new THREE.MeshPhongMaterial({color:0x445566});
+    for(let i=0;i<35;i++){
+      const w=T.rnd(20,50),h=T.rnd(30,120),d=T.rnd(20,50);
+      const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),buildingMat);
+      b.position.set(T.rnd(-700,700),h/2,T.rnd(-700,700));
+      b.castShadow=true;
+      this.sc.add(b);
+    }
+
+    // Trees
+    const treeMat=new THREE.MeshPhongMaterial({color:0x228833});
+    for(let i=0;i<80;i++){
+      const tree=new THREE.Group();
+      tree.add(new THREE.Mesh(new THREE.CylinderGeometry(1,1.5,12),new THREE.MeshPhongMaterial({color:0x553311})));
+      tree.children[0].position.y=6;
+      tree.add(new THREE.Mesh(new THREE.ConeGeometry(7,18,8),treeMat));
+      tree.children[1].position.y=18;
+      tree.position.set(T.rnd(-800,800),0,T.rnd(-800,800));
+      this.sc.add(tree);
+    }
+
+    // Home base
+    const base=new THREE.Mesh(new THREE.CylinderGeometry(12,12,1,16),new THREE.MeshPhongMaterial({color:0x00ff00,emissive:0x004400}));
+    base.position.set(0,.5,0);
+    this.sc.add(base);
+  },
+
+  addDrone(){
+    const drone=new THREE.Group();
+    const body=new THREE.Mesh(new THREE.BoxGeometry(2.5,1.2,3.5),new THREE.MeshPhongMaterial({color:0x333344}));
+    drone.add(body);
+
+    // Rotors
+    for(let i=-1;i<=1;i+=2){
+      for(let j=-1;j<=1;j+=2){
+        const arm=new THREE.Mesh(new THREE.CylinderGeometry(.06,.06,2.2),new THREE.MeshPhongMaterial({color:0x444455}));
+        arm.rotation.set(Math.PI/4*j,0,Math.PI/2*i);
+        arm.position.set(i*1.1,.15,j*.9);
+        drone.add(arm);
+        const rotor=new THREE.Mesh(new THREE.CylinderGeometry(.7,.5,.08,8),new THREE.MeshPhongMaterial({color:0x666677,transparent:true,opacity:.5}));
+        rotor.position.set(i*1.8,.4,j*1.6);
+        rotor.userData.isRotor=true;
+        drone.add(rotor);
+      }
+    }
+
+    // Gimbal camera
+    const gimbal=new THREE.Group();
+    const camBody=new THREE.Mesh(new THREE.SphereGeometry(.4),new THREE.MeshPhongMaterial({color:0x111,emissive:0x002200}));
+    const lens=new THREE.Mesh(new THREE.CylinderGeometry(.15,.2,.3,8),new THREE.MeshPhongMaterial({color:0x001133}));
+    lens.rotation.x=Math.PI/2;
+    lens.position.z=-.35;
+    gimbal.add(camBody);
+    gimbal.add(lens);
+    gimbal.position.set(0,-.4,-1.2);
+    drone.add(gimbal);
+    drone.userData.gimbal=gimbal;
+
+    // Payload bay
+    const bay=new THREE.Mesh(new THREE.BoxGeometry(1.5,.4,1.5),new THREE.MeshPhongMaterial({color:0x444455}));
+    bay.position.y=-.5;
+    drone.add(bay);
+
+    // Status light
+    const light=new THREE.PointLight(0x00ff00,.4,12);
+    light.position.y=.6;
+    drone.add(light);
+
+    // Mesh antenna
+    const antenna=new THREE.Mesh(new THREE.CylinderGeometry(.05,.05,.8),new THREE.MeshPhongMaterial({color:0x888888}));
+    antenna.position.set(0,.8,0);
+    drone.add(antenna);
+
+    const idx=this.drones.length;
+    drone.position.set(idx*10,50+idx*4,idx*10);
+
+    drone.userData={
+      id:idx,
+      vel:T.v3(),
+      battery:95+Math.random()*5,
+      signal:90+Math.random()*10,
+      status:'active',
+      payloads:['📦','📷'],
+      gimbal,
+      meshConnections:[],
+      lastPos:drone.position.clone()
+    };
+
+    this.sc.add(drone);
+    this.drones.push(drone);
+    this.updatePIPs();
+    this.updatePayloadIndicator();
+  },
+
+  spawnTarget(){
+    const types=['ground','air','moving'];
+    const type=types[Math.floor(Math.random()*types.length)];
+    const colors={ground:0xff4400,air:0xff00ff,moving:0xffff00};
+
+    const target=new THREE.Group();
+    const geo=type==='air'?new THREE.ConeGeometry(2,5,6):new THREE.BoxGeometry(4,2,5);
+    const mesh=new THREE.Mesh(geo,new THREE.MeshPhongMaterial({color:colors[type],emissive:colors[type],emissiveIntensity:.2}));
+    target.add(mesh);
+    target.add(new THREE.PointLight(colors[type],.3,15));
+
+    target.position.set(T.rnd(-500,500),type==='air'?T.rnd(30,100):2,T.rnd(-500,500));
+    target.userData={
+      type,
+      vel:type==='moving'?T.v3(T.rnd(-1.5,1.5),0,T.rnd(-1.5,1.5)):type==='air'?T.v3(T.rnd(-.5,.5),T.rnd(-.2,.2),T.rnd(-.5,.5)):T.v3(),
+      lastVel:T.v3(),
+      id:this.targets.length
+    };
+
+    this.sc.add(target);
+    this.targets.push(target);
+  },
+
+  setVision(mode){
+    this.visionMode=mode;
+    document.querySelectorAll('[id^="vis-"]').forEach(b=>b.classList.remove('active'));
+    document.getElementById('vis-'+mode)?.classList.add('active');
+
+    const modes={
+      normal:{clear:0x1a2030,ambient:0x404050,fog:null,fov:75},
+      thermal:{clear:0x000015,ambient:0xff4400,fog:0x110000,fov:60},
+      ir:{clear:0x100008,ambient:0xff0080,fog:0x080004,fov:55},
+      sar:{clear:0x001020,ambient:0x00ff88,fog:0x001008,fov:50},
+      night:{clear:0x001100,ambient:0x00ff00,fog:0x001100,fov:70},
+      fpv:{clear:0x000000,ambient:0x606080,fog:null,fov:120}
+    };
+
+    const m=modes[mode];
+    this.rn.setClearColor(m.clear);
+    this.ambient.color.setHex(m.ambient);
+    this.sc.fog=m.fog?new THREE.FogExp2(m.fog,.002):null;
+    this.ca.fov=m.fov;
+    this.ca.updateProjectionMatrix();
+    document.getElementById('vision-mode').textContent=mode.toUpperCase();
+  },
+
+  swarmMode(mode){
+    this.swarmAI=mode;
+    document.getElementById('swarm-mode').textContent=mode.toUpperCase();
+  },
+
+  updateSwarmAI(){
+    const leader=this.drones[this.activeDrone];
+    if(!leader)return;
+
+    this.drones.forEach((drone,idx)=>{
+      if(idx===this.activeDrone)return;
+      const d=drone.userData;
+      let targetPos=null;
+
+      switch(this.swarmAI){
+        case'follow':
+          const offset=T.v3((idx-this.activeDrone)*12,idx*-3,(idx-this.activeDrone)*12);
+          targetPos=leader.position.clone().add(offset);
+          break;
+        case'spread':
+          const angle=idx*Math.PI*2/this.drones.length;
+          const radius=40+idx*5;
+          targetPos=leader.position.clone().add(T.v3(Math.cos(angle)*radius,0,Math.sin(angle)*radius));
+          break;
+        case'surround':
+          if(this.lockedTarget){
+            const a=idx*Math.PI*2/this.drones.length;
+            targetPos=this.lockedTarget.position.clone().add(T.v3(Math.cos(a)*50,(idx%2)*20,Math.sin(a)*50));
+          }
+          break;
+        case'hunt':
+          // Find nearest untracked target
+          let nearest=null,minD=Infinity;
+          this.targets.forEach(t=>{
+            const dist=T.dist(drone.position,t.position);
+            if(dist<minD){minD=dist;nearest=t}
+          });
+          if(nearest)targetPos=nearest.position.clone().add(T.v3(0,20,30));
+          break;
+        case'relay':
+          // Form mesh relay chain
+          const prev=this.drones[idx-1]||leader;
+          const spacing=80;
+          targetPos=prev.position.clone().add(T.v3(spacing,0,0));
+          break;
+      }
+
+      if(targetPos){
+        const toTarget=targetPos.clone().sub(drone.position);
+        d.vel.add(toTarget.multiplyScalar(.015));
+      }
+
+      // Collision avoidance
+      this.drones.forEach((other,oi)=>{
+        if(oi===idx)return;
+        const dist=T.dist(drone.position,other.position);
+        if(dist<15){
+          const away=drone.position.clone().sub(other.position).normalize();
+          d.vel.add(away.multiplyScalar(.5));
+        }
+      });
+    });
+  },
+
+  loadPayload(type){
+    const d=this.drones[this.activeDrone]?.userData;
+    if(d&&d.payloads.length<4){
+      d.payloads.push(type);
+      this.updatePayloadIndicator();
+    }
+  },
+
+  dropPayload(){
+    const drone=this.drones[this.activeDrone];
+    if(!drone)return;
+    const d=drone.userData;
+    if(d.payloads.length===0)return;
+
+    const type=d.payloads.pop();
+    this.updatePayloadIndicator();
+
+    // Create falling payload
+    const payload=new THREE.Mesh(
+      new THREE.BoxGeometry(1.5,1.5,1.5),
+      new THREE.MeshPhongMaterial({color:0xffaa00})
+    );
+    payload.position.copy(drone.position);
+    payload.position.y-=2;
+    payload.userData={vel:T.v3(drone.userData.vel.x*.5,-0.5,drone.userData.vel.z*.5),type};
+    this.sc.add(payload);
+    this.payloads.push(payload);
+  },
+
+  releaseAll(){
+    const d=this.drones[this.activeDrone]?.userData;
+    if(d){
+      while(d.payloads.length>0)this.dropPayload();
+    }
+  },
+
+  updatePayloadIndicator(){
+    const d=this.drones[this.activeDrone]?.userData;
+    if(!d)return;
+    const el=document.getElementById('payload-indicator');
+    let html='';
+    for(let i=0;i<4;i++){
+      const p=d.payloads[i];
+      html+=`<div class="payload-slot${p?'':' empty'}">${p||'·'}</div>`;
+    }
+    el.innerHTML=html;
+  },
+
+  addGeofence(type){
+    const drone=this.drones[this.activeDrone];
+    if(!drone)return;
+
+    const geo={
+      id:this.geofences.length,
+      type,
+      center:drone.position.clone(),
+      radius:type==='circle'?100:0,
+      width:type==='rect'?150:0,
+      height:type==='rect'?100:0,
+      allow:false // false = no-fly zone
+    };
+
+    // Visual marker
+    const color=geo.allow?0x00ff00:0xff0000;
+    if(type==='circle'){
+      const ring=new THREE.Mesh(
+        new THREE.RingGeometry(geo.radius-2,geo.radius,32),
+        new THREE.MeshBasicMaterial({color,transparent:true,opacity:.4,side:THREE.DoubleSide})
+      );
+      ring.rotation.x=-Math.PI/2;
+      ring.position.copy(geo.center);
+      ring.position.y=1;
+      geo.mesh=ring;
+      this.sc.add(ring);
+    }
+
+    this.geofences.push(geo);
+    document.getElementById('geo-count').textContent=this.geofences.length;
+  },
+
+  clearGeofences(){
+    this.geofences.forEach(g=>{if(g.mesh)this.sc.remove(g.mesh)});
+    this.geofences=[];
+    document.getElementById('geo-count').textContent='0';
+  },
+
+  checkGeofences(){
+    let violations=0;
+    this.drones.forEach(drone=>{
+      this.geofences.forEach(geo=>{
+        const dist=T.dist(drone.position,geo.center);
+        if(geo.type==='circle'&&!geo.allow&&dist<geo.radius){
+          violations++;
+          // Push drone out
+          const away=drone.position.clone().sub(geo.center).normalize();
+          drone.userData.vel.add(away.multiplyScalar(.5));
+        }
+      });
+    });
+    this.geoViolations=violations;
+    document.getElementById('geo-violations').textContent=violations;
+    document.getElementById('geo-status').textContent=violations>0?'WARN':'OK';
+    document.getElementById('geo-status').style.color=violations>0?'#f00':'#0f0';
+  },
+
+  lockTarget(){
+    const drone=this.drones[this.activeDrone];
+    if(!drone)return;
+
+    let nearest=null,minD=Infinity;
+    this.targets.forEach(t=>{
+      const dist=T.dist(drone.position,t.position);
+      if(dist<300&&dist<minD){minD=dist;nearest=t}
+    });
+    this.lockedTarget=nearest;
+    this.updateTrackInfo();
+  },
+
+  predictLead(){
+    this.showLead=!this.showLead;
+  },
+
+  autoTrack(){
+    this.autoTracking=!this.autoTracking;
+  },
+
+  updateTrackInfo(){
+    const el=document.getElementById('track-info');
+    if(this.lockedTarget){
+      const t=this.lockedTarget;
+      const drone=this.drones[this.activeDrone];
+      const dist=drone?T.dist(drone.position,t.position):0;
+      el.innerHTML=`<span style="color:#f00">LOCKED</span> ${t.userData.type}<br>Dist: ${Math.round(dist)}m | Spd: ${(t.userData.vel.length()*10).toFixed(1)}`;
+    }else{
+      el.innerHTML='<span style="color:#888">No target locked</span>';
+    }
+  },
+
+  setupInput(){
+    window.addEventListener('keydown',e=>this.onKey(e,true));
+    window.addEventListener('keyup',e=>this.onKey(e,false));
+    document.addEventListener('click',()=>{
+      if(!this.mouse.locked)document.body.requestPointerLock();
+      else this.fire();
+    });
+    document.addEventListener('pointerlockchange',()=>{this.mouse.locked=!!document.pointerLockElement});
+    document.addEventListener('mousemove',e=>{
+      if(this.mouse.locked){
+        this.camYaw-=e.movementX*.002;
+        this.camPitch=T.clamp(this.camPitch-e.movementY*.002,-1.2,1.2);
+      }
+    });
+  },
+
+  onKey(e,down){
+    const k=e.code;
+    if(down){
+      if(k==='KeyE')this.addDrone();
+      if(k==='Tab'){e.preventDefault();this.activeDrone=(this.activeDrone+1)%this.drones.length;this.updatePIPs();this.updatePayloadIndicator()}
+      if(k==='KeyG')this.dropPayload();
+      if(k==='KeyR')this.lockTarget();
+      if(k==='KeyM')this.meshActive=!this.meshActive;
+      if(k==='Digit1')this.setVision('normal');
+      if(k==='Digit2')this.setVision('thermal');
+      if(k==='Digit3')this.setVision('ir');
+      if(k==='Digit4')this.setVision('sar');
+      if(k==='Digit5')this.setVision('night');
+      if(k==='Digit6')this.setVision('fpv');
+    }
+    this.input[k]=down;
+  },
+
+  fire(){
+    const drone=this.drones[this.activeDrone];
+    if(!drone)return;
+
+    const bullet=new THREE.Mesh(new THREE.SphereGeometry(.2),new THREE.MeshBasicMaterial({color:0x00ff00}));
+    bullet.position.copy(drone.position);
+
+    const dir=T.v3(0,0,-1);
+    dir.applyAxisAngle(T.v3(1,0,0),this.camPitch+this.gimbalPitch);
+    dir.applyAxisAngle(T.v3(0,1,0),this.camYaw+this.gimbalYaw);
+
+    bullet.userData={vel:dir.multiplyScalar(6),life:180};
+    this.sc.add(bullet);
+    this.bullets.push(bullet);
+  },
+
+  updatePIPs(){
+    const el=document.getElementById('pip-container');
+    el.innerHTML=this.drones.map((d,i)=>
+      `<div class="pip${i===this.activeDrone?' selected':''}" onclick="S.activeDrone=${i};S.updatePIPs();S.updatePayloadIndicator()">
+        <div class="pip-label">D${i+1} ${d.userData.payloads.length>0?'📦':''}</div>
+        <div class="pip-status" style="background:${d.userData.status==='active'?'#0f0':'#f00'}"></div>
+      </div>`
+    ).join('');
+  },
+
+  updateDrone(drone,idx){
+    const isActive=idx===this.activeDrone;
+    const d=drone.userData;
+
+    d.battery-=.0015;
+    if(d.battery<15)d.status='low';
+
+    if(isActive){
+      const spd=this.visionMode==='fpv'?.8:.4;
+      if(this.input.KeyW)d.vel.z-=spd;
+      if(this.input.KeyS)d.vel.z+=spd;
+      if(this.input.KeyA)d.vel.x-=spd;
+      if(this.input.KeyD)d.vel.x+=spd;
+      if(this.input.KeyQ)d.vel.y+=spd;
+      if(this.input.KeyZ)d.vel.y-=spd;
+      if(this.input.Space)d.vel.y+=spd;
+      if(this.input.ShiftLeft)d.vel.y-=spd;
+
+      // Gimbal control
+      if(this.input.KeyI)this.gimbalPitch=T.clamp(this.gimbalPitch-.03,-1,1);
+      if(this.input.KeyK)this.gimbalPitch=T.clamp(this.gimbalPitch+.03,-1,1);
+      if(this.input.KeyJ)this.gimbalYaw=T.clamp(this.gimbalYaw-.03,-1.5,1.5);
+      if(this.input.KeyL)this.gimbalYaw=T.clamp(this.gimbalYaw+.03,-1.5,1.5);
+
+      // Auto-track gimbal
+      if(this.autoTracking&&this.lockedTarget){
+        const toTarget=this.lockedTarget.position.clone().sub(drone.position).normalize();
+        const targetYaw=Math.atan2(toTarget.x,toTarget.z);
+        const targetPitch=-Math.asin(toTarget.y);
+        this.gimbalYaw=T.lerp(this.gimbalYaw,targetYaw-this.camYaw,.1);
+        this.gimbalPitch=T.lerp(this.gimbalPitch,targetPitch-this.camPitch,.1);
+      }
+
+      d.gimbal.rotation.x=this.gimbalPitch;
+      d.gimbal.rotation.y=this.gimbalYaw;
+    }
+
+    d.vel.multiplyScalar(.94);
+    d.lastPos.copy(drone.position);
+    drone.position.add(d.vel);
+    drone.position.y=Math.max(3,drone.position.y);
+
+    drone.rotation.z=T.lerp(drone.rotation.z,-d.vel.x*.08,.1);
+    drone.rotation.x=T.lerp(drone.rotation.x,d.vel.z*.08,.1);
+
+    drone.children.forEach(c=>{if(c.userData.isRotor)c.rotation.y+=.5});
+  },
+
+  updateTargets(){
+    this.targets.forEach(t=>{
+      t.userData.lastVel.copy(t.userData.vel);
+      t.position.add(t.userData.vel);
+      if(Math.abs(t.position.x)>600)t.userData.vel.x*=-1;
+      if(Math.abs(t.position.z)>600)t.userData.vel.z*=-1;
+      if(t.userData.type==='air'){
+        if(t.position.y<20||t.position.y>120)t.userData.vel.y*=-1;
+      }
+      t.rotation.y+=.02;
+    });
+  },
+
+  updatePayloads(){
+    for(let i=this.payloads.length-1;i>=0;i--){
+      const p=this.payloads[i];
+      p.userData.vel.y-=.02; // gravity
+      p.position.add(p.userData.vel);
+      p.rotation.x+=.1;
+      p.rotation.z+=.05;
+      if(p.position.y<0){
+        this.sc.remove(p);
+        this.payloads.splice(i,1);
+      }
+    }
+  },
+
+  updateBullets(){
+    for(let i=this.bullets.length-1;i>=0;i--){
+      const b=this.bullets[i];
+      b.position.add(b.userData.vel);
+      if(--b.userData.life<=0){
+        this.sc.remove(b);
+        this.bullets.splice(i,1);
+      }
+    }
+  },
+
+  drawMeshNetwork(){
+    const ctx=this.meshCtx;
+    ctx.clearRect(0,0,innerWidth,innerHeight);
+    if(!this.meshActive)return;
+
+    ctx.strokeStyle='#0f04';
+    ctx.lineWidth=1;
+
+    this.drones.forEach((d1,i)=>{
+      this.drones.forEach((d2,j)=>{
+        if(j<=i)return;
+        const dist=T.dist(d1.position,d2.position);
+        if(dist<150){
+          const p1=d1.position.clone().project(this.ca);
+          const p2=d2.position.clone().project(this.ca);
+          if(p1.z<1&&p2.z<1){
+            const x1=(p1.x+1)/2*innerWidth,y1=(-p1.y+1)/2*innerHeight;
+            const x2=(p2.x+1)/2*innerWidth,y2=(-p2.y+1)/2*innerHeight;
+            ctx.globalAlpha=1-dist/150;
+            ctx.beginPath();
+            ctx.moveTo(x1,y1);
+            ctx.lineTo(x2,y2);
+            ctx.stroke();
+          }
+        }
+      });
+    });
+
+    document.getElementById('mesh-nodes').textContent=this.drones.length;
+    document.getElementById('mesh-status').textContent=this.meshActive?'ACTIVE':'OFF';
+  },
+
+  drawGimbalIndicator(){
+    const ctx=this.gimbalCtx;
+    ctx.fillStyle='#001a00';
+    ctx.fillRect(0,0,60,60);
+
+    // Crosshair
+    ctx.strokeStyle='#0f0';
+    ctx.lineWidth=1;
+    ctx.beginPath();
+    ctx.moveTo(30,0);ctx.lineTo(30,60);
+    ctx.moveTo(0,30);ctx.lineTo(60,30);
+    ctx.stroke();
+
+    // Gimbal position
+    const gx=30+this.gimbalYaw*15;
+    const gy=30+this.gimbalPitch*15;
+    ctx.fillStyle='#0f0';
+    ctx.beginPath();
+    ctx.arc(gx,gy,4,0,Math.PI*2);
+    ctx.fill();
+  },
+
+  drawTargetBox(){
+    const svg=document.getElementById('target-box');
+    if(!this.lockedTarget){svg.innerHTML='';return}
+
+    const t=this.lockedTarget;
+    const pos=t.position.clone().project(this.ca);
+    if(pos.z>1){svg.innerHTML='';return}
+
+    const x=(pos.x+1)/2*innerWidth;
+    const y=(-pos.y+1)/2*innerHeight;
+
+    let leadX=x,leadY=y;
+    if(this.showLead&&t.userData.vel.length()>0){
+      const drone=this.drones[this.activeDrone];
+      if(drone){
+        const dist=T.dist(drone.position,t.position);
+        const bulletTime=dist/6; // bullet speed
+        const leadPos=t.position.clone().add(t.userData.vel.clone().multiplyScalar(bulletTime));
+        const lp=leadPos.project(this.ca);
+        if(lp.z<1){
+          leadX=(lp.x+1)/2*innerWidth;
+          leadY=(-lp.y+1)/2*innerHeight;
+        }
+      }
+    }
+
+    svg.innerHTML=`
+      <rect x="${x-25}" y="${y-25}" width="50" height="50" fill="none" stroke="#f00" stroke-width="2" stroke-dasharray="5,3"/>
+      <line x1="${x-30}" y1="${y}" x2="${x-15}" y2="${y}" stroke="#f00" stroke-width="2"/>
+      <line x1="${x+15}" y1="${y}" x2="${x+30}" y2="${y}" stroke="#f00" stroke-width="2"/>
+      <line x1="${x}" y1="${y-30}" x2="${x}" y2="${y-15}" stroke="#f00" stroke-width="2"/>
+      <line x1="${x}" y1="${y+15}" x2="${x}" y2="${y+30}" stroke="#f00" stroke-width="2"/>
+      ${this.showLead?`<circle cx="${leadX}" cy="${leadY}" r="6" fill="none" stroke="#ff0" stroke-width="2"/><line x1="${x}" y1="${y}" x2="${leadX}" y2="${leadY}" stroke="#ff0" stroke-width="1" stroke-dasharray="3,3"/>`:''}
+      <text x="${x+30}" y="${y-30}" fill="#f00" font-size="10">LOCKED</text>
+    `;
+  },
+
+  updateUI(){
+    const drone=this.drones[this.activeDrone];
+    if(!drone)return;
+    const d=drone.userData;
+
+    document.getElementById('altitude').textContent=Math.round(drone.position.y);
+    document.getElementById('speed').textContent=Math.round(d.vel.length()*10);
+    document.getElementById('drones').textContent=this.drones.length;
+    document.getElementById('battery').textContent=Math.round(d.battery);
+    document.getElementById('threats').textContent=this.targets.length;
+
+    const hdg=Math.round((-this.camYaw*180/Math.PI+360)%360);
+    const dirs=['N','NE','E','SE','S','SW','W','NW'];
+    document.getElementById('heading').textContent=dirs[Math.round(hdg/45)%8];
+
+    document.getElementById('speed-fill').style.height=T.clamp(d.vel.length()*20,0,100)+'%';
+    document.getElementById('alt-fill').style.height=T.clamp(drone.position.y/2,0,100)+'%';
+    document.getElementById('compass-strip').style.left=(-hdg*2+70)+'px';
+
+    this.updateMinimap();
+    this.updateTrackInfo();
+  },
+
+  updateMinimap(){
+    const mm=document.getElementById('minimap');
+    const drone=this.drones[this.activeDrone];
+    if(!drone)return;
+
+    let html='<div class="minimap-blip" style="background:#0f0;left:45px;top:45px;width:5px;height:5px"></div>';
+
+    this.drones.forEach((d,i)=>{
+      if(i===this.activeDrone)return;
+      const dx=(d.position.x-drone.position.x)/12+45;
+      const dz=(d.position.z-drone.position.z)/12+45;
+      if(dx>0&&dx<90&&dz>0&&dz<90){
+        html+=`<div class="minimap-blip" style="background:#0ff;left:${dx}px;top:${dz}px"></div>`;
+      }
+    });
+
+    this.targets.forEach(t=>{
+      const dx=(t.position.x-drone.position.x)/12+45;
+      const dz=(t.position.z-drone.position.z)/12+45;
+      if(dx>0&&dx<90&&dz>0&&dz<90){
+        const col=t===this.lockedTarget?'#f00':'#f80';
+        html+=`<div class="minimap-blip" style="background:${col};left:${dx}px;top:${dz}px"></div>`;
+      }
+    });
+
+    mm.innerHTML=html;
+  },
+
+  animate(){
+    requestAnimationFrame(()=>this.animate());
+
+    this.drones.forEach((d,i)=>this.updateDrone(d,i));
+    this.updateTargets();
+    this.updatePayloads();
+    this.updateBullets();
+
+    const drone=this.drones[this.activeDrone];
+    if(drone){
+      const offset=T.v3(0,3,10);
+      offset.applyAxisAngle(T.v3(1,0,0),this.camPitch);
+      offset.applyAxisAngle(T.v3(0,1,0),this.camYaw);
+      this.ca.position.copy(drone.position).add(offset);
+      this.ca.lookAt(drone.position);
+    }
+
+    this.drawMeshNetwork();
+    this.drawGimbalIndicator();
+    this.drawTargetBox();
+    this.rn.render(this.sc,this.ca);
+  }
+};
+
+onload=()=>S.init();
+onresize=()=>{
+  S.rn.setSize(innerWidth,innerHeight);
+  S.ca.aspect=innerWidth/innerHeight;
+  S.ca.updateProjectionMatrix();
+  S.meshCtx.canvas.width=innerWidth;
+  S.meshCtx.canvas.height=innerHeight;
+  S.geoCtx.canvas.width=innerWidth;
+  S.geoCtx.canvas.height=innerHeight;
+};
+</script></body></html>
