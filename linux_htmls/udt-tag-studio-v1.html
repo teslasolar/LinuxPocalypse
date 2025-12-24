@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UDT Tag Studio v1 - Industrial Template Designer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a12;overflow:hidden;font:11px 'Consolas',monospace;color:#0ff}
+#c{position:fixed;inset:0}
+.panel{position:absolute;background:rgba(5,15,25,.96);border:2px solid #0af;border-radius:6px;padding:10px;z-index:10}
+.panel-title{color:#0ff;font-size:12px;font-weight:bold;text-align:center;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #0af4}
+button{background:linear-gradient(135deg,#08a,#046);color:#0ff;border:1px solid #0af;padding:5px 10px;margin:2px;border-radius:4px;cursor:pointer;font-size:10px}
+button:hover{background:#0af;color:#000}
+button.active{background:#0f0;color:#000;border-color:#0f0}
+button.warn{background:linear-gradient(135deg,#a60,#530);border-color:#f80;color:#ff0}
+button.danger{background:linear-gradient(135deg,#a00,#500);border-color:#f00;color:#fff}
+.row{display:flex;gap:4px;margin:4px 0;flex-wrap:wrap;align-items:center}
+input,select{background:#001020;border:1px solid #068;color:#0ff;padding:4px 6px;border-radius:3px;font-size:10px}
+input:focus,select:focus{border-color:#0af;outline:none}
+.tag-item{background:#001525;border:1px solid #0683;padding:6px;margin:3px 0;border-radius:4px;cursor:pointer;transition:all .2s}
+.tag-item:hover{border-color:#0af;background:#002035}
+.tag-item.selected{border-color:#0f0;background:#002520}
+.tag-type{display:inline-block;padding:2px 6px;border-radius:3px;font-size:9px;margin-right:6px}
+.type-bool{background:#0a04;color:#0f0}.type-int{background:#00a4;color:#08f}
+.type-real{background:#a0a4;color:#f0f}.type-string{background:#aa04;color:#ff0}
+.type-udt{background:#0aa4;color:#0ff}
+.udt-card{background:#001030;border:2px solid #06a;padding:8px;margin:4px 0;border-radius:6px;cursor:pointer}
+.udt-card:hover{border-color:#0af}.udt-card.selected{border-color:#0f0;box-shadow:0 0 10px #0f04}
+.member-list{max-height:150px;overflow-y:auto;font-size:9px;padding:4px;background:#000a10;border-radius:3px;margin-top:6px}
+.member{padding:3px;border-bottom:1px solid #0682}
+.instance-node{background:#102030;border:1px solid #0af;border-radius:4px;padding:6px;margin:3px 0;font-size:10px}
+.instance-node.active{border-color:#0f0}
+#template-tree{max-height:300px;overflow-y:auto}
+.tree-node{padding:4px;margin:2px 0;border-left:2px solid #068;padding-left:8px;cursor:pointer}
+.tree-node:hover{background:#0af1;border-color:#0af}
+.tree-node.expanded>.tree-children{display:block}
+.tree-children{display:none;margin-left:12px}
+.stat{background:#001020;border:1px solid #068;border-radius:3px;padding:4px 8px;text-align:center}
+.stat-val{font-size:14px;font-weight:bold;color:#0f0}
+.stat-lbl{font-size:8px;color:#068}
+#connection-canvas{position:fixed;inset:0;pointer-events:none;z-index:5}
+.inheritance-line{stroke:#0f0;stroke-width:2;fill:none;opacity:.5}
+#ai-panel{max-height:120px;overflow-y:auto;font-size:9px;background:#000810;padding:6px;border-radius:4px;margin-top:6px}
+.ai-suggestion{padding:4px;margin:2px 0;background:#001520;border-left:2px solid #0af;padding-left:6px}
+</style></head><body>
+<canvas id="c"></canvas>
+<canvas id="connection-canvas"></canvas>
+
+<!-- Header -->
+<div class="panel" style="top:6px;left:50%;transform:translateX(-50%);padding:6px 20px">
+<span style="color:#0f0;font-size:14px">⚙️ UDT TAG STUDIO</span>
+<span style="color:#068;margin-left:10px">v1.0</span>
+<span style="color:#f80;margin-left:15px">Industrial Template Designer</span>
+</div>
+
+<!-- UDT Library -->
+<div class="panel" style="top:50px;left:8px;width:220px">
+<div class="panel-title">📦 UDT LIBRARY</div>
+<div class="row">
+<button onclick="U.newUDT()">+ New UDT</button>
+<button onclick="U.importUDT()">📥 Import</button>
+<button onclick="U.exportUDT()">📤 Export</button>
+</div>
+<div id="udt-list" style="max-height:200px;overflow-y:auto;margin-top:8px"></div>
+</div>
+
+<!-- UDT Editor -->
+<div class="panel" style="top:320px;left:8px;width:220px">
+<div class="panel-title">✏️ UDT EDITOR</div>
+<div id="udt-editor">
+<div style="color:#666;text-align:center;padding:20px">Select a UDT to edit</div>
+</div>
+</div>
+
+<!-- Tag Browser -->
+<div class="panel" style="top:50px;right:8px;width:240px">
+<div class="panel-title">🏷️ TAG BROWSER</div>
+<div class="row">
+<input type="text" id="tag-search" placeholder="Search tags..." style="flex:1" oninput="U.filterTags()">
+<button onclick="U.newTag()">+ Tag</button>
+</div>
+<div class="row" style="margin-top:6px">
+<button class="active" onclick="U.filterByType('all')">All</button>
+<button onclick="U.filterByType('bool')">Bool</button>
+<button onclick="U.filterByType('int')">Int</button>
+<button onclick="U.filterByType('real')">Real</button>
+<button onclick="U.filterByType('udt')">UDT</button>
+</div>
+<div id="tag-list" style="max-height:280px;overflow-y:auto;margin-top:8px"></div>
+</div>
+
+<!-- Template Tree -->
+<div class="panel" style="bottom:8px;right:8px;width:240px">
+<div class="panel-title">🌳 TEMPLATE HIERARCHY</div>
+<div id="template-tree"></div>
+<div class="row" style="margin-top:8px">
+<button onclick="U.expandAll()">⊞ Expand</button>
+<button onclick="U.collapseAll()">⊟ Collapse</button>
+<button onclick="U.validateTree()">✓ Validate</button>
+</div>
+</div>
+
+<!-- Instance Manager -->
+<div class="panel" style="top:50px;left:240px;width:200px">
+<div class="panel-title">🔧 INSTANCES</div>
+<div class="row">
+<select id="udt-select" style="flex:1" onchange="U.selectUDTForInstance()">
+<option value="">Select UDT...</option>
+</select>
+</div>
+<div class="row">
+<input type="text" id="instance-name" placeholder="Instance name..." style="flex:1">
+<button onclick="U.createInstance()">+ Create</button>
+</div>
+<div id="instance-list" style="max-height:180px;overflow-y:auto;margin-top:8px"></div>
+</div>
+
+<!-- Statistics -->
+<div class="panel" style="bottom:8px;left:8px;width:220px">
+<div class="panel-title">📊 STATISTICS</div>
+<div class="row" style="justify-content:space-around">
+<div class="stat"><div class="stat-val" id="stat-udts">0</div><div class="stat-lbl">UDTs</div></div>
+<div class="stat"><div class="stat-val" id="stat-tags">0</div><div class="stat-lbl">Tags</div></div>
+<div class="stat"><div class="stat-val" id="stat-instances">0</div><div class="stat-lbl">Instances</div></div>
+<div class="stat"><div class="stat-val" id="stat-refs">0</div><div class="stat-lbl">Refs</div></div>
+</div>
+<div id="ai-panel">
+<div style="color:#0af;margin-bottom:4px">🤖 AI Suggestions:</div>
+<div id="ai-suggestions"></div>
+</div>
+</div>
+
+<!-- Data Types Reference -->
+<div class="panel" style="bottom:8px;left:240px;width:200px">
+<div class="panel-title">📋 DATA TYPES</div>
+<div style="font-size:9px">
+<div class="row"><span class="tag-type type-bool">BOOL</span> True/False (1 bit)</div>
+<div class="row"><span class="tag-type type-int">INT</span> Integer (-32768 to 32767)</div>
+<div class="row"><span class="tag-type type-int">DINT</span> Double Int (32-bit)</div>
+<div class="row"><span class="tag-type type-real">REAL</span> Float (32-bit)</div>
+<div class="row"><span class="tag-type type-string">STRING</span> Text (82 chars)</div>
+<div class="row"><span class="tag-type type-udt">UDT</span> User Defined Type</div>
+</div>
+</div>
+
+<script>
+const T={v3:(x,y,z)=>new THREE.Vector3(x,y,z),rnd:(a,b)=>a+Math.random()*(b-a)};
+
+// Data Types
+const TYPES = {
+  BOOL: {color: '#0f0', size: 1, default: false},
+  INT: {color: '#08f', size: 16, default: 0},
+  DINT: {color: '#06f', size: 32, default: 0},
+  REAL: {color: '#f0f', size: 32, default: 0.0},
+  STRING: {color: '#ff0', size: 656, default: ''},
+  UDT: {color: '#0ff', size: 0, default: null}
+};
+
+// Preset UDT Templates
+const PRESET_UDTS = [
+  {
+    id: 'Motor',
+    name: 'Motor',
+    description: 'Standard motor control',
+    icon: '⚙️',
+    members: [
+      {name: 'Running', type: 'BOOL', desc: 'Motor running status'},
+      {name: 'Fault', type: 'BOOL', desc: 'Fault condition'},
+      {name: 'Speed', type: 'REAL', desc: 'Current speed (RPM)', unit: 'RPM', min: 0, max: 3600},
+      {name: 'Current', type: 'REAL', desc: 'Motor current', unit: 'A'},
+      {name: 'RunTime', type: 'DINT', desc: 'Total run time', unit: 'hrs'},
+      {name: 'StartCmd', type: 'BOOL', desc: 'Start command'},
+      {name: 'StopCmd', type: 'BOOL', desc: 'Stop command'}
+    ]
+  },
+  {
+    id: 'Valve',
+    name: 'Valve',
+    description: 'Control valve template',
+    icon: '🔧',
+    members: [
+      {name: 'Open', type: 'BOOL', desc: 'Valve open status'},
+      {name: 'Closed', type: 'BOOL', desc: 'Valve closed status'},
+      {name: 'Position', type: 'REAL', desc: 'Valve position', unit: '%', min: 0, max: 100},
+      {name: 'Setpoint', type: 'REAL', desc: 'Position setpoint', unit: '%'},
+      {name: 'Fault', type: 'BOOL', desc: 'Fault condition'},
+      {name: 'OpenCmd', type: 'BOOL', desc: 'Open command'},
+      {name: 'CloseCmd', type: 'BOOL', desc: 'Close command'}
+    ]
+  },
+  {
+    id: 'Tank',
+    name: 'Tank',
+    description: 'Tank level monitoring',
+    icon: '🛢️',
+    members: [
+      {name: 'Level', type: 'REAL', desc: 'Current level', unit: '%', min: 0, max: 100},
+      {name: 'Volume', type: 'REAL', desc: 'Volume', unit: 'gal'},
+      {name: 'HighAlarm', type: 'BOOL', desc: 'High level alarm'},
+      {name: 'LowAlarm', type: 'BOOL', desc: 'Low level alarm'},
+      {name: 'Temperature', type: 'REAL', desc: 'Tank temp', unit: '°F'},
+      {name: 'Pressure', type: 'REAL', desc: 'Tank pressure', unit: 'PSI'},
+      {name: 'InletValve', type: 'UDT', udtRef: 'Valve', desc: 'Inlet valve'},
+      {name: 'OutletValve', type: 'UDT', udtRef: 'Valve', desc: 'Outlet valve'}
+    ]
+  },
+  {
+    id: 'PID',
+    name: 'PID_Loop',
+    description: 'PID control loop',
+    icon: '📈',
+    members: [
+      {name: 'PV', type: 'REAL', desc: 'Process variable'},
+      {name: 'SP', type: 'REAL', desc: 'Setpoint'},
+      {name: 'CV', type: 'REAL', desc: 'Control variable', unit: '%'},
+      {name: 'Kp', type: 'REAL', desc: 'Proportional gain', default: 1.0},
+      {name: 'Ki', type: 'REAL', desc: 'Integral gain', default: 0.1},
+      {name: 'Kd', type: 'REAL', desc: 'Derivative gain', default: 0.01},
+      {name: 'Auto', type: 'BOOL', desc: 'Auto mode'},
+      {name: 'Manual', type: 'BOOL', desc: 'Manual mode'},
+      {name: 'Error', type: 'REAL', desc: 'Error (SP-PV)'}
+    ]
+  },
+  {
+    id: 'Pump',
+    name: 'Pump',
+    description: 'Pump with motor',
+    icon: '💧',
+    members: [
+      {name: 'Motor', type: 'UDT', udtRef: 'Motor', desc: 'Pump motor'},
+      {name: 'FlowRate', type: 'REAL', desc: 'Flow rate', unit: 'GPM'},
+      {name: 'Pressure', type: 'REAL', desc: 'Discharge pressure', unit: 'PSI'},
+      {name: 'Suction', type: 'REAL', desc: 'Suction pressure', unit: 'PSI'},
+      {name: 'Cavitation', type: 'BOOL', desc: 'Cavitation alarm'},
+      {name: 'VFD_Speed', type: 'REAL', desc: 'VFD speed command', unit: '%'}
+    ]
+  },
+  {
+    id: 'Conveyor',
+    name: 'Conveyor',
+    description: 'Conveyor belt system',
+    icon: '🏭',
+    members: [
+      {name: 'Motor', type: 'UDT', udtRef: 'Motor', desc: 'Conveyor motor'},
+      {name: 'Speed', type: 'REAL', desc: 'Belt speed', unit: 'ft/min'},
+      {name: 'ItemCount', type: 'DINT', desc: 'Items transported'},
+      {name: 'JamDetect', type: 'BOOL', desc: 'Jam detected'},
+      {name: 'PhotoEye1', type: 'BOOL', desc: 'Entry sensor'},
+      {name: 'PhotoEye2', type: 'BOOL', desc: 'Exit sensor'}
+    ]
+  }
+];
+
+const U = {
+  udts: [],
+  tags: [],
+  instances: [],
+  selectedUDT: null,
+  selectedTag: null,
+  meshes: new Map(),
+
+  init() {
+    this.setupScene();
+    this.loadPresets();
+    this.updateUI();
+    this.animate();
+    setInterval(() => this.simulateValues(), 500);
+    setInterval(() => this.generateAISuggestions(), 5000);
+  },
+
+  setupScene() {
+    this.scene = new THREE.Scene();
+    this.camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 1000);
+    this.renderer = new THREE.WebGLRenderer({canvas: document.getElementById('c'), antialias: true});
+    this.renderer.setSize(innerWidth, innerHeight);
+    this.renderer.setClearColor(0x0a0a15);
+    this.camera.position.set(0, 40, 80);
+    this.camera.lookAt(0, 0, 0);
+
+    this.connCtx = document.getElementById('connection-canvas').getContext('2d');
+    document.getElementById('connection-canvas').width = innerWidth;
+    document.getElementById('connection-canvas').height = innerHeight;
+
+    // Lighting
+    this.scene.add(new THREE.AmbientLight(0x404060, 0.5));
+    const light = new THREE.DirectionalLight(0xffffff, 0.6);
+    light.position.set(30, 50, 30);
+    this.scene.add(light);
+
+    // Grid
+    this.scene.add(new THREE.GridHelper(100, 20, 0x0af2, 0x0681));
+
+    // Mouse controls
+    let dragging = false, lastX = 0, lastY = 0;
+    const canvas = document.getElementById('c');
+    canvas.addEventListener('mousedown', e => { dragging = true; lastX = e.clientX; lastY = e.clientY; });
+    canvas.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      const dx = e.clientX - lastX, dy = e.clientY - lastY;
+      this.camera.position.applyAxisAngle(T.v3(0,1,0), -dx * 0.005);
+      lastX = e.clientX; lastY = e.clientY;
+    });
+    canvas.addEventListener('mouseup', () => dragging = false);
+    canvas.addEventListener('wheel', e => {
+      this.camera.position.multiplyScalar(1 + e.deltaY * 0.001);
+    });
+  },
+
+  loadPresets() {
+    PRESET_UDTS.forEach(udt => {
+      this.udts.push({...udt, custom: false});
+      this.create3DModel(udt);
+    });
+    this.updateUDTList();
+    this.updateUDTSelect();
+  },
+
+  create3DModel(udt) {
+    const group = new THREE.Group();
+    const idx = this.udts.findIndex(u => u.id === udt.id);
+    const angle = idx * Math.PI * 2 / Math.max(this.udts.length, 6);
+    const radius = 25;
+
+    // Main block
+    const geo = new THREE.BoxGeometry(8, 4 + udt.members.length * 0.5, 6);
+    const mat = new THREE.MeshPhongMaterial({
+      color: 0x0066aa,
+      emissive: 0x002244,
+      transparent: true,
+      opacity: 0.9
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.y = (4 + udt.members.length * 0.5) / 2;
+    group.add(mesh);
+
+    // Member indicator lights
+    udt.members.forEach((m, i) => {
+      const typeColor = TYPES[m.type]?.color || '#0ff';
+      const light = new THREE.Mesh(
+        new THREE.SphereGeometry(0.3),
+        new THREE.MeshBasicMaterial({color: parseInt(typeColor.replace('#', '0x'))})
+      );
+      light.position.set(-3, 1 + i * 0.6, 3.1);
+      group.add(light);
+    });
+
+    // Label
+    const labelGeo = new THREE.PlaneGeometry(6, 1.5);
+    const labelMat = new THREE.MeshBasicMaterial({color: 0x00ff88, transparent: true, opacity: 0.8});
+    const label = new THREE.Mesh(labelGeo, labelMat);
+    label.position.set(0, (4 + udt.members.length * 0.5) + 1, 0);
+    label.rotation.x = -0.3;
+    group.add(label);
+
+    group.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+    group.userData = {udt, type: 'udt'};
+
+    this.scene.add(group);
+    this.meshes.set(udt.id, group);
+  },
+
+  newUDT() {
+    const name = prompt('Enter UDT name:');
+    if (!name) return;
+    const udt = {
+      id: name.replace(/\s+/g, '_'),
+      name,
+      description: 'Custom UDT',
+      icon: '📦',
+      members: [],
+      custom: true
+    };
+    this.udts.push(udt);
+    this.create3DModel(udt);
+    this.updateUDTList();
+    this.updateUDTSelect();
+    this.selectUDT(udt.id);
+  },
+
+  selectUDT(id) {
+    this.selectedUDT = this.udts.find(u => u.id === id);
+    this.updateUDTList();
+    this.updateUDTEditor();
+
+    // Highlight in 3D
+    this.meshes.forEach((mesh, key) => {
+      if (mesh.userData.type === 'udt') {
+        mesh.children[0].material.emissive.setHex(key === id ? 0x006600 : 0x002244);
+      }
+    });
+  },
+
+  updateUDTList() {
+    document.getElementById('udt-list').innerHTML = this.udts.map(udt => `
+      <div class="udt-card ${this.selectedUDT?.id === udt.id ? 'selected' : ''}" onclick="U.selectUDT('${udt.id}')">
+        <div style="font-size:12px">${udt.icon} <strong>${udt.name}</strong></div>
+        <div style="font-size:9px;color:#068">${udt.description}</div>
+        <div class="member-list">
+          ${udt.members.slice(0, 5).map(m => `
+            <div class="member"><span class="tag-type type-${m.type.toLowerCase()}">${m.type}</span> ${m.name}</div>
+          `).join('')}
+          ${udt.members.length > 5 ? `<div style="color:#068">...+${udt.members.length - 5} more</div>` : ''}
+        </div>
+      </div>
+    `).join('');
+  },
+
+  updateUDTEditor() {
+    const editor = document.getElementById('udt-editor');
+    if (!this.selectedUDT) {
+      editor.innerHTML = '<div style="color:#666;text-align:center;padding:20px">Select a UDT to edit</div>';
+      return;
+    }
+
+    const udt = this.selectedUDT;
+    editor.innerHTML = `
+      <div style="margin-bottom:8px">
+        <input type="text" value="${udt.name}" style="width:100%;font-size:12px" onchange="U.renameUDT(this.value)">
+      </div>
+      <div style="margin-bottom:8px">
+        <textarea style="width:100%;height:40px;resize:none" placeholder="Description...">${udt.description}</textarea>
+      </div>
+      <div style="margin-bottom:8px;font-size:10px;color:#0af">Members (${udt.members.length}):</div>
+      <div style="max-height:150px;overflow-y:auto">
+        ${udt.members.map((m, i) => `
+          <div class="tag-item" style="display:flex;align-items:center;gap:4px">
+            <span class="tag-type type-${m.type.toLowerCase()}">${m.type}</span>
+            <span style="flex:1">${m.name}</span>
+            <button onclick="U.editMember(${i})" style="padding:2px 4px">✏️</button>
+            <button onclick="U.removeMember(${i})" style="padding:2px 4px" class="danger">×</button>
+          </div>
+        `).join('')}
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button onclick="U.addMember()">+ Add Member</button>
+        ${udt.custom ? `<button onclick="U.deleteUDT()" class="danger">🗑️ Delete</button>` : ''}
+      </div>
+    `;
+  },
+
+  addMember() {
+    if (!this.selectedUDT) return;
+    const name = prompt('Member name:');
+    if (!name) return;
+
+    const types = Object.keys(TYPES).concat(this.udts.map(u => 'UDT:' + u.id));
+    const type = prompt(`Type (${types.join(', ')}):`, 'BOOL');
+    if (!type) return;
+
+    const member = {name, type: type.split(':')[0], desc: ''};
+    if (type.startsWith('UDT:')) {
+      member.udtRef = type.split(':')[1];
+    }
+
+    this.selectedUDT.members.push(member);
+    this.updateUDTEditor();
+    this.updateUDTList();
+    this.refreshMesh(this.selectedUDT.id);
+  },
+
+  removeMember(idx) {
+    if (!this.selectedUDT) return;
+    this.selectedUDT.members.splice(idx, 1);
+    this.updateUDTEditor();
+    this.updateUDTList();
+    this.refreshMesh(this.selectedUDT.id);
+  },
+
+  refreshMesh(id) {
+    const mesh = this.meshes.get(id);
+    if (mesh) {
+      this.scene.remove(mesh);
+      this.meshes.delete(id);
+    }
+    const udt = this.udts.find(u => u.id === id);
+    if (udt) this.create3DModel(udt);
+  },
+
+  updateUDTSelect() {
+    document.getElementById('udt-select').innerHTML = `
+      <option value="">Select UDT...</option>
+      ${this.udts.map(u => `<option value="${u.id}">${u.icon} ${u.name}</option>`).join('')}
+    `;
+  },
+
+  createInstance() {
+    const udtId = document.getElementById('udt-select').value;
+    const name = document.getElementById('instance-name').value;
+    if (!udtId || !name) return alert('Select UDT and enter name');
+
+    const udt = this.udts.find(u => u.id === udtId);
+    if (!udt) return;
+
+    const instance = {
+      id: `${name}`,
+      udtId,
+      udt,
+      name,
+      values: {}
+    };
+
+    // Initialize values
+    udt.members.forEach(m => {
+      instance.values[m.name] = TYPES[m.type]?.default ?? null;
+    });
+
+    this.instances.push(instance);
+    this.createInstanceMesh(instance);
+    this.createInstanceTags(instance);
+    this.updateInstanceList();
+    this.updateTagList();
+
+    document.getElementById('instance-name').value = '';
+  },
+
+  createInstanceMesh(instance) {
+    const udt = instance.udt;
+    const idx = this.instances.length - 1;
+
+    const group = new THREE.Group();
+    const geo = new THREE.BoxGeometry(5, 3, 4);
+    const mat = new THREE.MeshPhongMaterial({
+      color: 0x00aa44,
+      emissive: 0x004422
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.y = 1.5;
+    group.add(mesh);
+
+    // Status lights
+    udt.members.slice(0, 6).forEach((m, i) => {
+      const light = new THREE.Mesh(
+        new THREE.SphereGeometry(0.2),
+        new THREE.MeshBasicMaterial({color: 0x00ff00})
+      );
+      light.position.set(-2 + i * 0.8, 3.2, 0);
+      light.userData.memberName = m.name;
+      group.add(light);
+    });
+
+    const x = -35 + (idx % 5) * 14;
+    const z = 20 + Math.floor(idx / 5) * 10;
+    group.position.set(x, 0, z);
+    group.userData = {instance, type: 'instance'};
+
+    this.scene.add(group);
+    this.meshes.set(instance.id, group);
+  },
+
+  createInstanceTags(instance) {
+    instance.udt.members.forEach(m => {
+      const tag = {
+        name: `${instance.name}.${m.name}`,
+        type: m.type,
+        value: instance.values[m.name],
+        instanceId: instance.id,
+        memberName: m.name,
+        unit: m.unit || '',
+        desc: m.desc || ''
+      };
+      this.tags.push(tag);
+    });
+  },
+
+  updateInstanceList() {
+    document.getElementById('instance-list').innerHTML = this.instances.map(inst => `
+      <div class="instance-node">
+        <div style="font-weight:bold">${inst.name}</div>
+        <div style="font-size:9px;color:#068">${inst.udt.icon} ${inst.udt.name}</div>
+      </div>
+    `).join('');
+  },
+
+  newTag() {
+    const name = prompt('Tag name:');
+    if (!name) return;
+    const type = prompt('Type (BOOL, INT, DINT, REAL, STRING):', 'BOOL');
+    if (!type || !TYPES[type]) return;
+
+    const tag = {
+      name,
+      type,
+      value: TYPES[type].default,
+      unit: '',
+      desc: ''
+    };
+    this.tags.push(tag);
+    this.updateTagList();
+  },
+
+  filterTags() {
+    this.updateTagList();
+  },
+
+  filterByType(type) {
+    this.currentTypeFilter = type === 'all' ? null : type.toUpperCase();
+    document.querySelectorAll('#tag-list + .row button').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+    this.updateTagList();
+  },
+
+  updateTagList() {
+    const search = document.getElementById('tag-search').value.toLowerCase();
+    let filtered = this.tags.filter(t => t.name.toLowerCase().includes(search));
+    if (this.currentTypeFilter) {
+      filtered = filtered.filter(t => t.type === this.currentTypeFilter);
+    }
+
+    document.getElementById('tag-list').innerHTML = filtered.map(tag => `
+      <div class="tag-item" onclick="U.selectTag('${tag.name}')">
+        <div>
+          <span class="tag-type type-${tag.type.toLowerCase()}">${tag.type}</span>
+          <strong>${tag.name}</strong>
+        </div>
+        <div style="font-size:9px;color:#0f0;margin-top:2px">
+          Value: ${this.formatValue(tag)} ${tag.unit}
+        </div>
+      </div>
+    `).join('');
+  },
+
+  formatValue(tag) {
+    if (tag.type === 'BOOL') return tag.value ? '✓ TRUE' : '✗ FALSE';
+    if (tag.type === 'REAL') return (tag.value || 0).toFixed(2);
+    return tag.value ?? 'null';
+  },
+
+  updateTemplateTree() {
+    const buildTree = (udt, depth = 0) => {
+      let html = `<div class="tree-node" style="margin-left:${depth * 12}px">
+        ${udt.icon} ${udt.name}
+      </div>`;
+
+      udt.members.filter(m => m.type === 'UDT').forEach(m => {
+        const ref = this.udts.find(u => u.id === m.udtRef);
+        if (ref && depth < 3) {
+          html += buildTree(ref, depth + 1);
+        }
+      });
+
+      return html;
+    };
+
+    document.getElementById('template-tree').innerHTML = this.udts.map(u => buildTree(u)).join('');
+  },
+
+  simulateValues() {
+    this.tags.forEach(tag => {
+      if (tag.type === 'BOOL') {
+        if (Math.random() < 0.05) tag.value = !tag.value;
+      } else if (tag.type === 'REAL') {
+        tag.value = (tag.value || 0) + (Math.random() - 0.5) * 2;
+      } else if (tag.type === 'INT' || tag.type === 'DINT') {
+        if (Math.random() < 0.1) tag.value = (tag.value || 0) + Math.round(Math.random() * 10 - 5);
+      }
+    });
+
+    // Update instance values
+    this.instances.forEach(inst => {
+      inst.udt.members.forEach(m => {
+        const tag = this.tags.find(t => t.name === `${inst.name}.${m.name}`);
+        if (tag) inst.values[m.name] = tag.value;
+      });
+    });
+
+    // Update 3D lights
+    this.meshes.forEach((group, id) => {
+      if (group.userData.type === 'instance') {
+        group.children.forEach(child => {
+          if (child.userData.memberName) {
+            const val = group.userData.instance.values[child.userData.memberName];
+            if (typeof val === 'boolean') {
+              child.material.color.setHex(val ? 0x00ff00 : 0x333333);
+            }
+          }
+        });
+      }
+    });
+
+    this.updateTagList();
+    this.updateStats();
+  },
+
+  generateAISuggestions() {
+    const suggestions = [];
+
+    // Check for missing common members
+    this.udts.forEach(udt => {
+      if (!udt.members.find(m => m.name === 'Fault' || m.name === 'Alarm')) {
+        suggestions.push(`Consider adding Fault/Alarm to "${udt.name}"`);
+      }
+      if (udt.members.length > 10) {
+        suggestions.push(`"${udt.name}" has many members - consider splitting`);
+      }
+    });
+
+    // Check for unused UDTs
+    const usedUDTs = new Set();
+    this.instances.forEach(i => usedUDTs.add(i.udtId));
+    this.udts.forEach(u => {
+      u.members.filter(m => m.udtRef).forEach(m => usedUDTs.add(m.udtRef));
+    });
+    this.udts.forEach(u => {
+      if (!usedUDTs.has(u.id) && this.instances.length > 0) {
+        suggestions.push(`"${u.name}" has no instances yet`);
+      }
+    });
+
+    document.getElementById('ai-suggestions').innerHTML = suggestions.slice(0, 4).map(s =>
+      `<div class="ai-suggestion">${s}</div>`
+    ).join('') || '<div style="color:#068">All looks good! ✓</div>';
+  },
+
+  updateStats() {
+    const refs = this.udts.reduce((acc, u) => acc + u.members.filter(m => m.udtRef).length, 0);
+    document.getElementById('stat-udts').textContent = this.udts.length;
+    document.getElementById('stat-tags').textContent = this.tags.length;
+    document.getElementById('stat-instances').textContent = this.instances.length;
+    document.getElementById('stat-refs').textContent = refs;
+  },
+
+  updateUI() {
+    this.updateUDTList();
+    this.updateTagList();
+    this.updateTemplateTree();
+    this.updateInstanceList();
+    this.updateStats();
+    this.generateAISuggestions();
+  },
+
+  importUDT() {
+    const json = prompt('Paste UDT JSON:');
+    if (!json) return;
+    try {
+      const udt = JSON.parse(json);
+      udt.custom = true;
+      this.udts.push(udt);
+      this.create3DModel(udt);
+      this.updateUI();
+    } catch (e) {
+      alert('Invalid JSON');
+    }
+  },
+
+  exportUDT() {
+    if (!this.selectedUDT) return alert('Select a UDT first');
+    const json = JSON.stringify(this.selectedUDT, null, 2);
+    navigator.clipboard?.writeText(json);
+    alert('UDT copied to clipboard:\n\n' + json);
+  },
+
+  expandAll() {
+    document.querySelectorAll('.tree-node').forEach(n => n.classList.add('expanded'));
+  },
+
+  collapseAll() {
+    document.querySelectorAll('.tree-node').forEach(n => n.classList.remove('expanded'));
+  },
+
+  validateTree() {
+    let issues = [];
+    this.udts.forEach(udt => {
+      udt.members.forEach(m => {
+        if (m.udtRef && !this.udts.find(u => u.id === m.udtRef)) {
+          issues.push(`${udt.name}.${m.name} references missing UDT: ${m.udtRef}`);
+        }
+      });
+    });
+    alert(issues.length ? 'Issues found:\n' + issues.join('\n') : 'All references valid ✓');
+  },
+
+  drawConnections() {
+    const ctx = this.connCtx;
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+
+    // Draw inheritance lines between UDTs and instances
+    this.instances.forEach(inst => {
+      const instMesh = this.meshes.get(inst.id);
+      const udtMesh = this.meshes.get(inst.udtId);
+      if (!instMesh || !udtMesh) return;
+
+      const p1 = instMesh.position.clone().project(this.camera);
+      const p2 = udtMesh.position.clone().project(this.camera);
+
+      if (p1.z < 1 && p2.z < 1) {
+        const x1 = (p1.x + 1) / 2 * innerWidth;
+        const y1 = (-p1.y + 1) / 2 * innerHeight;
+        const x2 = (p2.x + 1) / 2 * innerWidth;
+        const y2 = (-p2.y + 1) / 2 * innerHeight;
+
+        ctx.strokeStyle = '#0f04';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+    });
+  },
+
+  animate() {
+    requestAnimationFrame(() => this.animate());
+
+    const time = Date.now() * 0.001;
+    this.meshes.forEach(mesh => {
+      mesh.rotation.y += 0.002;
+    });
+
+    this.camera.lookAt(0, 5, 0);
+    this.drawConnections();
+    this.renderer.render(this.scene, this.camera);
+  }
+};
+
+onload = () => U.init();
+onresize = () => {
+  U.renderer.setSize(innerWidth, innerHeight);
+  U.camera.aspect = innerWidth / innerHeight;
+  U.camera.updateProjectionMatrix();
+  U.connCtx.canvas.width = innerWidth;
+  U.connCtx.canvas.height = innerHeight;
+};
+</script></body></html>
