@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dog Show v1 - Agility Course</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#1a2a1a;overflow:hidden;font-family:'Segoe UI',sans-serif;color:#fff}
+#c{position:fixed;inset:0}
+.panel{position:absolute;background:rgba(20,35,20,.95);border:2px solid #4a2;border-radius:12px;padding:12px;z-index:10}
+button{background:linear-gradient(135deg,#5a3,#382);color:#fff;border:2px solid #6b4;padding:8px 14px;margin:3px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:bold;transition:all .2s}
+button:hover{background:linear-gradient(135deg,#6b4,#4a3);transform:scale(1.05)}
+button.active{background:linear-gradient(135deg,#f80,#a50);border-color:#fa0}
+button.breed{padding:6px 10px;font-size:10px}
+.stat{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:11px}
+.stat-bar{flex:1;height:8px;background:#1a2a1a;border-radius:4px;overflow:hidden}
+.stat-fill{height:100%;border-radius:4px;transition:width .3s}
+.breed-card{background:#1a2a1a;border:2px solid #3a2;border-radius:8px;padding:8px;margin:4px 0;cursor:pointer;transition:all .2s}
+.breed-card:hover,.breed-card.selected{border-color:#6b4;background:#2a3a2a}
+.breed-icon{font-size:24px;text-align:center}
+#timer{position:fixed;top:20px;left:50%;transform:translateX(-50%);font-size:48px;font-weight:bold;text-shadow:0 0 20px #0f0;z-index:20}
+#message{position:fixed;top:80px;left:50%;transform:translateX(-50%);font-size:24px;text-align:center;z-index:20;opacity:0;transition:opacity .3s}
+#obstacle-indicator{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);font-size:18px;background:rgba(0,0,0,.7);padding:10px 20px;border-radius:10px;z-index:20}
+.trophy{color:#ffd700;text-shadow:0 0 10px #ffd700}
+#paw-prints{position:fixed;inset:0;pointer-events:none;z-index:1}
+</style></head><body>
+<canvas id="c"></canvas>
+<canvas id="paw-prints"></canvas>
+
+<div id="timer">0:00.00</div>
+<div id="message"></div>
+<div id="obstacle-indicator">🏁 Ready to Start!</div>
+
+<!-- Dog Info Panel -->
+<div class="panel" style="top:10px;left:10px;width:200px">
+<div style="text-align:center;font-size:18px;margin-bottom:8px">🐕 <span id="dog-name">Yuki</span></div>
+<div style="text-align:center;font-size:12px;color:#8a8" id="dog-breed">Siberian Husky</div>
+<div style="margin-top:10px">
+<div class="stat">🏃 Speed <div class="stat-bar"><div class="stat-fill" id="stat-speed" style="width:80%;background:#0af"></div></div></div>
+<div class="stat">🦘 Agility <div class="stat-bar"><div class="stat-fill" id="stat-agility" style="width:75%;background:#0f0"></div></div></div>
+<div class="stat">💪 Stamina <div class="stat-bar"><div class="stat-fill" id="stat-stamina" style="width:85%;background:#fa0"></div></div></div>
+<div class="stat">🧠 Focus <div class="stat-bar"><div class="stat-fill" id="stat-focus" style="width:70%;background:#f0f"></div></div></div>
+</div>
+<div style="margin-top:10px;font-size:11px;color:#afa">
+Energy: <span id="energy">100</span>%
+<div class="stat-bar" style="margin-top:4px"><div class="stat-fill" id="energy-bar" style="width:100%;background:linear-gradient(90deg,#f00,#ff0,#0f0)"></div></div>
+</div>
+</div>
+
+<!-- Breed Selection -->
+<div class="panel" style="top:10px;right:10px;width:180px;max-height:400px;overflow-y:auto">
+<div style="text-align:center;font-size:14px;margin-bottom:8px">🐾 Select Breed</div>
+<div id="breed-list"></div>
+</div>
+
+<!-- Course Info -->
+<div class="panel" style="bottom:10px;left:10px;width:200px">
+<div style="text-align:center;font-size:14px;margin-bottom:8px">🏆 Course Info</div>
+<div style="font-size:11px">
+<div>Obstacles: <span id="obstacles-done">0</span>/<span id="obstacles-total">0</span></div>
+<div>Faults: <span id="faults" style="color:#f44">0</span></div>
+<div>Best Time: <span id="best-time" class="trophy">--:--</span></div>
+</div>
+<div style="margin-top:10px">
+<button onclick="G.startRun()">▶️ Start Run</button>
+<button onclick="G.resetCourse()">🔄 Reset</button>
+</div>
+</div>
+
+<!-- Controls -->
+<div class="panel" style="bottom:10px;right:10px;width:180px">
+<div style="text-align:center;font-size:14px;margin-bottom:8px">🎮 Controls</div>
+<div style="font-size:10px;color:#afa">
+<div><span style="color:#0f0">WASD</span> - Move dog</div>
+<div><span style="color:#0f0">SPACE</span> - Jump</div>
+<div><span style="color:#0f0">SHIFT</span> - Sprint</div>
+<div><span style="color:#0f0">E</span> - Bark/Encourage</div>
+<div><span style="color:#0f0">1-3</span> - Camera views</div>
+</div>
+<div style="margin-top:8px">
+<button onclick="G.toggleView()">📷 View</button>
+<button onclick="G.bark()">🔊 Bark!</button>
+</div>
+</div>
+
+<script>
+const BREEDS = [
+  {id:'husky',name:'Siberian Husky',icon:'🐺',color:0xaabbcc,speed:80,agility:75,stamina:85,focus:70,size:1},
+  {id:'border',name:'Border Collie',icon:'🐕',color:0x111111,speed:85,agility:95,stamina:80,focus:95,size:0.9},
+  {id:'golden',name:'Golden Retriever',icon:'🦮',color:0xdaa520,speed:70,agility:70,stamina:90,focus:85,size:1.1},
+  {id:'german',name:'German Shepherd',icon:'🐕‍🦺',color:0x8b4513,speed:82,agility:80,stamina:85,focus:90,size:1.1},
+  {id:'poodle',name:'Standard Poodle',icon:'🐩',color:0xffffff,speed:75,agility:88,stamina:75,focus:92,size:0.95},
+  {id:'aussie',name:'Australian Shepherd',icon:'🐶',color:0x4a3728,speed:83,agility:90,stamina:82,focus:88,size:0.95},
+  {id:'beagle',name:'Beagle',icon:'🐕',color:0xd2691e,speed:72,agility:78,stamina:88,focus:60,size:0.7},
+  {id:'shiba',name:'Shiba Inu',icon:'🐕',color:0xffa500,speed:78,agility:82,stamina:75,focus:65,size:0.8},
+  {id:'corgi',name:'Welsh Corgi',icon:'🐕',color:0xdaa520,speed:68,agility:72,stamina:80,focus:80,size:0.6},
+  {id:'dalmatian',name:'Dalmatian',icon:'🐕',color:0xffffff,speed:88,agility:75,stamina:90,focus:72,size:1},
+  {id:'whippet',name:'Whippet',icon:'🐕',color:0xd2b48c,speed:95,agility:85,stamina:65,focus:75,size:0.85},
+  {id:'papillon',name:'Papillon',icon:'🦋',color:0xffffff,speed:70,agility:92,stamina:70,focus:88,size:0.5}
+];
+
+const G = {
+  dog: null,
+  breed: BREEDS[0],
+  dogName: 'Yuki',
+  obstacles: [],
+  running: false,
+  startTime: 0,
+  currentObstacle: 0,
+  faults: 0,
+  energy: 100,
+  bestTime: Infinity,
+  velocity: {x:0,y:0,z:0},
+  onGround: true,
+  input: {},
+  camMode: 0,
+  pawCtx: null,
+
+  init() {
+    this.scene = new THREE.Scene();
+    this.camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 1000);
+    this.renderer = new THREE.WebGLRenderer({canvas: document.getElementById('c'), antialias: true});
+    this.renderer.setSize(innerWidth, innerHeight);
+    this.renderer.setClearColor(0x87ceeb);
+    this.renderer.shadowMap.enabled = true;
+
+    this.pawCtx = document.getElementById('paw-prints').getContext('2d');
+    document.getElementById('paw-prints').width = innerWidth;
+    document.getElementById('paw-prints').height = innerHeight;
+
+    // Lighting
+    this.scene.add(new THREE.AmbientLight(0x606080, 0.6));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+    sun.position.set(50, 100, 50);
+    sun.castShadow = true;
+    sun.shadow.mapSize.width = 2048;
+    sun.shadow.mapSize.height = 2048;
+    sun.shadow.camera.near = 10;
+    sun.shadow.camera.far = 200;
+    sun.shadow.camera.left = -100;
+    sun.shadow.camera.right = 100;
+    sun.shadow.camera.top = 100;
+    sun.shadow.camera.bottom = -100;
+    this.scene.add(sun);
+
+    this.buildArena();
+    this.buildCourse();
+    this.createDog();
+    this.populateBreeds();
+
+    this.camera.position.set(0, 30, 50);
+    this.camera.lookAt(0, 0, 0);
+
+    this.setupInput();
+    this.animate();
+    setInterval(() => this.updateUI(), 100);
+
+    document.getElementById('obstacles-total').textContent = this.obstacles.length;
+  },
+
+  buildArena() {
+    // Ground
+    const groundGeo = new THREE.PlaneGeometry(200, 200);
+    const groundMat = new THREE.MeshPhongMaterial({color: 0x3a5a3a});
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI/2;
+    ground.receiveShadow = true;
+    this.scene.add(ground);
+
+    // Arena grass texture pattern
+    const grassPattern = new THREE.Mesh(
+      new THREE.PlaneGeometry(180, 180),
+      new THREE.MeshPhongMaterial({color: 0x4a7a4a})
+    );
+    grassPattern.rotation.x = -Math.PI/2;
+    grassPattern.position.y = 0.01;
+    this.scene.add(grassPattern);
+
+    // Arena border
+    const borderMat = new THREE.MeshPhongMaterial({color: 0xffffff});
+    for (let i = 0; i < 4; i++) {
+      const border = new THREE.Mesh(new THREE.BoxGeometry(i%2 ? 184 : 4, 1, i%2 ? 4 : 184), borderMat);
+      border.position.set(i<2 ? (i===0?-92:92) : 0, 0.5, i>=2 ? (i===2?-92:92) : 0);
+      this.scene.add(border);
+    }
+
+    // Spectator stands
+    const standMat = new THREE.MeshPhongMaterial({color: 0x8b4513});
+    for (let side = -1; side <= 1; side += 2) {
+      const stand = new THREE.Mesh(new THREE.BoxGeometry(60, 8, 10), standMat);
+      stand.position.set(0, 4, side * 85);
+      stand.castShadow = true;
+      this.scene.add(stand);
+
+      // Crowd (simple colored boxes)
+      for (let i = 0; i < 20; i++) {
+        const person = new THREE.Mesh(
+          new THREE.BoxGeometry(1.5, 3, 1),
+          new THREE.MeshPhongMaterial({color: Math.random() * 0xffffff})
+        );
+        person.position.set(-28 + i * 3, 10, side * 82);
+        this.scene.add(person);
+      }
+    }
+
+    // Decorative elements
+    this.addTrees();
+    this.addFlags();
+  },
+
+  addTrees() {
+    const treeMat = new THREE.MeshPhongMaterial({color: 0x228b22});
+    const trunkMat = new THREE.MeshPhongMaterial({color: 0x8b4513});
+
+    [[-80,-80],[-80,80],[80,-80],[80,80],[-80,0],[80,0]].forEach(([x,z]) => {
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(1, 1.5, 8), trunkMat);
+      trunk.position.set(x, 4, z);
+      trunk.castShadow = true;
+      this.scene.add(trunk);
+
+      const leaves = new THREE.Mesh(new THREE.ConeGeometry(6, 12, 8), treeMat);
+      leaves.position.set(x, 14, z);
+      leaves.castShadow = true;
+      this.scene.add(leaves);
+    });
+  },
+
+  addFlags() {
+    const colors = [0xff0000, 0x0000ff, 0xffff00, 0x00ff00];
+    for (let i = 0; i < 8; i++) {
+      const pole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.2, 0.2, 15),
+        new THREE.MeshPhongMaterial({color: 0xcccccc})
+      );
+      const angle = i * Math.PI / 4;
+      pole.position.set(Math.cos(angle) * 70, 7.5, Math.sin(angle) * 70);
+      this.scene.add(pole);
+
+      const flag = new THREE.Mesh(
+        new THREE.PlaneGeometry(4, 3),
+        new THREE.MeshPhongMaterial({color: colors[i % 4], side: THREE.DoubleSide})
+      );
+      flag.position.set(Math.cos(angle) * 70 + 2, 13, Math.sin(angle) * 70);
+      flag.userData.baseX = flag.position.x;
+      flag.userData.isFlag = true;
+      this.scene.add(flag);
+    }
+  },
+
+  buildCourse() {
+    const course = [
+      {type: 'start', x: -60, z: 0},
+      {type: 'hurdle', x: -45, z: 0, h: 2},
+      {type: 'hurdle', x: -35, z: 0, h: 2.5},
+      {type: 'weave', x: -20, z: 0, count: 6},
+      {type: 'tunnel', x: 0, z: 0, rot: 0},
+      {type: 'aframe', x: 20, z: 0},
+      {type: 'tire', x: 35, z: 5},
+      {type: 'seesaw', x: 50, z: 0},
+      {type: 'hurdle', x: 60, z: -10, h: 2},
+      {type: 'pause', x: 65, z: -25},
+      {type: 'finish', x: 60, z: -40}
+    ];
+
+    course.forEach((obs, idx) => {
+      const obstacle = this.createObstacle(obs);
+      if (obstacle) {
+        obstacle.userData = {...obs, index: idx, cleared: false};
+        this.obstacles.push(obstacle);
+      }
+    });
+  },
+
+  createObstacle(obs) {
+    const group = new THREE.Group();
+    const poleMat = new THREE.MeshPhongMaterial({color: 0xffffff});
+    const redMat = new THREE.MeshPhongMaterial({color: 0xff0000});
+    const blueMat = new THREE.MeshPhongMaterial({color: 0x0044ff});
+    const yellowMat = new THREE.MeshPhongMaterial({color: 0xffdd00});
+
+    switch(obs.type) {
+      case 'start':
+      case 'finish':
+        // Start/Finish gate
+        const gateColor = obs.type === 'start' ? 0x00ff00 : 0xff0000;
+        const gateMat = new THREE.MeshPhongMaterial({color: gateColor});
+        const leftPost = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 8), gateMat);
+        leftPost.position.set(-3, 4, 0);
+        group.add(leftPost);
+        const rightPost = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 8), gateMat);
+        rightPost.position.set(3, 4, 0);
+        group.add(rightPost);
+        const banner = new THREE.Mesh(new THREE.BoxGeometry(7, 1.5, 0.2), gateMat);
+        banner.position.set(0, 8.5, 0);
+        group.add(banner);
+        group.userData.radius = 4;
+        break;
+
+      case 'hurdle':
+        const h = obs.h || 2;
+        const lPole = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, h + 2), poleMat);
+        lPole.position.set(-2.5, (h + 2) / 2, 0);
+        group.add(lPole);
+        const rPole = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, h + 2), poleMat);
+        rPole.position.set(2.5, (h + 2) / 2, 0);
+        group.add(rPole);
+        // Striped bar
+        for (let i = 0; i < 5; i++) {
+          const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 1), i % 2 ? redMat : poleMat);
+          bar.rotation.z = Math.PI / 2;
+          bar.position.set(-2 + i, h, 0);
+          group.add(bar);
+        }
+        group.userData.jumpHeight = h;
+        group.userData.radius = 3;
+        break;
+
+      case 'weave':
+        const count = obs.count || 6;
+        for (let i = 0; i < count; i++) {
+          const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 4), i % 2 ? blueMat : yellowMat);
+          pole.position.set(i * 2 - count, 2, 0);
+          group.add(pole);
+        }
+        group.userData.poleCount = count;
+        group.userData.radius = count * 1.2;
+        break;
+
+      case 'tunnel':
+        const tunnelGeo = new THREE.CylinderGeometry(2, 2, 10, 16, 1, true);
+        const tunnelMat = new THREE.MeshPhongMaterial({color: 0x4444ff, side: THREE.DoubleSide});
+        const tunnel = new THREE.Mesh(tunnelGeo, tunnelMat);
+        tunnel.rotation.z = Math.PI / 2;
+        tunnel.position.y = 2;
+        group.add(tunnel);
+        // Entrance rings
+        [[-5, 0x00ff00], [5, 0xff0000]].forEach(([x, c]) => {
+          const ring = new THREE.Mesh(
+            new THREE.TorusGeometry(2.2, 0.2, 8, 16),
+            new THREE.MeshPhongMaterial({color: c})
+          );
+          ring.position.set(x, 2, 0);
+          ring.rotation.y = Math.PI / 2;
+          group.add(ring);
+        });
+        group.userData.radius = 6;
+        break;
+
+      case 'aframe':
+        const plankMat = new THREE.MeshPhongMaterial({color: 0xffaa00});
+        const plank1 = new THREE.Mesh(new THREE.BoxGeometry(4, 0.3, 8), plankMat);
+        plank1.rotation.x = Math.PI / 6;
+        plank1.position.set(0, 2, -2);
+        group.add(plank1);
+        const plank2 = new THREE.Mesh(new THREE.BoxGeometry(4, 0.3, 8), plankMat);
+        plank2.rotation.x = -Math.PI / 6;
+        plank2.position.set(0, 2, 2);
+        group.add(plank2);
+        // Grip slats
+        for (let i = -3; i <= 3; i++) {
+          const slat = new THREE.Mesh(new THREE.BoxGeometry(4, 0.1, 0.3), redMat);
+          slat.position.set(0, 2.5 + Math.abs(i) * 0.15, i * 1.2);
+          slat.rotation.x = i < 0 ? Math.PI / 6 : -Math.PI / 6;
+          group.add(slat);
+        }
+        group.userData.radius = 5;
+        break;
+
+      case 'tire':
+        const tireFrame = new THREE.Mesh(new THREE.BoxGeometry(0.3, 6, 0.3), poleMat);
+        tireFrame.position.set(-2, 3, 0);
+        group.add(tireFrame);
+        const tireFrame2 = tireFrame.clone();
+        tireFrame2.position.x = 2;
+        group.add(tireFrame2);
+        const tireTop = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.3, 0.3), poleMat);
+        tireTop.position.set(0, 6, 0);
+        group.add(tireTop);
+        const tire = new THREE.Mesh(
+          new THREE.TorusGeometry(1.2, 0.4, 16, 32),
+          new THREE.MeshPhongMaterial({color: 0x333333})
+        );
+        tire.position.set(0, 3.5, 0);
+        group.add(tire);
+        group.userData.jumpHeight = 2.5;
+        group.userData.radius = 3;
+        break;
+
+      case 'seesaw':
+        const baseSeesaw = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 4), new THREE.MeshPhongMaterial({color: 0x666666}));
+        baseSeesaw.position.y = 0.5;
+        group.add(baseSeesaw);
+        const plankSeesaw = new THREE.Mesh(new THREE.BoxGeometry(3, 0.3, 12), yellowMat);
+        plankSeesaw.position.y = 1.2;
+        plankSeesaw.userData.isSeesaw = true;
+        group.add(plankSeesaw);
+        group.userData.radius = 7;
+        break;
+
+      case 'pause':
+        const pauseTable = new THREE.Mesh(new THREE.BoxGeometry(4, 0.5, 4), new THREE.MeshPhongMaterial({color: 0xff8800}));
+        pauseTable.position.y = 0.25;
+        group.add(pauseTable);
+        group.userData.radius = 3;
+        break;
+    }
+
+    group.position.set(obs.x, 0, obs.z);
+    if (obs.rot) group.rotation.y = obs.rot;
+    group.castShadow = true;
+    this.scene.add(group);
+    return group;
+  },
+
+  createDog() {
+    if (this.dog) this.scene.remove(this.dog);
+
+    const breed = this.breed;
+    const scale = breed.size;
+    this.dog = new THREE.Group();
+
+    // Body
+    const bodyMat = new THREE.MeshPhongMaterial({color: breed.color});
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.8 * scale, 1.2 * scale, 3 * scale), bodyMat);
+    body.position.y = 1.5 * scale;
+    body.castShadow = true;
+    this.dog.add(body);
+    this.dog.userData.body = body;
+
+    // Head
+    const head = new THREE.Mesh(new THREE.BoxGeometry(1.2 * scale, 1 * scale, 1.2 * scale), bodyMat);
+    head.position.set(0, 2 * scale, 1.8 * scale);
+    head.castShadow = true;
+    this.dog.add(head);
+    this.dog.userData.head = head;
+
+    // Snout
+    const snoutMat = new THREE.MeshPhongMaterial({color: breed.id === 'husky' ? 0xffffff : breed.color});
+    const snout = new THREE.Mesh(new THREE.BoxGeometry(0.6 * scale, 0.5 * scale, 0.8 * scale), snoutMat);
+    snout.position.set(0, 1.7 * scale, 2.5 * scale);
+    this.dog.add(snout);
+
+    // Nose
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.15 * scale), new THREE.MeshPhongMaterial({color: 0x222222}));
+    nose.position.set(0, 1.8 * scale, 2.9 * scale);
+    this.dog.add(nose);
+
+    // Eyes
+    const eyeMat = new THREE.MeshPhongMaterial({color: breed.id === 'husky' ? 0x4488ff : 0x442200});
+    [-0.35, 0.35].forEach(x => {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.15 * scale), eyeMat);
+      eye.position.set(x * scale, 2.2 * scale, 2.3 * scale);
+      this.dog.add(eye);
+    });
+
+    // Ears
+    const earShape = breed.id === 'husky' || breed.id === 'german' || breed.id === 'shiba' ?
+      new THREE.ConeGeometry(0.3 * scale, 0.6 * scale, 4) :
+      new THREE.BoxGeometry(0.3 * scale, 0.6 * scale, 0.15 * scale);
+    [-0.4, 0.4].forEach(x => {
+      const ear = new THREE.Mesh(earShape, bodyMat);
+      ear.position.set(x * scale, 2.7 * scale, 1.5 * scale);
+      if (breed.id !== 'husky' && breed.id !== 'german' && breed.id !== 'shiba') {
+        ear.rotation.z = x * 0.5;
+        ear.position.y = 2.3 * scale;
+      }
+      this.dog.add(ear);
+    });
+
+    // Legs
+    const legMat = new THREE.MeshPhongMaterial({color: breed.color});
+    [[-0.6, 1], [0.6, 1], [-0.6, -1], [0.6, -1]].forEach(([x, z], i) => {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.2 * scale, 0.2 * scale, 1.2 * scale), legMat);
+      leg.position.set(x * scale, 0.6 * scale, z * scale);
+      leg.castShadow = true;
+      leg.userData.isLeg = true;
+      leg.userData.legIndex = i;
+      this.dog.add(leg);
+    });
+
+    // Tail
+    const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * scale, 0.15 * scale, 1 * scale), bodyMat);
+    tail.position.set(0, 1.8 * scale, -1.8 * scale);
+    tail.rotation.x = -0.5;
+    tail.userData.isTail = true;
+    this.dog.add(tail);
+    this.dog.userData.tail = tail;
+
+    // Collar
+    const collar = new THREE.Mesh(
+      new THREE.TorusGeometry(0.5 * scale, 0.1 * scale, 8, 16),
+      new THREE.MeshPhongMaterial({color: 0xff0000})
+    );
+    collar.position.set(0, 2 * scale, 1.5 * scale);
+    collar.rotation.x = Math.PI / 2;
+    this.dog.add(collar);
+
+    // Tag
+    const tag = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.15 * scale, 0.15 * scale, 0.05 * scale),
+      new THREE.MeshPhongMaterial({color: 0xffd700})
+    );
+    tag.position.set(0, 1.7 * scale, 2 * scale);
+    this.dog.add(tag);
+
+    this.dog.position.set(-60, 0, 0);
+    this.scene.add(this.dog);
+
+    this.velocity = {x: 0, y: 0, z: 0};
+    this.onGround = true;
+  },
+
+  populateBreeds() {
+    const list = document.getElementById('breed-list');
+    list.innerHTML = BREEDS.map((b, i) => `
+      <div class="breed-card ${i===0?'selected':''}" onclick="G.selectBreed(${i})">
+        <div class="breed-icon">${b.icon}</div>
+        <div style="font-size:10px;text-align:center">${b.name}</div>
+      </div>
+    `).join('');
+  },
+
+  selectBreed(idx) {
+    this.breed = BREEDS[idx];
+    document.querySelectorAll('.breed-card').forEach((c, i) => c.classList.toggle('selected', i === idx));
+    document.getElementById('dog-breed').textContent = this.breed.name;
+    document.getElementById('stat-speed').style.width = this.breed.speed + '%';
+    document.getElementById('stat-agility').style.width = this.breed.agility + '%';
+    document.getElementById('stat-stamina').style.width = this.breed.stamina + '%';
+    document.getElementById('stat-focus').style.width = this.breed.focus + '%';
+    this.createDog();
+    this.resetCourse();
+  },
+
+  setupInput() {
+    window.addEventListener('keydown', e => this.onKey(e, true));
+    window.addEventListener('keyup', e => this.onKey(e, false));
+  },
+
+  onKey(e, down) {
+    const k = e.code;
+    if (down) {
+      if (k === 'Space') { e.preventDefault(); this.jump(); }
+      if (k === 'KeyE') this.bark();
+      if (k === 'Digit1') this.camMode = 0;
+      if (k === 'Digit2') this.camMode = 1;
+      if (k === 'Digit3') this.camMode = 2;
+    }
+    this.input[k] = down;
+  },
+
+  jump() {
+    if (this.onGround && this.energy > 5) {
+      const jumpPower = 0.4 + (this.breed.agility / 100) * 0.15;
+      this.velocity.y = jumpPower;
+      this.onGround = false;
+      this.energy -= 3;
+    }
+  },
+
+  bark() {
+    this.showMessage('🐕 WOOF! WOOF!', '#ffa500');
+    // Energy boost from encouragement
+    this.energy = Math.min(100, this.energy + 5);
+  },
+
+  startRun() {
+    if (this.running) return;
+    this.running = true;
+    this.startTime = Date.now();
+    this.currentObstacle = 0;
+    this.faults = 0;
+    this.obstacles.forEach(o => o.userData.cleared = false);
+    this.showMessage('🏁 GO!', '#00ff00');
+  },
+
+  resetCourse() {
+    this.running = false;
+    this.dog.position.set(-60, 0, 0);
+    this.dog.rotation.y = 0;
+    this.velocity = {x: 0, y: 0, z: 0};
+    this.energy = 100;
+    this.currentObstacle = 0;
+    this.faults = 0;
+    this.obstacles.forEach(o => o.userData.cleared = false);
+    document.getElementById('timer').textContent = '0:00.00';
+    document.getElementById('obstacle-indicator').textContent = '🏁 Ready to Start!';
+    this.pawCtx.clearRect(0, 0, innerWidth, innerHeight);
+  },
+
+  toggleView() {
+    this.camMode = (this.camMode + 1) % 3;
+  },
+
+  showMessage(text, color = '#fff') {
+    const msg = document.getElementById('message');
+    msg.textContent = text;
+    msg.style.color = color;
+    msg.style.opacity = 1;
+    setTimeout(() => msg.style.opacity = 0, 1500);
+  },
+
+  updateDog(dt) {
+    const speed = 0.15 * (this.breed.speed / 80);
+    const sprint = this.input.ShiftLeft && this.energy > 0 ? 1.8 : 1;
+
+    let moveX = 0, moveZ = 0;
+    if (this.input.KeyW) moveZ -= speed * sprint;
+    if (this.input.KeyS) moveZ += speed * sprint;
+    if (this.input.KeyA) moveX -= speed * sprint;
+    if (this.input.KeyD) moveX += speed * sprint;
+
+    if (sprint > 1 && (moveX || moveZ)) {
+      this.energy -= 0.15;
+    }
+
+    // Regenerate energy slowly
+    if (!this.input.ShiftLeft) {
+      this.energy = Math.min(100, this.energy + 0.03 * (this.breed.stamina / 80));
+    }
+
+    this.velocity.x += moveX;
+    this.velocity.z += moveZ;
+    this.velocity.x *= 0.9;
+    this.velocity.z *= 0.9;
+
+    // Gravity
+    this.velocity.y -= 0.015;
+
+    this.dog.position.x += this.velocity.x;
+    this.dog.position.y += this.velocity.y;
+    this.dog.position.z += this.velocity.z;
+
+    // Ground collision
+    if (this.dog.position.y < 0) {
+      this.dog.position.y = 0;
+      this.velocity.y = 0;
+      this.onGround = true;
+    }
+
+    // Arena bounds
+    this.dog.position.x = Math.max(-90, Math.min(90, this.dog.position.x));
+    this.dog.position.z = Math.max(-90, Math.min(90, this.dog.position.z));
+
+    // Face movement direction
+    if (Math.abs(this.velocity.x) > 0.01 || Math.abs(this.velocity.z) > 0.01) {
+      const targetAngle = Math.atan2(this.velocity.x, this.velocity.z);
+      this.dog.rotation.y += (targetAngle - this.dog.rotation.y) * 0.15;
+    }
+
+    // Animate dog parts
+    const time = Date.now() * 0.01;
+    const moving = Math.abs(this.velocity.x) > 0.01 || Math.abs(this.velocity.z) > 0.01;
+
+    this.dog.children.forEach(child => {
+      if (child.userData.isLeg) {
+        const phase = child.userData.legIndex < 2 ? 0 : Math.PI;
+        const side = child.userData.legIndex % 2 ? 1 : -1;
+        child.rotation.x = moving ? Math.sin(time + phase) * 0.5 : 0;
+      }
+      if (child.userData.isTail) {
+        child.rotation.z = Math.sin(time * 0.5) * 0.3;
+        if (moving) child.rotation.z *= 1.5;
+      }
+    });
+
+    // Bob head slightly when moving
+    if (this.dog.userData.head) {
+      this.dog.userData.head.position.y = 2 * this.breed.size + (moving ? Math.sin(time) * 0.05 : 0);
+    }
+  },
+
+  checkObstacles() {
+    if (!this.running) return;
+
+    this.obstacles.forEach((obs, idx) => {
+      if (obs.userData.cleared) return;
+
+      const dx = this.dog.position.x - obs.position.x;
+      const dz = this.dog.position.z - obs.position.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      const radius = obs.userData.radius || 3;
+
+      if (dist < radius) {
+        const type = obs.userData.type;
+
+        if (type === 'hurdle' || type === 'tire') {
+          if (this.dog.position.y > (obs.userData.jumpHeight || 2) - 0.5) {
+            obs.userData.cleared = true;
+            this.showMessage('✓ Good jump!', '#00ff00');
+          } else if (this.onGround) {
+            this.faults++;
+            obs.userData.cleared = true;
+            this.showMessage('✗ Knocked bar!', '#ff4444');
+          }
+        } else if (type === 'start') {
+          obs.userData.cleared = true;
+        } else if (type === 'finish') {
+          if (!obs.userData.cleared) {
+            obs.userData.cleared = true;
+            this.finishRun();
+          }
+        } else {
+          obs.userData.cleared = true;
+          this.showMessage(`✓ ${type.charAt(0).toUpperCase() + type.slice(1)}!`, '#00ff00');
+        }
+      }
+    });
+  },
+
+  finishRun() {
+    this.running = false;
+    const time = (Date.now() - this.startTime) / 1000;
+    const finalTime = time + this.faults * 5;
+
+    if (finalTime < this.bestTime) {
+      this.bestTime = finalTime;
+      document.getElementById('best-time').textContent = this.formatTime(finalTime);
+      this.showMessage('🏆 NEW BEST TIME! 🏆', '#ffd700');
+    } else {
+      this.showMessage(`🎉 Finished: ${this.formatTime(finalTime)}`, '#00ff00');
+    }
+  },
+
+  formatTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = (seconds % 60).toFixed(2);
+    return `${mins}:${secs.padStart(5, '0')}`;
+  },
+
+  updateCamera() {
+    const dogPos = this.dog.position;
+
+    switch(this.camMode) {
+      case 0: // Follow cam
+        const followDist = 25;
+        const targetX = dogPos.x - Math.sin(this.dog.rotation.y) * followDist;
+        const targetZ = dogPos.z - Math.cos(this.dog.rotation.y) * followDist;
+        this.camera.position.x += (targetX - this.camera.position.x) * 0.05;
+        this.camera.position.y += (15 - this.camera.position.y) * 0.05;
+        this.camera.position.z += (targetZ - this.camera.position.z) * 0.05;
+        this.camera.lookAt(dogPos.x, dogPos.y + 2, dogPos.z);
+        break;
+      case 1: // Top-down
+        this.camera.position.set(dogPos.x, 50, dogPos.z + 20);
+        this.camera.lookAt(dogPos);
+        break;
+      case 2: // Side view
+        this.camera.position.set(dogPos.x + 30, 10, dogPos.z);
+        this.camera.lookAt(dogPos);
+        break;
+    }
+  },
+
+  updateUI() {
+    if (this.running) {
+      const time = (Date.now() - this.startTime) / 1000;
+      document.getElementById('timer').textContent = this.formatTime(time);
+    }
+
+    const cleared = this.obstacles.filter(o => o.userData.cleared).length;
+    document.getElementById('obstacles-done').textContent = cleared;
+    document.getElementById('faults').textContent = this.faults;
+    document.getElementById('energy').textContent = Math.round(this.energy);
+    document.getElementById('energy-bar').style.width = this.energy + '%';
+
+    // Update obstacle indicator
+    const next = this.obstacles.find(o => !o.userData.cleared);
+    if (next) {
+      document.getElementById('obstacle-indicator').textContent =
+        `Next: ${next.userData.type.toUpperCase()} →`;
+    }
+  },
+
+  animate() {
+    requestAnimationFrame(() => this.animate());
+
+    this.updateDog(16);
+    this.checkObstacles();
+    this.updateCamera();
+
+    // Animate flags
+    const time = Date.now() * 0.002;
+    this.scene.children.forEach(obj => {
+      if (obj.userData?.isFlag) {
+        obj.position.x = obj.userData.baseX + Math.sin(time + obj.position.z) * 0.5;
+      }
+    });
+
+    this.renderer.render(this.scene, this.camera);
+  }
+};
+
+onload = () => G.init();
+onresize = () => {
+  G.renderer.setSize(innerWidth, innerHeight);
+  G.camera.aspect = innerWidth / innerHeight;
+  G.camera.updateProjectionMatrix();
+  G.pawCtx.canvas.width = innerWidth;
+  G.pawCtx.canvas.height = innerHeight;
+};
+</script></body></html>
