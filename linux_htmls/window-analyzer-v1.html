@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>Window Analyzer - Measure & Diagnose</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);color:#fff;min-height:100vh;overflow-x:hidden}
+#c{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;opacity:0.3}
+.app{position:relative;z-index:1;padding:20px;max-width:1400px;margin:0 auto}
+h1{text-align:center;font-size:28px;margin-bottom:20px;text-shadow:0 2px 10px rgba(0,150,255,0.5)}
+h1 span{color:#00d4ff}
+.main-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.panel{background:rgba(255,255,255,0.08);backdrop-filter:blur(15px);border-radius:16px;padding:20px;border:1px solid rgba(255,255,255,0.1)}
+.panel h2{font-size:16px;margin-bottom:15px;color:#00d4ff;display:flex;align-items:center;gap:8px}
+.capture-zone{border:3px dashed rgba(0,212,255,0.4);border-radius:12px;padding:40px;text-align:center;cursor:pointer;transition:all 0.3s;min-height:300px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden}
+.capture-zone:hover{border-color:#00d4ff;background:rgba(0,212,255,0.1)}
+.capture-zone.has-image{padding:0;border-style:solid}
+#preview{max-width:100%;max-height:400px;border-radius:8px;display:none}
+#preview.show{display:block}
+.capture-icon{font-size:64px;margin-bottom:15px}
+.capture-text{color:#aaa;font-size:14px}
+.btn-row{display:flex;gap:10px;margin-top:15px;flex-wrap:wrap;justify-content:center}
+button{background:linear-gradient(135deg,#00d4ff,#0099cc);color:#fff;border:none;padding:12px 24px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;transition:all 0.3s;display:flex;align-items:center;gap:6px}
+button:hover{transform:translateY(-2px);box-shadow:0 5px 20px rgba(0,212,255,0.4)}
+button:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+button.secondary{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2)}
+button.secondary:hover{background:rgba(255,255,255,0.2)}
+button.danger{background:linear-gradient(135deg,#ff4757,#cc0022)}
+#fileInput,#cameraInput{display:none}
+.ref-input{display:flex;gap:10px;align-items:center;margin-top:15px;flex-wrap:wrap}
+.ref-input label{font-size:13px;color:#aaa}
+.ref-input input{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:8px 12px;color:#fff;width:80px;font-size:14px}
+.ref-input select{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:8px 12px;color:#fff;font-size:14px}
+.results{display:none}
+.results.show{display:block}
+.result-card{background:rgba(0,0,0,0.3);border-radius:10px;padding:15px;margin-bottom:12px}
+.result-card h3{font-size:14px;color:#00d4ff;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.measurements{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.measure-item{background:rgba(255,255,255,0.05);padding:12px;border-radius:8px;text-align:center}
+.measure-value{font-size:24px;font-weight:700;color:#00d4ff}
+.measure-label{font-size:11px;color:#888;margin-top:4px}
+.window-type{display:flex;align-items:center;gap:15px}
+.type-icon{font-size:48px}
+.type-info h4{font-size:18px;margin-bottom:5px}
+.type-info p{font-size:13px;color:#aaa}
+.confidence{display:inline-block;background:#00d4ff;color:#000;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;margin-left:8px}
+.problems-list{list-style:none}
+.problems-list li{padding:10px;margin-bottom:8px;border-radius:8px;display:flex;align-items:flex-start;gap:10px;font-size:13px}
+.problems-list li.critical{background:rgba(255,71,87,0.2);border-left:3px solid #ff4757}
+.problems-list li.warning{background:rgba(255,165,0,0.2);border-left:3px solid #ffa500}
+.problems-list li.minor{background:rgba(255,255,0,0.2);border-left:3px solid #ffff00}
+.problems-list li.good{background:rgba(0,255,100,0.2);border-left:3px solid #00ff64}
+.problem-icon{font-size:20px}
+.specs-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.spec-item{background:rgba(255,255,255,0.05);padding:10px;border-radius:6px}
+.spec-label{font-size:11px;color:#888}
+.spec-value{font-size:14px;font-weight:600;margin-top:2px}
+.window-types-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:15px}
+.type-card{background:rgba(255,255,255,0.05);padding:15px;border-radius:10px;text-align:center;cursor:pointer;transition:all 0.3s;border:2px solid transparent}
+.type-card:hover{background:rgba(0,212,255,0.1);border-color:rgba(0,212,255,0.3)}
+.type-card.selected{border-color:#00d4ff;background:rgba(0,212,255,0.2)}
+.type-card .icon{font-size:32px;margin-bottom:8px}
+.type-card .name{font-size:12px;font-weight:600}
+.analysis-progress{display:none;text-align:center;padding:40px}
+.analysis-progress.show{display:block}
+.spinner{width:60px;height:60px;border:4px solid rgba(0,212,255,0.2);border-top-color:#00d4ff;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 20px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.quote-section{margin-top:15px;padding:15px;background:rgba(0,212,255,0.1);border-radius:10px}
+.quote-section h4{font-size:14px;margin-bottom:10px}
+.quote-range{font-size:28px;font-weight:700;color:#00d4ff}
+.quote-note{font-size:12px;color:#aaa;margin-top:5px}
+.drawing-canvas{position:absolute;top:0;left:0;width:100%;height:100%;cursor:crosshair;display:none}
+.drawing-canvas.active{display:block}
+.toolbar{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.toolbar button{padding:8px 12px;font-size:12px}
+.measure-line{position:absolute;background:#00d4ff;height:3px;transform-origin:left center;pointer-events:none}
+.measure-point{position:absolute;width:12px;height:12px;background:#00d4ff;border-radius:50%;transform:translate(-50%,-50%);pointer-events:none;box-shadow:0 0 10px #00d4ff}
+.measure-label-overlay{position:absolute;background:rgba(0,0,0,0.8);color:#00d4ff;padding:4px 8px;border-radius:4px;font-size:12px;font-weight:600;transform:translate(-50%,-50%);pointer-events:none}
+.tabs{display:flex;gap:5px;margin-bottom:15px;flex-wrap:wrap}
+.tab{padding:10px 20px;background:rgba(255,255,255,0.1);border:none;color:#fff;border-radius:8px 8px 0 0;cursor:pointer;font-size:13px;transition:all 0.3s}
+.tab.active{background:#00d4ff;color:#000}
+.tab-content{display:none}
+.tab-content.active{display:block}
+.education-card{background:rgba(255,255,255,0.05);padding:15px;border-radius:10px;margin-bottom:10px}
+.education-card h4{font-size:14px;color:#00d4ff;margin-bottom:8px}
+.education-card p{font-size:13px;color:#ccc;line-height:1.5}
+.history-item{display:flex;gap:15px;padding:15px;background:rgba(255,255,255,0.05);border-radius:10px;margin-bottom:10px;align-items:center}
+.history-thumb{width:80px;height:60px;border-radius:6px;object-fit:cover;background:#333}
+.history-info{flex:1}
+.history-info h4{font-size:14px;margin-bottom:4px}
+.history-info p{font-size:12px;color:#888}
+@media(max-width:1024px){.main-grid{grid-template-columns:1fr}.window-types-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:768px){.app{padding:10px}h1{font-size:22px}.panel{padding:15px}.measurements{grid-template-columns:1fr}.specs-grid{grid-template-columns:1fr}.window-types-grid{grid-template-columns:repeat(2,1fr)}button{padding:10px 16px;font-size:13px;min-height:44px}.capture-zone{min-height:250px;padding:30px}}
+@media(max-width:480px){h1{font-size:18px}.type-card .icon{font-size:24px}.type-card .name{font-size:11px}.measure-value{font-size:20px}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="app">
+<h1>🪟 Window <span>Analyzer</span></h1>
+
+<div class="main-grid">
+<div class="panel">
+<h2>📸 Capture Window</h2>
+<div class="capture-zone" id="captureZone">
+<img id="preview" alt="Window preview">
+<canvas class="drawing-canvas" id="drawingCanvas"></canvas>
+<div id="capturePrompt">
+<div class="capture-icon">📷</div>
+<div class="capture-text">Take a photo or upload an image of your window</div>
+<div class="btn-row">
+<button onclick="document.getElementById('cameraInput').click()">📱 Camera</button>
+<button onclick="document.getElementById('fileInput').click()" class="secondary">📁 Upload</button>
+</div>
+</div>
+</div>
+<input type="file" id="fileInput" accept="image/*">
+<input type="file" id="cameraInput" accept="image/*" capture="environment">
+
+<div class="ref-input">
+<label>Reference Size:</label>
+<select id="refType">
+<option value="none">Auto-detect</option>
+<option value="brick">Standard Brick (8")</option>
+<option value="siding">Siding Panel (12")</option>
+<option value="ruler">Ruler in Photo</option>
+<option value="custom">Custom Reference</option>
+</select>
+<input type="number" id="refSize" placeholder="inches" style="display:none">
+</div>
+
+<div class="toolbar" id="toolbar" style="display:none">
+<button onclick="startMeasure()">📏 Measure</button>
+<button onclick="markProblem()">⚠️ Mark Issue</button>
+<button onclick="clearOverlays()">🗑️ Clear</button>
+<button onclick="analyzeWindow()" class="secondary">🔍 Re-analyze</button>
+</div>
+
+<div class="analysis-progress" id="analysisProgress">
+<div class="spinner"></div>
+<p>Analyzing window...</p>
+</div>
+</div>
+
+<div class="panel">
+<div class="tabs">
+<button class="tab active" onclick="showTab('results')">📊 Results</button>
+<button class="tab" onclick="showTab('types')">🪟 Types</button>
+<button class="tab" onclick="showTab('learn')">📚 Learn</button>
+<button class="tab" onclick="showTab('history')">📋 History</button>
+</div>
+
+<div class="tab-content active" id="resultsTab">
+<div class="results" id="results">
+<div class="result-card">
+<h3>📐 Measurements</h3>
+<div class="measurements" id="measurements">
+<div class="measure-item"><div class="measure-value" id="mWidth">--</div><div class="measure-label">Width (inches)</div></div>
+<div class="measure-item"><div class="measure-value" id="mHeight">--</div><div class="measure-label">Height (inches)</div></div>
+<div class="measure-item"><div class="measure-value" id="mArea">--</div><div class="measure-label">Sq. Feet</div></div>
+<div class="measure-item"><div class="measure-value" id="mPanes">--</div><div class="measure-label">Panes</div></div>
+</div>
+</div>
+
+<div class="result-card">
+<h3>🪟 Window Type</h3>
+<div class="window-type" id="windowType">
+<div class="type-icon">🪟</div>
+<div class="type-info">
+<h4>Double-Hung<span class="confidence">92%</span></h4>
+<p>Traditional style with two operable sashes that slide vertically</p>
+</div>
+</div>
+</div>
+
+<div class="result-card">
+<h3>🔧 Specifications</h3>
+<div class="specs-grid" id="specs">
+<div class="spec-item"><div class="spec-label">Frame Material</div><div class="spec-value">Vinyl</div></div>
+<div class="spec-item"><div class="spec-label">Glass Type</div><div class="spec-value">Double-pane</div></div>
+<div class="spec-item"><div class="spec-label">Grid Pattern</div><div class="spec-value">Colonial (6-over-6)</div></div>
+<div class="spec-item"><div class="spec-label">Estimated Age</div><div class="spec-value">10-15 years</div></div>
+</div>
+</div>
+
+<div class="result-card">
+<h3>⚠️ Issues Detected</h3>
+<ul class="problems-list" id="problems">
+<li class="warning"><span class="problem-icon">💧</span><div><strong>Seal Failure</strong><br>Moisture between panes indicates broken seal. Affects insulation.</div></li>
+</ul>
+</div>
+
+<div class="quote-section">
+<h4>💰 Replacement Estimate</h4>
+<div class="quote-range" id="quoteRange">$350 - $650</div>
+<div class="quote-note">Based on standard installation. Actual costs vary by location and contractor.</div>
+</div>
+</div>
+
+<div id="noResults" style="text-align:center;padding:60px 20px;color:#888">
+<div style="font-size:64px;margin-bottom:15px">🪟</div>
+<p>Upload or capture a window image to begin analysis</p>
+</div>
+</div>
+
+<div class="tab-content" id="typesTab">
+<h3 style="margin-bottom:15px">Common Window Types</h3>
+<div class="window-types-grid">
+<div class="type-card" onclick="selectType(this,'double-hung')"><div class="icon">⬆️⬇️</div><div class="name">Double-Hung</div></div>
+<div class="type-card" onclick="selectType(this,'single-hung')"><div class="icon">⬆️</div><div class="name">Single-Hung</div></div>
+<div class="type-card" onclick="selectType(this,'casement')"><div class="icon">↔️</div><div class="name">Casement</div></div>
+<div class="type-card" onclick="selectType(this,'awning')"><div class="icon">⤴️</div><div class="name">Awning</div></div>
+<div class="type-card" onclick="selectType(this,'sliding')"><div class="icon">➡️</div><div class="name">Sliding</div></div>
+<div class="type-card" onclick="selectType(this,'fixed')"><div class="icon">🔲</div><div class="name">Fixed/Picture</div></div>
+<div class="type-card" onclick="selectType(this,'bay')"><div class="icon">🔷</div><div class="name">Bay</div></div>
+<div class="type-card" onclick="selectType(this,'bow')"><div class="icon">🌙</div><div class="name">Bow</div></div>
+<div class="type-card" onclick="selectType(this,'hopper')"><div class="icon">⤵️</div><div class="name">Hopper</div></div>
+<div class="type-card" onclick="selectType(this,'jalousie')"><div class="icon">📊</div><div class="name">Jalousie</div></div>
+<div class="type-card" onclick="selectType(this,'skylight')"><div class="icon">☀️</div><div class="name">Skylight</div></div>
+<div class="type-card" onclick="selectType(this,'garden')"><div class="icon">🌱</div><div class="name">Garden</div></div>
+</div>
+</div>
+
+<div class="tab-content" id="learnTab">
+<div class="education-card">
+<h4>🔍 Signs of Window Problems</h4>
+<p><strong>Foggy Glass:</strong> Condensation between panes means seal failure. The insulating gas has escaped, reducing energy efficiency by up to 50%.</p>
+</div>
+<div class="education-card">
+<h4>💨 Draft Detection</h4>
+<p>Hold a lit candle near window edges on a windy day. Flickering indicates air leaks. Common at corners, meeting rails, and weatherstripping.</p>
+</div>
+<div class="education-card">
+<h4>🪵 Wood Rot Signs</h4>
+<p>Soft spots, peeling paint, discoloration, or visible fungi indicate rot. Press with screwdriver - healthy wood resists, rotted wood gives way.</p>
+</div>
+<div class="education-card">
+<h4>🌡️ Energy Efficiency Ratings</h4>
+<p><strong>U-Factor:</strong> Lower is better (0.20-0.40 typical). <strong>SHGC:</strong> Solar Heat Gain - lower blocks more heat. <strong>VT:</strong> Visible Transmittance - higher = more light.</p>
+</div>
+<div class="education-card">
+<h4>📏 How to Measure for Replacement</h4>
+<p>Measure width at top, middle, bottom (use smallest). Measure height at left, center, right (use smallest). Measure depth of frame for proper fit.</p>
+</div>
+<div class="education-card">
+<h4>💰 When to Repair vs Replace</h4>
+<p><strong>Repair:</strong> Single pane cracks, weatherstripping, hardware, minor rot. <strong>Replace:</strong> Seal failure, extensive rot, warped frames, single-pane to double-pane upgrade.</p>
+</div>
+</div>
+
+<div class="tab-content" id="historyTab">
+<div id="historyList">
+<p style="text-align:center;color:#888;padding:40px">No analysis history yet</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// 3D Background
+const canvas=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({canvas,alpha:true,antialias:true});
+renderer.setSize(window.innerWidth,window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(75,window.innerWidth/window.innerHeight,0.1,1000);
+camera.position.z=5;
+
+// Create floating window frames
+const windowFrames=[];
+for(let i=0;i<8;i++){
+const group=new THREE.Group();
+const frameGeo=new THREE.BoxGeometry(1.5,2,0.1);
+const frameMat=new THREE.MeshPhongMaterial({color:0x4a90d9,transparent:true,opacity:0.6});
+const frame=new THREE.Mesh(frameGeo,frameMat);
+const paneGeo=new THREE.PlaneGeometry(1.2,1.6);
+const paneMat=new THREE.MeshPhongMaterial({color:0x87ceeb,transparent:true,opacity:0.3,side:THREE.DoubleSide});
+const pane=new THREE.Mesh(paneGeo,paneMat);
+pane.position.z=0.06;
+// Grid lines
+const gridMat=new THREE.LineBasicMaterial({color:0x4a90d9});
+const hLine=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.6,0,0.07),new THREE.Vector3(0.6,0,0.07)]),gridMat);
+const vLine=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,-0.8,0.07),new THREE.Vector3(0,0.8,0.07)]),gridMat);
+group.add(frame,pane,hLine,vLine);
+group.position.set((Math.random()-0.5)*10,(Math.random()-0.5)*8,(Math.random()-0.5)*5-3);
+group.rotation.set(Math.random()*0.5,Math.random()*0.5,Math.random()*0.3);
+group.userData={speed:0.001+Math.random()*0.002,rotSpeed:0.002+Math.random()*0.003};
+scene.add(group);
+windowFrames.push(group);
+}
+
+const ambientLight=new THREE.AmbientLight(0xffffff,0.5);
+const pointLight=new THREE.PointLight(0x00d4ff,1,100);
+pointLight.position.set(5,5,5);
+scene.add(ambientLight,pointLight);
+
+function animate(){
+requestAnimationFrame(animate);
+windowFrames.forEach(w=>{
+w.rotation.y+=w.userData.rotSpeed;
+w.rotation.x+=w.userData.rotSpeed*0.5;
+w.position.y+=Math.sin(Date.now()*w.userData.speed)*0.002;
+});
+renderer.render(scene,camera);
+}
+animate();
+window.addEventListener('resize',()=>{
+camera.aspect=window.innerWidth/window.innerHeight;
+camera.updateProjectionMatrix();
+renderer.setSize(window.innerWidth,window.innerHeight);
+});
+
+// Window Types Data
+const WINDOW_TYPES={
+'double-hung':{name:'Double-Hung',icon:'⬆️⬇️',desc:'Two sashes that slide vertically. Most popular style. Easy to clean with tilt-in feature.',priceRange:[350,700]},
+'single-hung':{name:'Single-Hung',icon:'⬆️',desc:'Only bottom sash moves. More affordable than double-hung. Good for upper floors.',priceRange:[250,500]},
+'casement':{name:'Casement',icon:'↔️',desc:'Hinged on side, opens outward with crank. Excellent ventilation and seal. Modern look.',priceRange:[400,900]},
+'awning':{name:'Awning',icon:'⤴️',desc:'Hinged at top, opens outward. Great for ventilation during rain. Often above other windows.',priceRange:[400,800]},
+'sliding':{name:'Sliding/Glider',icon:'➡️',desc:'Slides horizontally on track. Good for wide openings. Easy operation.',priceRange:[300,700]},
+'fixed':{name:'Fixed/Picture',icon:'🔲',desc:'Does not open. Maximum light and views. Most energy efficient. Used with operable windows.',priceRange:[200,500]},
+'bay':{name:'Bay Window',icon:'🔷',desc:'Three windows angled outward. Creates shelf space. Adds dimension to room.',priceRange:[1500,4000]},
+'bow':{name:'Bow Window',icon:'🌙',desc:'Four or more windows in gentle curve. Panoramic views. Creates seating area.',priceRange:[2000,5000]},
+'hopper':{name:'Hopper',icon:'⤵️',desc:'Hinged at bottom, tilts inward. Common in basements. Good security.',priceRange:[250,450]},
+'jalousie':{name:'Jalousie/Louver',icon:'📊',desc:'Horizontal glass slats. Maximum ventilation. Poor insulation. Tropical climates.',priceRange:[200,400]},
+'skylight':{name:'Skylight',icon:'☀️',desc:'Roof-mounted. Natural light from above. Fixed or venting options.',priceRange:[500,2500]},
+'garden':{name:'Garden Window',icon:'🌱',desc:'Box-style that protrudes. Perfect for plants. Usually over kitchen sink.',priceRange:[1000,3000]}
+};
+
+// Common Window Problems
+const PROBLEMS=[
+{id:'seal',name:'Seal Failure',icon:'💧',severity:'warning',desc:'Moisture between panes indicates broken seal. Reduces insulation R-value significantly.'},
+{id:'rot',name:'Wood Rot',icon:'🪵',severity:'critical',desc:'Structural damage requiring immediate attention. Can spread if not treated.'},
+{id:'draft',name:'Air Leaks/Drafts',icon:'💨',severity:'warning',desc:'Weatherstripping worn or gaps present. Increases heating/cooling costs 10-25%.'},
+{id:'crack',name:'Cracked Glass',icon:'💔',severity:'warning',desc:'Safety hazard and security risk. Reduces insulation. Stress cracks may spread.'},
+{id:'hardware',name:'Hardware Failure',icon:'🔧',severity:'minor',desc:'Locks, cranks, or balances not working. Usually repairable.'},
+{id:'condensation',name:'Interior Condensation',icon:'🌫️',severity:'minor',desc:'High indoor humidity or poor ventilation. May indicate bigger issues.'},
+{id:'sticking',name:'Difficult Operation',icon:'⚙️',severity:'minor',desc:'Window sticks or won\'t stay open. May be painted shut, warped, or need lubrication.'},
+{id:'noise',name:'Noise Infiltration',icon:'🔊',severity:'minor',desc:'Poor sound insulation. Single-pane or damaged seals. Consider acoustic glass.'},
+{id:'uv',name:'UV Damage',icon:'☀️',severity:'minor',desc:'Faded frames, damaged weatherstripping from sun exposure.'},
+{id:'mold',name:'Mold/Mildew',icon:'🦠',severity:'critical',desc:'Health hazard. Indicates moisture problem. Check for leaks and improve ventilation.'}
+];
+
+// State
+let currentImage=null;
+let analysisHistory=JSON.parse(localStorage.getItem('windowHistory')||'[]');
+let measureMode=false;
+let measurePoints=[];
+
+// Elements
+const preview=document.getElementById('preview');
+const captureZone=document.getElementById('captureZone');
+const capturePrompt=document.getElementById('capturePrompt');
+const fileInput=document.getElementById('fileInput');
+const cameraInput=document.getElementById('cameraInput');
+const toolbar=document.getElementById('toolbar');
+const analysisProgress=document.getElementById('analysisProgress');
+const results=document.getElementById('results');
+const noResults=document.getElementById('noResults');
+const drawingCanvas=document.getElementById('drawingCanvas');
+const ctx=drawingCanvas.getContext('2d');
+
+// File handling
+fileInput.addEventListener('change',handleFile);
+cameraInput.addEventListener('change',handleFile);
+
+function handleFile(e){
+const file=e.target.files[0];
+if(!file)return;
+const reader=new FileReader();
+reader.onload=function(evt){
+preview.src=evt.target.result;
+preview.classList.add('show');
+capturePrompt.style.display='none';
+captureZone.classList.add('has-image');
+currentImage=evt.target.result;
+toolbar.style.display='flex';
+// Setup drawing canvas
+preview.onload=function(){
+drawingCanvas.width=preview.offsetWidth;
+drawingCanvas.height=preview.offsetHeight;
+analyzeWindow();
+};
+};
+reader.readAsDataURL(file);
+}
+
+// Analysis
+function analyzeWindow(){
+analysisProgress.classList.add('show');
+results.classList.remove('show');
+noResults.style.display='none';
+
+setTimeout(()=>{
+// Simulate AI analysis
+const analysis=generateAnalysis();
+displayResults(analysis);
+saveToHistory(analysis);
+analysisProgress.classList.remove('show');
+results.classList.add('show');
+},2000);
+}
+
+function generateAnalysis(){
+// Simulated analysis results
+const types=Object.keys(WINDOW_TYPES);
+const detectedType=types[Math.floor(Math.random()*6)]; // Favor common types
+const typeData=WINDOW_TYPES[detectedType];
+
+const width=24+Math.floor(Math.random()*24); // 24-48 inches
+const height=36+Math.floor(Math.random()*36); // 36-72 inches
+const panes=Math.random()>0.3?2:1; // 70% double pane
+
+const materials=['Vinyl','Wood','Aluminum','Fiberglass','Composite'];
+const material=materials[Math.floor(Math.random()*materials.length)];
+
+const glassTypes=['Single-pane','Double-pane','Triple-pane','Low-E Double','Low-E Triple'];
+const glass=glassTypes[Math.floor(Math.random()*glassTypes.length)];
+
+const gridPatterns=['None','Colonial','Prairie','Diamond','Custom'];
+const grid=gridPatterns[Math.floor(Math.random()*gridPatterns.length)];
+
+const ages=['0-5 years','5-10 years','10-15 years','15-20 years','20+ years'];
+const age=ages[Math.floor(Math.random()*ages.length)];
+
+// Random problems (0-3)
+const numProblems=Math.floor(Math.random()*4);
+const detectedProblems=[];
+const shuffled=[...PROBLEMS].sort(()=>0.5-Math.random());
+for(let i=0;i<numProblems;i++){
+detectedProblems.push(shuffled[i]);
+}
+
+// Price estimate
+let basePrice=(typeData.priceRange[0]+typeData.priceRange[1])/2;
+if(width>36)basePrice*=1.2;
+if(height>48)basePrice*=1.2;
+if(material==='Wood')basePrice*=1.3;
+if(glass.includes('Triple'))basePrice*=1.4;
+
+return {
+type:detectedType,
+typeData,
+confidence:75+Math.floor(Math.random()*20),
+width,height,panes,
+material,glass,grid,age,
+problems:detectedProblems,
+priceMin:Math.round(basePrice*0.8),
+priceMax:Math.round(basePrice*1.3)
+};
+}
+
+function displayResults(analysis){
+// Measurements
+document.getElementById('mWidth').textContent=analysis.width+'"';
+document.getElementById('mHeight').textContent=analysis.height+'"';
+document.getElementById('mArea').textContent=((analysis.width*analysis.height)/144).toFixed(1);
+document.getElementById('mPanes').textContent=analysis.panes;
+
+// Window type
+document.getElementById('windowType').innerHTML=`
+<div class="type-icon">${analysis.typeData.icon}</div>
+<div class="type-info">
+<h4>${analysis.typeData.name}<span class="confidence">${analysis.confidence}%</span></h4>
+<p>${analysis.typeData.desc}</p>
+</div>
+`;
+
+// Specs
+document.getElementById('specs').innerHTML=`
+<div class="spec-item"><div class="spec-label">Frame Material</div><div class="spec-value">${analysis.material}</div></div>
+<div class="spec-item"><div class="spec-label">Glass Type</div><div class="spec-value">${analysis.glass}</div></div>
+<div class="spec-item"><div class="spec-label">Grid Pattern</div><div class="spec-value">${analysis.grid}</div></div>
+<div class="spec-item"><div class="spec-label">Estimated Age</div><div class="spec-value">${analysis.age}</div></div>
+`;
+
+// Problems
+const problemsList=document.getElementById('problems');
+if(analysis.problems.length===0){
+problemsList.innerHTML='<li class="good"><span class="problem-icon">✅</span><div><strong>No Issues Detected</strong><br>Window appears to be in good condition.</div></li>';
+}else{
+problemsList.innerHTML=analysis.problems.map(p=>
+`<li class="${p.severity}"><span class="problem-icon">${p.icon}</span><div><strong>${p.name}</strong><br>${p.desc}</div></li>`
+).join('');
+}
+
+// Quote
+document.getElementById('quoteRange').textContent=`$${analysis.priceMin} - $${analysis.priceMax}`;
+}
+
+function saveToHistory(analysis){
+const entry={
+id:Date.now(),
+date:new Date().toLocaleDateString(),
+image:currentImage,
+type:analysis.typeData.name,
+size:`${analysis.width}" × ${analysis.height}"`,
+issues:analysis.problems.length
+};
+analysisHistory.unshift(entry);
+if(analysisHistory.length>10)analysisHistory.pop();
+localStorage.setItem('windowHistory',JSON.stringify(analysisHistory));
+updateHistoryDisplay();
+}
+
+function updateHistoryDisplay(){
+const list=document.getElementById('historyList');
+if(analysisHistory.length===0){
+list.innerHTML='<p style="text-align:center;color:#888;padding:40px">No analysis history yet</p>';
+return;
+}
+list.innerHTML=analysisHistory.map(h=>`
+<div class="history-item">
+<img src="${h.image}" class="history-thumb" alt="Window">
+<div class="history-info">
+<h4>${h.type}</h4>
+<p>${h.size} • ${h.issues} issue${h.issues!==1?'s':''} • ${h.date}</p>
+</div>
+<button onclick="deleteHistory(${h.id})" class="secondary" style="padding:8px">🗑️</button>
+</div>
+`).join('');
+}
+
+function deleteHistory(id){
+analysisHistory=analysisHistory.filter(h=>h.id!==id);
+localStorage.setItem('windowHistory',JSON.stringify(analysisHistory));
+updateHistoryDisplay();
+}
+
+// Tabs
+function showTab(tabId){
+document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+document.querySelector(`.tab[onclick="showTab('${tabId}')"]`).classList.add('active');
+document.getElementById(tabId+'Tab').classList.add('active');
+}
+
+// Type selection
+function selectType(el,type){
+document.querySelectorAll('.type-card').forEach(c=>c.classList.remove('selected'));
+el.classList.add('selected');
+const typeData=WINDOW_TYPES[type];
+alert(`${typeData.name}\n\n${typeData.desc}\n\nPrice Range: $${typeData.priceRange[0]} - $${typeData.priceRange[1]}`);
+}
+
+// Reference size
+document.getElementById('refType').addEventListener('change',function(){
+document.getElementById('refSize').style.display=this.value==='custom'?'inline-block':'none';
+});
+
+// Drawing tools
+function startMeasure(){
+measureMode=true;
+measurePoints=[];
+drawingCanvas.classList.add('active');
+drawingCanvas.style.cursor='crosshair';
+}
+
+drawingCanvas.addEventListener('click',function(e){
+if(!measureMode)return;
+const rect=drawingCanvas.getBoundingClientRect();
+const x=e.clientX-rect.left;
+const y=e.clientY-rect.top;
+measurePoints.push({x,y});
+
+ctx.fillStyle='#00d4ff';
+ctx.beginPath();
+ctx.arc(x,y,6,0,Math.PI*2);
+ctx.fill();
+
+if(measurePoints.length===2){
+const p1=measurePoints[0];
+const p2=measurePoints[1];
+ctx.strokeStyle='#00d4ff';
+ctx.lineWidth=3;
+ctx.beginPath();
+ctx.moveTo(p1.x,p1.y);
+ctx.lineTo(p2.x,p2.y);
+ctx.stroke();
+
+// Calculate pixel distance
+const pixelDist=Math.sqrt(Math.pow(p2.x-p1.x,2)+Math.pow(p2.y-p1.y,2));
+// Estimate inches (rough approximation)
+const inches=Math.round(pixelDist/10);
+
+const midX=(p1.x+p2.x)/2;
+const midY=(p1.y+p2.y)/2;
+ctx.fillStyle='rgba(0,0,0,0.8)';
+ctx.fillRect(midX-30,midY-12,60,24);
+ctx.fillStyle='#00d4ff';
+ctx.font='bold 14px sans-serif';
+ctx.textAlign='center';
+ctx.fillText(`~${inches}"`,midX,midY+5);
+
+measureMode=false;
+measurePoints=[];
+drawingCanvas.style.cursor='default';
+}
+});
+
+function markProblem(){
+measureMode=false;
+alert('Click on the image to mark problem areas (feature coming soon)');
+}
+
+function clearOverlays(){
+ctx.clearRect(0,0,drawingCanvas.width,drawingCanvas.height);
+measurePoints=[];
+measureMode=false;
+drawingCanvas.classList.remove('active');
+}
+
+// Init
+updateHistoryDisplay();
+</script>
+</body>
+</html>
