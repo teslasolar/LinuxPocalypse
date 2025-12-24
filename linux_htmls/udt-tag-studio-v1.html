@@ -41,6 +41,35 @@ input:focus,select:focus{border-color:#0af;outline:none}
 .inheritance-line{stroke:#0f0;stroke-width:2;fill:none;opacity:.5}
 #ai-panel{max-height:120px;overflow-y:auto;font-size:9px;background:#000810;padding:6px;border-radius:4px;margin-top:6px}
 .ai-suggestion{padding:4px;margin:2px 0;background:#001520;border-left:2px solid #0af;padding-left:6px}
+
+/* Mobile Responsive */
+@media(max-width:1024px){
+  .panel{padding:8px;border-radius:5px}
+  button{padding:8px 12px;font-size:11px}
+}
+@media(max-width:768px){
+  body{overflow-y:auto;overflow-x:hidden}
+  #c{position:fixed;height:35vh}
+  #connection-canvas{height:35vh}
+  .panel{position:relative!important;width:calc(100% - 16px)!important;margin:8px;left:0!important;right:0!important;top:auto!important;bottom:auto!important;transform:none!important;max-height:none!important}
+  .panel-title{font-size:14px}
+  button{padding:10px 14px;font-size:12px;min-height:44px}
+  input,select{padding:10px;font-size:14px;min-height:44px}
+  .udt-card{padding:12px}
+  .tag-item{padding:10px}
+  .tag-type{padding:4px 8px;font-size:10px}
+  .member-list{max-height:200px}
+  .instance-node{padding:10px}
+  .stat{padding:8px 12px}
+  .stat-val{font-size:16px}
+  #template-tree{max-height:none}
+  .tree-node{padding:8px}
+}
+@media(max-width:480px){
+  .panel{margin:4px;padding:6px}
+  button{padding:8px 10px;font-size:11px}
+  .row{gap:2px}
+}
 </style></head><body>
 <canvas id="c"></canvas>
 <canvas id="connection-canvas"></canvas>

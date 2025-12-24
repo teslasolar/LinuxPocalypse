@@ -47,6 +47,37 @@ input[type="range"]{width:100%;accent-color:#4a8}
 .arch-curve{position:absolute;bottom:0;left:0;right:0;border:2px solid #0f0;border-top:none;border-radius:0 0 30px 30px}
 #correction-preview{height:60px;background:#081020;border:1px solid #2a8;border-radius:4px;position:relative;overflow:hidden}
 .correction-layer{position:absolute;bottom:0;left:10%;right:10%;border-radius:4px 4px 0 0}
+
+/* Mobile Responsive */
+@media(max-width:1024px){
+  .panel{padding:8px;border-radius:6px}
+  button{padding:8px 12px;font-size:11px}
+}
+@media(max-width:768px){
+  body{overflow-y:auto;overflow-x:hidden}
+  #c{position:fixed;height:40vh}
+  .panel{position:relative!important;width:calc(100% - 16px)!important;margin:8px;left:0!important;right:0!important;top:auto!important;bottom:auto!important;transform:none!important;max-height:none!important}
+  .panel-title{font-size:14px}
+  button{padding:10px 14px;font-size:12px;min-height:44px}
+  input,select{padding:10px;font-size:14px;min-height:44px}
+  input[type="range"]{height:30px}
+  input[type="checkbox"]{width:24px;height:24px}
+  .condition-card{padding:12px}
+  .condition-icon{font-size:24px}
+  .rx-item{padding:10px}
+  .rx-label{font-size:11px}
+  .slider-val{font-size:14px}
+  .metric-val{font-size:18px}
+  #pressure-map{width:120px;height:240px}
+  #pressure-canvas{width:120px;height:240px}
+  .material-option{padding:10px}
+  #main-content{display:flex;flex-direction:column;padding-top:42vh}
+}
+@media(max-width:480px){
+  .panel{margin:4px;padding:6px}
+  button{padding:8px 10px;font-size:11px}
+  .row{gap:2px}
+}
 </style></head><body>
 <canvas id="c"></canvas>
 

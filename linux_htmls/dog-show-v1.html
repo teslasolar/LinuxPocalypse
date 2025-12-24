@@ -22,6 +22,38 @@ button.breed{padding:6px 10px;font-size:10px}
 #obstacle-indicator{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);font-size:18px;background:rgba(0,0,0,.7);padding:10px 20px;border-radius:10px;z-index:20}
 .trophy{color:#ffd700;text-shadow:0 0 10px #ffd700}
 #paw-prints{position:fixed;inset:0;pointer-events:none;z-index:1}
+
+/* Mobile Responsive */
+@media(max-width:1024px){
+  .panel{padding:10px;border-radius:10px}
+  button{padding:10px 16px;font-size:13px}
+  #timer{font-size:36px}
+}
+@media(max-width:768px){
+  body{overflow-y:auto;overflow-x:hidden}
+  #c{position:fixed;height:45vh}
+  #paw-prints{height:45vh}
+  .panel{position:relative!important;width:calc(100% - 16px)!important;margin:8px;left:0!important;right:0!important;top:auto!important;bottom:auto!important;transform:none!important;max-height:none!important}
+  #timer{position:relative;top:auto;left:auto;transform:none;font-size:32px;text-align:center;padding:10px;margin-top:46vh}
+  #message{position:relative;top:auto;left:auto;transform:none;font-size:18px}
+  #obstacle-indicator{position:relative;bottom:auto;left:auto;transform:none;margin:10px auto;display:block;width:fit-content}
+  button{padding:12px 18px;font-size:14px;min-height:48px}
+  .breed-card{padding:12px}
+  .breed-icon{font-size:32px}
+  .stat{font-size:13px}
+  .stat-bar{height:12px}
+}
+@media(max-width:480px){
+  .panel{margin:4px;padding:8px}
+  button{padding:10px 14px;font-size:12px}
+  #timer{font-size:28px}
+  .breed-icon{font-size:28px}
+}
+/* Touch controls for mobile */
+@media(hover:none){
+  button{min-height:48px}
+  .breed-card{min-height:60px}
+}
 </style></head><body>
 <canvas id="c"></canvas>
 <canvas id="paw-prints"></canvas>

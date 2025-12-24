@@ -43,6 +43,35 @@ input:focus,select:focus{border-color:#f6a;outline:none}
 .ai-tip{padding:4px;margin:2px 0;border-left:2px solid #f6a;padding-left:8px}
 #export-panel{display:none;position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:100;padding:40px}
 #export-content{background:#1a1015;border:2px solid #f6a;border-radius:12px;padding:20px;max-width:600px;margin:0 auto;max-height:80vh;overflow-y:auto}
+
+/* Mobile Responsive */
+@media(max-width:1024px){
+  .panel{padding:8px;border-radius:6px}
+  button{padding:8px 12px;font-size:11px}
+}
+@media(max-width:768px){
+  body{overflow-y:auto;overflow-x:hidden}
+  #c{position:fixed;height:35vh}
+  .panel{position:relative!important;width:calc(100% - 16px)!important;margin:8px;left:0!important;right:0!important;top:auto!important;bottom:auto!important;transform:none!important;max-height:none!important}
+  .panel-title{font-size:14px}
+  button{padding:10px 14px;font-size:12px;min-height:44px}
+  input,select,textarea{padding:10px;font-size:14px;min-height:44px}
+  .part-card{padding:12px}
+  .part-icon{font-size:32px}
+  .prop-item{padding:10px}
+  .material-swatch{width:40px;height:40px;font-size:18px}
+  .color-swatch{width:32px;height:32px}
+  .spec-val{font-size:14px}
+  .fit-meter{height:12px}
+  #export-panel{padding:20px}
+  #export-content{padding:15px;max-width:100%}
+}
+@media(max-width:480px){
+  .panel{margin:4px;padding:6px}
+  button{padding:8px 10px;font-size:11px}
+  .row{gap:2px}
+  .spec-grid{grid-template-columns:1fr 1fr}
+}
 </style></head><body>
 <canvas id="c"></canvas>
 
