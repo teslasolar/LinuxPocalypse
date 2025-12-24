@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UDT Tag Studio v2 - Shoe Parts Designer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#1a1015;overflow:hidden;font:11px 'Segoe UI',sans-serif;color:#f8e}
+#c{position:fixed;inset:0}
+.panel{position:absolute;background:rgba(30,15,25,.96);border:2px solid #f6a;border-radius:8px;padding:10px;z-index:10}
+.panel-title{color:#f8e;font-size:13px;font-weight:bold;text-align:center;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #f6a4}
+button{background:linear-gradient(135deg,#a48,#624);color:#fce;border:1px solid #f6a;padding:5px 10px;margin:2px;border-radius:6px;cursor:pointer;font-size:10px;transition:all .2s}
+button:hover{background:#f6a;color:#000;transform:scale(1.02)}
+button.active{background:#0f0;color:#000;border-color:#0f0}
+button.accent{background:linear-gradient(135deg,#84f,#428);border-color:#a6f}
+button.warn{background:linear-gradient(135deg,#a60,#530);border-color:#f80;color:#ff0}
+.row{display:flex;gap:4px;margin:4px 0;flex-wrap:wrap;align-items:center}
+input,select,textarea{background:#200818;border:1px solid #846;color:#fce;padding:5px 8px;border-radius:4px;font-size:10px}
+input:focus,select:focus{border-color:#f6a;outline:none}
+.part-card{background:#280818;border:2px solid #8464;padding:10px;margin:4px 0;border-radius:8px;cursor:pointer;transition:all .2s}
+.part-card:hover{border-color:#f6a;background:#380828}
+.part-card.selected{border-color:#0f0;box-shadow:0 0 15px #0f04}
+.part-icon{font-size:28px;text-align:center;margin-bottom:4px}
+.prop-item{background:#1a0810;border:1px solid #6424;padding:6px;margin:3px 0;border-radius:4px;font-size:10px}
+.prop-type{display:inline-block;padding:2px 6px;border-radius:3px;font-size:8px;margin-right:6px}
+.type-size{background:#0844;color:#4af}.type-material{background:#084;color:#4fa}
+.type-color{background:#804;color:#f8a}.type-number{background:#408;color:#a8f}
+.type-bool{background:#480;color:#af8}.type-ref{background:#840;color:#fa8}
+.spec-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:9px}
+.spec-item{background:#1a0810;padding:4px;border-radius:3px;text-align:center}
+.spec-val{font-size:12px;font-weight:bold;color:#0f0}
+#size-chart{font-size:9px;background:#1a0810;padding:6px;border-radius:4px;margin-top:6px}
+.size-row{display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #4242}
+#material-palette{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.material-swatch{width:30px;height:30px;border-radius:4px;cursor:pointer;border:2px solid transparent;display:flex;align-items:center;justify-content:center;font-size:14px}
+.material-swatch:hover,.material-swatch.selected{border-color:#fff}
+#color-picker{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.color-swatch{width:24px;height:24px;border-radius:50%;cursor:pointer;border:2px solid transparent}
+.color-swatch:hover,.color-swatch.selected{border-color:#fff;transform:scale(1.1)}
+.instance-card{background:#201020;border:1px solid #846;padding:8px;margin:4px 0;border-radius:6px}
+.fit-meter{height:8px;background:#200810;border-radius:4px;overflow:hidden;margin:4px 0}
+.fit-fill{height:100%;border-radius:4px;transition:width .3s}
+#ai-analysis{background:#100818;padding:8px;border-radius:6px;font-size:10px;max-height:100px;overflow-y:auto}
+.ai-tip{padding:4px;margin:2px 0;border-left:2px solid #f6a;padding-left:8px}
+#export-panel{display:none;position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:100;padding:40px}
+#export-content{background:#1a1015;border:2px solid #f6a;border-radius:12px;padding:20px;max-width:600px;margin:0 auto;max-height:80vh;overflow-y:auto}
+</style></head><body>
+<canvas id="c"></canvas>
+
+<!-- Header -->
+<div class="panel" style="top:6px;left:50%;transform:translateX(-50%);padding:8px 24px">
+<span style="font-size:16px">👟</span>
+<span style="color:#f8e;font-size:14px;margin-left:8px">SHOE PARTS STUDIO</span>
+<span style="color:#846;margin-left:10px">v2</span>
+<span style="color:#4fa;margin-left:15px">Design • Template • Share</span>
+</div>
+
+<!-- Parts Library -->
+<div class="panel" style="top:50px;left:8px;width:200px;max-height:45vh;overflow-y:auto">
+<div class="panel-title">👞 PARTS LIBRARY</div>
+<div class="row">
+<button onclick="S.newPart()">+ New Part</button>
+<button onclick="S.importPart()" class="accent">📥</button>
+<button onclick="S.showExport()" class="accent">📤</button>
+</div>
+<div id="parts-list"></div>
+</div>
+
+<!-- Part Editor -->
+<div class="panel" style="top:50px;right:8px;width:220px">
+<div class="panel-title">✏️ PART EDITOR</div>
+<div id="part-editor">
+<div style="color:#666;text-align:center;padding:20px">Select a part to edit</div>
+</div>
+</div>
+
+<!-- Materials -->
+<div class="panel" style="bottom:160px;left:8px;width:200px">
+<div class="panel-title">🧵 MATERIALS</div>
+<div id="material-palette"></div>
+<div style="font-size:9px;color:#846;margin-top:6px">Click to apply to selected part</div>
+</div>
+
+<!-- Colors -->
+<div class="panel" style="bottom:60px;left:8px;width:200px">
+<div class="panel-title">🎨 COLORS</div>
+<div id="color-picker"></div>
+</div>
+
+<!-- Size Specs -->
+<div class="panel" style="bottom:8px;left:220px;width:180px">
+<div class="panel-title">📏 SIZE SPECS</div>
+<div class="spec-grid">
+<div class="spec-item"><div class="spec-val" id="spec-us">9</div>US</div>
+<div class="spec-item"><div class="spec-val" id="spec-eu">42</div>EU</div>
+<div class="spec-item"><div class="spec-val" id="spec-uk">8</div>UK</div>
+<div class="spec-item"><div class="spec-val" id="spec-cm">27</div>cm</div>
+</div>
+<div class="row" style="margin-top:6px">
+<button onclick="S.sizeDown()">◀ Size</button>
+<button onclick="S.sizeUp()">Size ▶</button>
+</div>
+<div id="size-chart">
+<div class="size-row"><span>Length:</span><span id="length-val">27.0 cm</span></div>
+<div class="size-row"><span>Width:</span><span id="width-val">10.2 cm</span></div>
+<div class="size-row"><span>Arch:</span><span id="arch-val">Medium</span></div>
+</div>
+</div>
+
+<!-- Design Instances -->
+<div class="panel" style="top:50px;left:220px;width:180px">
+<div class="panel-title">🎨 DESIGNS</div>
+<div class="row">
+<input type="text" id="design-name" placeholder="Design name..." style="flex:1">
+<button onclick="S.createDesign()">+</button>
+</div>
+<div id="design-list" style="max-height:150px;overflow-y:auto;margin-top:8px"></div>
+</div>
+
+<!-- Fit Analysis -->
+<div class="panel" style="bottom:8px;right:8px;width:220px">
+<div class="panel-title">🤖 AI FIT ANALYSIS</div>
+<div style="margin-bottom:8px">
+<div style="font-size:10px">Overall Fit Score:</div>
+<div class="fit-meter"><div class="fit-fill" id="fit-score" style="width:85%;background:linear-gradient(90deg,#f00,#ff0,#0f0)"></div></div>
+<div style="text-align:center;font-size:14px;color:#0f0" id="fit-percent">85%</div>
+</div>
+<div id="ai-analysis"></div>
+<button onclick="S.analyzefit()" style="width:100%;margin-top:6px">🔍 Run Analysis</button>
+</div>
+
+<!-- Comparison -->
+<div class="panel" style="bottom:150px;right:8px;width:220px">
+<div class="panel-title">⚖️ COMPARE MODELS</div>
+<div class="row">
+<select id="compare-brand" style="flex:1">
+<option value="">Select brand...</option>
+<option value="nike">Nike</option>
+<option value="adidas">Adidas</option>
+<option value="newbalance">New Balance</option>
+<option value="asics">ASICS</option>
+<option value="brooks">Brooks</option>
+</select>
+</div>
+<div class="row">
+<select id="compare-model" style="flex:1">
+<option value="">Select model...</option>
+</select>
+</div>
+<div id="compare-result" style="margin-top:8px;font-size:9px"></div>
+</div>
+
+<!-- Controls -->
+<div class="panel" style="bottom:8px;left:410px;width:160px">
+<div class="panel-title">🎮 VIEW</div>
+<div class="row">
+<button onclick="S.viewTop()">⬆️ Top</button>
+<button onclick="S.viewSide()">➡️ Side</button>
+<button onclick="S.view3D()">🔄 3D</button>
+</div>
+<div class="row">
+<button onclick="S.toggleWireframe()">📐 Wire</button>
+<button onclick="S.toggleExplode()">💥 Explode</button>
+</div>
+</div>
+
+<!-- Export Panel -->
+<div id="export-panel" onclick="if(event.target.id==='export-panel')S.hideExport()">
+<div id="export-content">
+<h3 style="color:#f8e;margin-bottom:12px">📤 Export Design</h3>
+<div class="row">
+<button onclick="S.exportJSON()">📋 JSON</button>
+<button onclick="S.exportSpec()">📄 Spec Sheet</button>
+<button onclick="S.exportEmail()">📧 Email to Maker</button>
+</div>
+<textarea id="export-data" style="width:100%;height:300px;margin-top:12px;font-family:monospace"></textarea>
+<div class="row" style="margin-top:12px">
+<button onclick="S.copyExport()">📋 Copy</button>
+<button onclick="S.hideExport()" class="warn">Close</button>
+</div>
+</div>
+</div>
+
+<script>
+const T={v3:(x,y,z)=>new THREE.Vector3(x,y,z)};
+
+// Materials Library
+const MATERIALS = [
+  {id:'leather',name:'Full Grain Leather',icon:'🐄',color:0x8B4513,props:{durability:90,breathe:60,flex:70,weight:80}},
+  {id:'suede',name:'Suede',icon:'🦌',color:0xDEB887,props:{durability:60,breathe:75,flex:85,weight:70}},
+  {id:'canvas',name:'Canvas',icon:'🎨',color:0xF5F5DC,props:{durability:50,breathe:90,flex:90,weight:95}},
+  {id:'mesh',name:'Breathable Mesh',icon:'🕸️',color:0xE0E0E0,props:{durability:40,breathe:100,flex:95,weight:100}},
+  {id:'rubber',name:'Rubber',icon:'⚫',color:0x2F2F2F,props:{durability:95,breathe:10,flex:60,weight:50}},
+  {id:'eva',name:'EVA Foam',icon:'☁️',color:0xFFFFFF,props:{durability:60,breathe:40,flex:80,weight:95}},
+  {id:'pu',name:'Polyurethane',icon:'🔷',color:0x4169E1,props:{durability:80,breathe:30,flex:75,weight:70}},
+  {id:'cork',name:'Cork',icon:'🍾',color:0xD2691E,props:{durability:55,breathe:80,flex:50,weight:90}},
+  {id:'gel',name:'Gel Cushion',icon:'💧',color:0x87CEEB,props:{durability:70,breathe:20,flex:95,weight:60}},
+  {id:'carbon',name:'Carbon Fiber',icon:'⬛',color:0x1a1a1a,props:{durability:100,breathe:20,flex:30,weight:100}},
+  {id:'knit',name:'Flyknit',icon:'🧶',color:0x333333,props:{durability:65,breathe:95,flex:100,weight:98}},
+  {id:'neoprene',name:'Neoprene',icon:'🏊',color:0x2d2d2d,props:{durability:75,breathe:25,flex:85,weight:65}}
+];
+
+const COLORS = [
+  '#000000','#FFFFFF','#8B4513','#D2691E','#A0522D',
+  '#FF0000','#FF6B6B','#FFA500','#FFD700','#FFFF00',
+  '#00FF00','#32CD32','#228B22','#008080','#00CED1',
+  '#0000FF','#4169E1','#8A2BE2','#FF00FF','#FFC0CB',
+  '#808080','#C0C0C0','#F5F5DC','#FAEBD7','#E6E6FA'
+];
+
+// Shoe Part Templates
+const PART_TEMPLATES = [
+  {
+    id:'outsole',name:'Outsole',icon:'👟',category:'sole',
+    description:'Bottom of shoe, contacts ground',
+    properties:[
+      {name:'thickness',type:'number',unit:'mm',default:10,min:5,max:25},
+      {name:'material',type:'material',default:'rubber'},
+      {name:'treadPattern',type:'select',options:['flat','herringbone','waffle','lugged','hexagonal'],default:'herringbone'},
+      {name:'flexGrooves',type:'bool',default:true},
+      {name:'heelHeight',type:'number',unit:'mm',default:0,min:0,max:100},
+      {name:'forefoot',type:'number',unit:'mm',default:15,min:10,max:30},
+      {name:'color',type:'color',default:'#2F2F2F'}
+    ]
+  },
+  {
+    id:'midsole',name:'Midsole',icon:'☁️',category:'sole',
+    description:'Cushioning layer between outsole and upper',
+    properties:[
+      {name:'thickness',type:'number',unit:'mm',default:20,min:10,max:40},
+      {name:'material',type:'material',default:'eva'},
+      {name:'density',type:'select',options:['soft','medium','firm'],default:'medium'},
+      {name:'dropHeight',type:'number',unit:'mm',default:10,min:0,max:15},
+      {name:'archSupport',type:'select',options:['neutral','stability','motion-control'],default:'neutral'},
+      {name:'heelCup',type:'bool',default:true},
+      {name:'color',type:'color',default:'#FFFFFF'}
+    ]
+  },
+  {
+    id:'insole',name:'Insole',icon:'🦶',category:'sole',
+    description:'Removable footbed inside shoe',
+    properties:[
+      {name:'thickness',type:'number',unit:'mm',default:5,min:2,max:10},
+      {name:'material',type:'material',default:'eva'},
+      {name:'archHeight',type:'select',options:['low','medium','high'],default:'medium'},
+      {name:'heelPad',type:'bool',default:true},
+      {name:'metPad',type:'bool',default:false},
+      {name:'antimicrobial',type:'bool',default:true},
+      {name:'removable',type:'bool',default:true}
+    ]
+  },
+  {
+    id:'upper',name:'Upper',icon:'👢',category:'upper',
+    description:'Top part of shoe covering foot',
+    properties:[
+      {name:'material',type:'material',default:'leather'},
+      {name:'layers',type:'number',default:1,min:1,max:3},
+      {name:'liningMaterial',type:'material',default:'mesh'},
+      {name:'reinforced',type:'bool',default:true},
+      {name:'waterproof',type:'bool',default:false},
+      {name:'color',type:'color',default:'#8B4513'}
+    ]
+  },
+  {
+    id:'toebox',name:'Toe Box',icon:'👣',category:'upper',
+    description:'Front part protecting toes',
+    properties:[
+      {name:'width',type:'select',options:['narrow','standard','wide','extra-wide'],default:'standard'},
+      {name:'height',type:'number',unit:'mm',default:25,min:18,max:35},
+      {name:'material',type:'material',default:'leather'},
+      {name:'reinforced',type:'bool',default:false},
+      {name:'steelToe',type:'bool',default:false},
+      {name:'seamless',type:'bool',default:false}
+    ]
+  },
+  {
+    id:'heel',name:'Heel Counter',icon:'🔙',category:'upper',
+    description:'Rear support structure',
+    properties:[
+      {name:'height',type:'number',unit:'mm',default:70,min:50,max:100},
+      {name:'stiffness',type:'select',options:['flexible','medium','rigid'],default:'medium'},
+      {name:'material',type:'material',default:'pu'},
+      {name:'padded',type:'bool',default:true},
+      {name:'achillesNotch',type:'bool',default:true},
+      {name:'pullTab',type:'bool',default:true}
+    ]
+  },
+  {
+    id:'tongue',name:'Tongue',icon:'👅',category:'upper',
+    description:'Padded flap under laces',
+    properties:[
+      {name:'style',type:'select',options:['traditional','gusseted','burrito','slip-on'],default:'traditional'},
+      {name:'padding',type:'number',unit:'mm',default:8,min:3,max:15},
+      {name:'material',type:'material',default:'mesh'},
+      {name:'length',type:'select',options:['short','standard','extended'],default:'standard'}
+    ]
+  },
+  {
+    id:'lacing',name:'Lacing System',icon:'🎀',category:'closure',
+    description:'Shoe closure mechanism',
+    properties:[
+      {name:'type',type:'select',options:['traditional','speed-lace','boa','velcro','slip-on','zipper'],default:'traditional'},
+      {name:'eyeletCount',type:'number',default:6,min:3,max:10},
+      {name:'eyeletType',type:'select',options:['metal','plastic','fabric','speed-hooks'],default:'metal'},
+      {name:'laceMaterial',type:'select',options:['cotton','nylon','elastic','cable'],default:'nylon'}
+    ]
+  },
+  {
+    id:'collar',name:'Collar',icon:'⭕',category:'upper',
+    description:'Padding around ankle opening',
+    properties:[
+      {name:'height',type:'select',options:['low','mid','high'],default:'low'},
+      {name:'padding',type:'number',unit:'mm',default:10,min:5,max:20},
+      {name:'material',type:'material',default:'mesh'},
+      {name:'rollTop',type:'bool',default:false}
+    ]
+  },
+  {
+    id:'shank',name:'Shank',icon:'🦴',category:'structure',
+    description:'Rigid support between heel and forefoot',
+    properties:[
+      {name:'material',type:'select',options:['none','plastic','fiberglass','carbon','steel'],default:'plastic'},
+      {name:'length',type:'select',options:['half','three-quarter','full'],default:'half'},
+      {name:'stiffness',type:'select',options:['flexible','moderate','rigid'],default:'moderate'}
+    ]
+  }
+];
+
+// Brand/Model database for comparison
+const BRAND_MODELS = {
+  nike: [
+    {name:'Air Max 90',fit:'standard',arch:'neutral',cushion:85,width:'D'},
+    {name:'Air Force 1',fit:'wide',arch:'neutral',cushion:70,width:'D'},
+    {name:'Pegasus 40',fit:'standard',arch:'neutral',cushion:90,width:'D/2E'},
+    {name:'Free RN',fit:'snug',arch:'minimal',cushion:60,width:'D'}
+  ],
+  adidas: [
+    {name:'Ultraboost',fit:'snug',arch:'neutral',cushion:95,width:'D'},
+    {name:'Stan Smith',fit:'standard',arch:'flat',cushion:50,width:'D'},
+    {name:'NMD',fit:'snug',arch:'neutral',cushion:80,width:'D'},
+    {name:'Superstar',fit:'wide',arch:'flat',cushion:45,width:'D'}
+  ],
+  newbalance: [
+    {name:'990v5',fit:'standard',arch:'stability',cushion:85,width:'B-6E'},
+    {name:'574',fit:'wide',arch:'neutral',cushion:70,width:'B-4E'},
+    {name:'Fresh Foam 1080',fit:'standard',arch:'neutral',cushion:95,width:'B-4E'}
+  ],
+  asics: [
+    {name:'Gel-Kayano',fit:'standard',arch:'stability',cushion:90,width:'B-4E'},
+    {name:'Gel-Nimbus',fit:'standard',arch:'neutral',cushion:95,width:'B-4E'},
+    {name:'GT-2000',fit:'standard',arch:'stability',cushion:80,width:'B-4E'}
+  ],
+  brooks: [
+    {name:'Ghost',fit:'standard',arch:'neutral',cushion:85,width:'B-4E'},
+    {name:'Adrenaline GTS',fit:'standard',arch:'stability',cushion:85,width:'B-4E'},
+    {name:'Glycerin',fit:'standard',arch:'neutral',cushion:95,width:'B-2E'}
+  ]
+};
+
+const S = {
+  parts: [],
+  designs: [],
+  selectedPart: null,
+  selectedDesign: null,
+  currentSize: 9,
+  meshes: new Map(),
+  wireframe: false,
+  exploded: false,
+
+  init() {
+    this.setupScene();
+    this.loadTemplates();
+    this.setupMaterials();
+    this.setupColors();
+    this.updateUI();
+    this.animate();
+
+    document.getElementById('compare-brand').addEventListener('change', () => this.updateModels());
+    document.getElementById('compare-model').addEventListener('change', () => this.compareModel());
+  },
+
+  setupScene() {
+    this.scene = new THREE.Scene();
+    this.camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 1000);
+    this.renderer = new THREE.WebGLRenderer({canvas: document.getElementById('c'), antialias: true});
+    this.renderer.setSize(innerWidth, innerHeight);
+    this.renderer.setClearColor(0x1a1015);
+    this.camera.position.set(30, 25, 40);
+    this.camera.lookAt(0, 5, 0);
+
+    this.scene.add(new THREE.AmbientLight(0x606080, 0.6));
+    const light = new THREE.DirectionalLight(0xffffff, 0.7);
+    light.position.set(30, 40, 30);
+    this.scene.add(light);
+    const backLight = new THREE.DirectionalLight(0xf8e0ff, 0.3);
+    backLight.position.set(-20, 20, -20);
+    this.scene.add(backLight);
+
+    this.scene.add(new THREE.GridHelper(60, 20, 0xf6a2, 0x8461));
+
+    // Mouse controls
+    let dragging = false, lastX = 0;
+    const canvas = document.getElementById('c');
+    canvas.addEventListener('mousedown', e => { dragging = true; lastX = e.clientX; });
+    canvas.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      this.camera.position.applyAxisAngle(T.v3(0,1,0), -(e.clientX - lastX) * 0.008);
+      lastX = e.clientX;
+    });
+    canvas.addEventListener('mouseup', () => dragging = false);
+    canvas.addEventListener('wheel', e => {
+      const z = 1 + e.deltaY * 0.001;
+      this.camera.position.multiplyScalar(Math.max(0.5, Math.min(2, z)));
+    });
+  },
+
+  loadTemplates() {
+    PART_TEMPLATES.forEach(template => {
+      const part = {
+        ...template,
+        values: {}
+      };
+      template.properties.forEach(p => {
+        part.values[p.name] = p.default;
+      });
+      this.parts.push(part);
+    });
+    this.buildShoe3D();
+    this.updatePartsList();
+  },
+
+  buildShoe3D() {
+    // Clear existing
+    this.meshes.forEach(m => this.scene.remove(m));
+    this.meshes.clear();
+
+    const shoeGroup = new THREE.Group();
+
+    // Outsole
+    const outsole = this.createPartMesh('outsole', {
+      geometry: new THREE.BoxGeometry(10, 1, 28),
+      color: this.getPartColor('outsole'),
+      y: 0.5
+    });
+    shoeGroup.add(outsole);
+    this.meshes.set('outsole', outsole);
+
+    // Midsole
+    const midsole = this.createPartMesh('midsole', {
+      geometry: new THREE.BoxGeometry(9.5, 2, 27),
+      color: this.getPartColor('midsole'),
+      y: 2
+    });
+    shoeGroup.add(midsole);
+    this.meshes.set('midsole', midsole);
+
+    // Insole
+    const insole = this.createPartMesh('insole', {
+      geometry: new THREE.BoxGeometry(8.5, 0.5, 25),
+      color: 0x8B4513,
+      y: 3.25
+    });
+    shoeGroup.add(insole);
+    this.meshes.set('insole', insole);
+
+    // Upper - simplified shape
+    const upperShape = new THREE.Shape();
+    upperShape.moveTo(-4, 0);
+    upperShape.lineTo(-4.5, 5);
+    upperShape.lineTo(-3, 8);
+    upperShape.lineTo(0, 9);
+    upperShape.lineTo(3, 8);
+    upperShape.lineTo(4.5, 5);
+    upperShape.lineTo(4, 0);
+    const upperGeo = new THREE.ExtrudeGeometry(upperShape, {depth: 20, bevelEnabled: false});
+    const upper = this.createPartMesh('upper', {
+      geometry: upperGeo,
+      color: this.getPartColor('upper'),
+      y: 3,
+      z: -10,
+      rotX: Math.PI/2
+    });
+    shoeGroup.add(upper);
+    this.meshes.set('upper', upper);
+
+    // Toe box
+    const toeGeo = new THREE.SphereGeometry(5, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+    const toebox = this.createPartMesh('toebox', {
+      geometry: toeGeo,
+      color: this.getPartColor('upper'),
+      y: 3,
+      z: 10,
+      scale: {x: 0.9, y: 0.8, z: 1.2}
+    });
+    shoeGroup.add(toebox);
+    this.meshes.set('toebox', toebox);
+
+    // Heel counter
+    const heelGeo = new THREE.CylinderGeometry(4, 4.5, 7, 16, 1, true, Math.PI * 0.6, Math.PI * 0.8);
+    const heel = this.createPartMesh('heel', {
+      geometry: heelGeo,
+      color: this.getPartColor('heel'),
+      y: 6.5,
+      z: -12,
+      rotY: Math.PI
+    });
+    shoeGroup.add(heel);
+    this.meshes.set('heel', heel);
+
+    // Tongue
+    const tongueGeo = new THREE.BoxGeometry(6, 0.8, 14);
+    const tongue = this.createPartMesh('tongue', {
+      geometry: tongueGeo,
+      color: 0xe0e0e0,
+      y: 5,
+      z: 0,
+      rotX: -0.3
+    });
+    shoeGroup.add(tongue);
+    this.meshes.set('tongue', tongue);
+
+    // Lacing (eyelets)
+    for (let i = 0; i < 6; i++) {
+      const eyelet = new THREE.Mesh(
+        new THREE.TorusGeometry(0.3, 0.1, 8, 16),
+        new THREE.MeshPhongMaterial({color: 0xcccccc, metalness: 0.8})
+      );
+      eyelet.position.set(2.5 * (i % 2 ? 1 : -1), 5 + Math.floor(i/2) * 1.5, -2 + Math.floor(i/2) * 2);
+      eyelet.rotation.y = Math.PI / 2;
+      shoeGroup.add(eyelet);
+    }
+
+    // Collar padding
+    const collarGeo = new THREE.TorusGeometry(4, 1, 8, 16, Math.PI);
+    const collar = this.createPartMesh('collar', {
+      geometry: collarGeo,
+      color: 0x666666,
+      y: 9,
+      z: -10,
+      rotX: Math.PI/2,
+      rotZ: Math.PI
+    });
+    shoeGroup.add(collar);
+    this.meshes.set('collar', collar);
+
+    shoeGroup.position.y = 0;
+    shoeGroup.rotation.y = -0.3;
+    this.shoeGroup = shoeGroup;
+    this.scene.add(shoeGroup);
+  },
+
+  createPartMesh(partId, opts) {
+    const mat = new THREE.MeshPhongMaterial({
+      color: opts.color || 0x888888,
+      transparent: true,
+      opacity: 0.95,
+      wireframe: this.wireframe
+    });
+    const mesh = new THREE.Mesh(opts.geometry, mat);
+    mesh.position.y = opts.y || 0;
+    mesh.position.z = opts.z || 0;
+    if (opts.rotX) mesh.rotation.x = opts.rotX;
+    if (opts.rotY) mesh.rotation.y = opts.rotY;
+    if (opts.rotZ) mesh.rotation.z = opts.rotZ;
+    if (opts.scale) mesh.scale.set(opts.scale.x, opts.scale.y, opts.scale.z);
+    mesh.userData = {partId};
+    return mesh;
+  },
+
+  getPartColor(partId) {
+    const part = this.parts.find(p => p.id === partId);
+    if (!part) return 0x888888;
+    const colorVal = part.values.color;
+    if (colorVal) return parseInt(colorVal.replace('#', '0x'));
+    const matId = part.values.material;
+    const mat = MATERIALS.find(m => m.id === matId);
+    return mat?.color || 0x888888;
+  },
+
+  setupMaterials() {
+    const container = document.getElementById('material-palette');
+    container.innerHTML = MATERIALS.map(m => `
+      <div class="material-swatch" style="background:#${m.color.toString(16).padStart(6,'0')}"
+           onclick="S.applyMaterial('${m.id}')" title="${m.name}">
+        ${m.icon}
+      </div>
+    `).join('');
+  },
+
+  setupColors() {
+    const container = document.getElementById('color-picker');
+    container.innerHTML = COLORS.map(c => `
+      <div class="color-swatch" style="background:${c}" onclick="S.applyColor('${c}')"></div>
+    `).join('');
+  },
+
+  applyMaterial(matId) {
+    if (!this.selectedPart) return alert('Select a part first');
+    const part = this.parts.find(p => p.id === this.selectedPart.id);
+    if (part && part.values.material !== undefined) {
+      part.values.material = matId;
+      this.updatePartEditor();
+      this.updateMesh(part.id);
+    }
+  },
+
+  applyColor(color) {
+    if (!this.selectedPart) return alert('Select a part first');
+    const part = this.parts.find(p => p.id === this.selectedPart.id);
+    if (part && part.values.color !== undefined) {
+      part.values.color = color;
+      this.updatePartEditor();
+      this.updateMesh(part.id);
+    }
+  },
+
+  updateMesh(partId) {
+    const mesh = this.meshes.get(partId);
+    if (mesh) {
+      mesh.material.color.setHex(this.getPartColor(partId));
+    }
+  },
+
+  selectPart(id) {
+    this.selectedPart = this.parts.find(p => p.id === id);
+    this.updatePartsList();
+    this.updatePartEditor();
+
+    // Highlight mesh
+    this.meshes.forEach((mesh, key) => {
+      mesh.material.emissive?.setHex(key === id ? 0x442244 : 0x000000);
+    });
+  },
+
+  updatePartsList() {
+    document.getElementById('parts-list').innerHTML = this.parts.map(part => `
+      <div class="part-card ${this.selectedPart?.id === part.id ? 'selected' : ''}"
+           onclick="S.selectPart('${part.id}')">
+        <div class="part-icon">${part.icon}</div>
+        <div style="font-weight:bold">${part.name}</div>
+        <div style="font-size:9px;color:#846">${part.description}</div>
+      </div>
+    `).join('');
+  },
+
+  updatePartEditor() {
+    const editor = document.getElementById('part-editor');
+    if (!this.selectedPart) {
+      editor.innerHTML = '<div style="color:#666;text-align:center;padding:20px">Select a part to edit</div>';
+      return;
+    }
+
+    const part = this.selectedPart;
+    const template = PART_TEMPLATES.find(t => t.id === part.id);
+
+    editor.innerHTML = `
+      <div style="font-size:14px;margin-bottom:8px">${part.icon} <strong>${part.name}</strong></div>
+      <div style="font-size:9px;color:#846;margin-bottom:10px">${part.description}</div>
+      ${template.properties.map(prop => this.renderProperty(prop, part.values[prop.name])).join('')}
+    `;
+  },
+
+  renderProperty(prop, value) {
+    let input = '';
+    const typeClass = `type-${prop.type === 'select' ? 'size' : prop.type}`;
+
+    switch (prop.type) {
+      case 'number':
+        input = `<input type="number" value="${value}" min="${prop.min||0}" max="${prop.max||100}"
+                  onchange="S.updateProp('${prop.name}',parseFloat(this.value))" style="width:60px">
+                  ${prop.unit||''}`;
+        break;
+      case 'bool':
+        input = `<input type="checkbox" ${value ? 'checked' : ''}
+                  onchange="S.updateProp('${prop.name}',this.checked)">`;
+        break;
+      case 'select':
+        input = `<select onchange="S.updateProp('${prop.name}',this.value)" style="width:100px">
+                  ${prop.options.map(o => `<option value="${o}" ${value===o?'selected':''}>${o}</option>`).join('')}
+                 </select>`;
+        break;
+      case 'material':
+        const mat = MATERIALS.find(m => m.id === value);
+        input = `<select onchange="S.updateProp('${prop.name}',this.value)" style="width:100px">
+                  ${MATERIALS.map(m => `<option value="${m.id}" ${value===m.id?'selected':''}>${m.icon} ${m.name}</option>`).join('')}
+                 </select>`;
+        break;
+      case 'color':
+        input = `<input type="color" value="${value}" onchange="S.updateProp('${prop.name}',this.value)">`;
+        break;
+    }
+
+    return `
+      <div class="prop-item">
+        <span class="prop-type ${typeClass}">${prop.type}</span>
+        <strong>${prop.name}</strong>
+        <div style="margin-top:4px">${input}</div>
+      </div>
+    `;
+  },
+
+  updateProp(name, value) {
+    if (!this.selectedPart) return;
+    this.selectedPart.values[name] = value;
+    if (name === 'material' || name === 'color') {
+      this.updateMesh(this.selectedPart.id);
+    }
+    this.analyzefit();
+  },
+
+  newPart() {
+    const name = prompt('Part name:');
+    if (!name) return;
+    const part = {
+      id: name.toLowerCase().replace(/\s+/g, '_'),
+      name,
+      icon: '📦',
+      category: 'custom',
+      description: 'Custom part',
+      properties: [
+        {name: 'material', type: 'material', default: 'leather'},
+        {name: 'color', type: 'color', default: '#888888'}
+      ],
+      values: {material: 'leather', color: '#888888'}
+    };
+    this.parts.push(part);
+    this.updatePartsList();
+  },
+
+  createDesign() {
+    const name = document.getElementById('design-name').value;
+    if (!name) return;
+
+    const design = {
+      id: Date.now(),
+      name,
+      size: this.currentSize,
+      parts: JSON.parse(JSON.stringify(this.parts.map(p => ({id: p.id, values: p.values}))))
+    };
+    this.designs.push(design);
+    this.updateDesignList();
+    document.getElementById('design-name').value = '';
+  },
+
+  updateDesignList() {
+    document.getElementById('design-list').innerHTML = this.designs.map(d => `
+      <div class="instance-card" onclick="S.loadDesign(${d.id})">
+        <div style="font-weight:bold">👟 ${d.name}</div>
+        <div style="font-size:9px;color:#846">Size ${d.size} US</div>
+      </div>
+    `).join('');
+  },
+
+  loadDesign(id) {
+    const design = this.designs.find(d => d.id === id);
+    if (!design) return;
+    design.parts.forEach(dp => {
+      const part = this.parts.find(p => p.id === dp.id);
+      if (part) part.values = {...dp.values};
+    });
+    this.currentSize = design.size;
+    this.updateSizeDisplay();
+    this.buildShoe3D();
+    this.updatePartsList();
+  },
+
+  sizeUp() { this.currentSize = Math.min(16, this.currentSize + 0.5); this.updateSizeDisplay(); },
+  sizeDown() { this.currentSize = Math.max(4, this.currentSize - 0.5); this.updateSizeDisplay(); },
+
+  updateSizeDisplay() {
+    const us = this.currentSize;
+    const eu = Math.round(us * 1.5 + 33);
+    const uk = us - 1;
+    const cm = (us * 0.847 + 19.5).toFixed(1);
+
+    document.getElementById('spec-us').textContent = us;
+    document.getElementById('spec-eu').textContent = eu;
+    document.getElementById('spec-uk').textContent = uk;
+    document.getElementById('spec-cm').textContent = Math.round(parseFloat(cm));
+    document.getElementById('length-val').textContent = cm + ' cm';
+    document.getElementById('width-val').textContent = (parseFloat(cm) * 0.38).toFixed(1) + ' cm';
+  },
+
+  updateModels() {
+    const brand = document.getElementById('compare-brand').value;
+    const models = BRAND_MODELS[brand] || [];
+    document.getElementById('compare-model').innerHTML = `
+      <option value="">Select model...</option>
+      ${models.map((m, i) => `<option value="${i}">${m.name}</option>`).join('')}
+    `;
+    document.getElementById('compare-result').innerHTML = '';
+  },
+
+  compareModel() {
+    const brand = document.getElementById('compare-brand').value;
+    const modelIdx = document.getElementById('compare-model').value;
+    if (!brand || modelIdx === '') return;
+
+    const model = BRAND_MODELS[brand][modelIdx];
+    const toebox = this.parts.find(p => p.id === 'toebox');
+    const midsole = this.parts.find(p => p.id === 'midsole');
+
+    let fitNotes = [];
+
+    if (toebox?.values.width === 'narrow' && model.fit === 'wide') {
+      fitNotes.push('⚠️ Your toe box is narrower than this model');
+    }
+    if (midsole?.values.archSupport !== model.arch) {
+      fitNotes.push(`ℹ️ Arch: Your design is ${midsole?.values.archSupport}, model is ${model.arch}`);
+    }
+
+    const cushionMatch = Math.abs((parseInt(midsole?.values.thickness) || 20) * 4 - model.cushion);
+
+    document.getElementById('compare-result').innerHTML = `
+      <div style="border-bottom:1px solid #846;padding-bottom:6px;margin-bottom:6px">
+        <strong>${model.name}</strong>
+        <div>Fit: ${model.fit} | Width: ${model.width}</div>
+        <div>Arch: ${model.arch} | Cushion: ${model.cushion}%</div>
+      </div>
+      ${fitNotes.map(n => `<div style="margin:4px 0">${n}</div>`).join('')}
+      <div style="color:#0f0">Cushion similarity: ${100 - cushionMatch}%</div>
+    `;
+  },
+
+  analyzefit() {
+    const analysis = [];
+    let score = 70;
+
+    const midsole = this.parts.find(p => p.id === 'midsole');
+    const toebox = this.parts.find(p => p.id === 'toebox');
+    const outsole = this.parts.find(p => p.id === 'outsole');
+    const insole = this.parts.find(p => p.id === 'insole');
+
+    if (midsole?.values.thickness > 25) {
+      analysis.push({type: 'good', msg: 'Excellent cushioning for long wear'});
+      score += 10;
+    }
+    if (midsole?.values.archSupport === 'stability') {
+      analysis.push({type: 'info', msg: 'Stability support helps overpronation'});
+      score += 5;
+    }
+    if (toebox?.values.width === 'wide' || toebox?.values.width === 'extra-wide') {
+      analysis.push({type: 'good', msg: 'Wide toe box reduces bunion pressure'});
+      score += 8;
+    }
+    if (outsole?.values.flexGrooves) {
+      analysis.push({type: 'good', msg: 'Flex grooves improve natural movement'});
+      score += 5;
+    }
+    if (insole?.values.antimicrobial) {
+      analysis.push({type: 'good', msg: 'Antimicrobial treatment prevents odor'});
+      score += 3;
+    }
+    if (toebox?.values.seamless) {
+      analysis.push({type: 'good', msg: 'Seamless toe box prevents blisters'});
+      score += 5;
+    }
+
+    if (outsole?.values.thickness < 8) {
+      analysis.push({type: 'warn', msg: 'Thin outsole may wear quickly'});
+      score -= 10;
+    }
+    if (midsole?.values.density === 'firm' && midsole?.values.thickness < 15) {
+      analysis.push({type: 'warn', msg: 'Firm + thin midsole may lack comfort'});
+      score -= 8;
+    }
+
+    score = Math.max(20, Math.min(100, score));
+    document.getElementById('fit-score').style.width = score + '%';
+    document.getElementById('fit-percent').textContent = score + '%';
+    document.getElementById('fit-percent').style.color = score > 75 ? '#0f0' : score > 50 ? '#ff0' : '#f44';
+
+    document.getElementById('ai-analysis').innerHTML = analysis.map(a => `
+      <div class="ai-tip" style="border-color:${a.type === 'good' ? '#0f0' : a.type === 'warn' ? '#f80' : '#08f'}">
+        ${a.type === 'good' ? '✓' : a.type === 'warn' ? '⚠️' : 'ℹ️'} ${a.msg}
+      </div>
+    `).join('') || '<div style="color:#846">Configure parts to see analysis</div>';
+  },
+
+  viewTop() { this.camera.position.set(0, 50, 0); },
+  viewSide() { this.camera.position.set(50, 15, 0); },
+  view3D() { this.camera.position.set(30, 25, 40); },
+
+  toggleWireframe() {
+    this.wireframe = !this.wireframe;
+    this.meshes.forEach(m => { m.material.wireframe = this.wireframe; });
+  },
+
+  toggleExplode() {
+    this.exploded = !this.exploded;
+    const offset = this.exploded ? 1 : 0;
+    this.meshes.forEach((mesh, id) => {
+      const base = mesh.userData.baseY ?? mesh.position.y;
+      mesh.userData.baseY = base;
+      const explodeOffset = {
+        outsole: 0, midsole: 3, insole: 6, upper: 10, toebox: 12, heel: 8, tongue: 14, collar: 16
+      }[id] || 0;
+      mesh.position.y = base + explodeOffset * offset;
+    });
+  },
+
+  showExport() {
+    document.getElementById('export-panel').style.display = 'block';
+    this.exportJSON();
+  },
+
+  hideExport() {
+    document.getElementById('export-panel').style.display = 'none';
+  },
+
+  exportJSON() {
+    const data = {
+      version: '2.0',
+      size: {us: this.currentSize, eu: Math.round(this.currentSize * 1.5 + 33)},
+      parts: this.parts.map(p => ({id: p.id, name: p.name, values: p.values}))
+    };
+    document.getElementById('export-data').value = JSON.stringify(data, null, 2);
+  },
+
+  exportSpec() {
+    let spec = `SHOE SPECIFICATION SHEET\n${'='.repeat(40)}\n\n`;
+    spec += `Size: US ${this.currentSize} / EU ${Math.round(this.currentSize * 1.5 + 33)}\n\n`;
+
+    this.parts.forEach(p => {
+      spec += `${p.icon} ${p.name.toUpperCase()}\n${'-'.repeat(30)}\n`;
+      Object.entries(p.values).forEach(([k, v]) => {
+        spec += `  ${k}: ${v}\n`;
+      });
+      spec += '\n';
+    });
+
+    document.getElementById('export-data').value = spec;
+  },
+
+  exportEmail() {
+    let email = `Subject: Custom Shoe Design Specification\n\n`;
+    email += `Dear Shoemaker,\n\nPlease find below my custom shoe design specifications:\n\n`;
+    email += `SIZE: US ${this.currentSize} / EU ${Math.round(this.currentSize * 1.5 + 33)}\n\n`;
+
+    this.parts.forEach(p => {
+      email += `${p.name}: `;
+      const key = Object.entries(p.values).map(([k,v]) => `${k}=${v}`).join(', ');
+      email += key + '\n';
+    });
+
+    email += `\nPlease contact me with a quote and timeline.\n\nBest regards`;
+    document.getElementById('export-data').value = email;
+  },
+
+  copyExport() {
+    navigator.clipboard?.writeText(document.getElementById('export-data').value);
+    alert('Copied to clipboard!');
+  },
+
+  importPart() {
+    const json = prompt('Paste design JSON:');
+    if (!json) return;
+    try {
+      const data = JSON.parse(json);
+      if (data.parts) {
+        data.parts.forEach(dp => {
+          const part = this.parts.find(p => p.id === dp.id);
+          if (part) part.values = {...dp.values};
+        });
+        if (data.size?.us) {
+          this.currentSize = data.size.us;
+          this.updateSizeDisplay();
+        }
+        this.buildShoe3D();
+        this.updatePartsList();
+        this.analyzefit();
+      }
+    } catch (e) {
+      alert('Invalid JSON');
+    }
+  },
+
+  updateUI() {
+    this.updateSizeDisplay();
+    this.analyzefit();
+  },
+
+  animate() {
+    requestAnimationFrame(() => this.animate());
+    if (this.shoeGroup && !this.exploded) {
+      this.shoeGroup.rotation.y += 0.003;
+    }
+    this.camera.lookAt(0, 5, 0);
+    this.renderer.render(this.scene, this.camera);
+  }
+};
+
+onload = () => S.init();
+onresize = () => {
+  S.renderer.setSize(innerWidth, innerHeight);
+  S.camera.aspect = innerWidth / innerHeight;
+  S.camera.updateProjectionMatrix();
+};
+</script></body></html>
