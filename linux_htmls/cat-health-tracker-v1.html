@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cat Health Tracker & Guide</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:linear-gradient(135deg,#1a1a2e,#16213e);min-height:100vh;font:12px 'Segoe UI',sans-serif;color:#e8d5b7}
+#c{position:fixed;top:0;left:0;width:100%;height:200px;z-index:0}
+.container{position:relative;z-index:10;padding-top:180px}
+.panel{background:rgba(30,25,40,.95);border:2px solid #c9a86c;border-radius:12px;padding:14px;margin:10px;backdrop-filter:blur(10px)}
+.panel-title{color:#f4d58d;font-size:15px;font-weight:bold;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #c9a86c44;display:flex;align-items:center;gap:8px}
+button{background:linear-gradient(135deg,#c9a86c,#a67c52);color:#1a1a2e;border:none;padding:10px 16px;margin:4px;border-radius:8px;cursor:pointer;font-size:11px;font-weight:bold;transition:all .2s}
+button:hover{transform:scale(1.03);box-shadow:0 4px 15px #c9a86c44}
+button.secondary{background:linear-gradient(135deg,#4a4a6a,#3a3a5a);color:#e8d5b7;border:1px solid #6a6a8a}
+button.danger{background:linear-gradient(135deg,#8b4a4a,#6a3a3a);color:#fcc}
+button.success{background:linear-gradient(135deg,#4a8b4a,#3a6a3a);color:#cfc}
+input,select,textarea{background:#2a2540;border:1px solid #5a5070;color:#e8d5b7;padding:10px;border-radius:6px;font-size:12px;width:100%}
+input:focus,select:focus,textarea:focus{border-color:#c9a86c;outline:none}
+.row{display:flex;gap:8px;margin:8px 0;flex-wrap:wrap;align-items:center}
+.col{flex:1;min-width:120px}
+.tabs{display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap}
+.tab{padding:10px 16px;background:#2a2540;border:1px solid #5a5070;border-radius:8px 8px 0 0;cursor:pointer;transition:all .2s}
+.tab.active{background:#c9a86c;color:#1a1a2e;border-color:#c9a86c}
+.tab-content{display:none}.tab-content.active{display:block}
+.cat-avatar{width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#c9a86c,#8b7355);display:flex;align-items:center;justify-content:center;font-size:40px;margin:0 auto 10px;border:3px solid #f4d58d}
+.stat-card{background:#2a2540;border-radius:8px;padding:12px;text-align:center;flex:1;min-width:80px}
+.stat-value{font-size:24px;font-weight:bold;color:#f4d58d}
+.stat-label{font-size:10px;color:#a89880;margin-top:4px}
+.health-bar{height:10px;background:#2a2540;border-radius:5px;overflow:hidden;margin:6px 0}
+.health-fill{height:100%;border-radius:5px;transition:width .3s}
+.log-entry{background:#2a2540;border-left:3px solid #c9a86c;padding:10px;margin:8px 0;border-radius:0 6px 6px 0}
+.log-date{font-size:10px;color:#a89880}
+.log-content{margin-top:4px}
+.symptom-tag{display:inline-block;padding:4px 10px;background:#4a3a5a;border-radius:15px;margin:3px;font-size:10px;cursor:pointer;transition:all .2s}
+.symptom-tag:hover,.symptom-tag.selected{background:#c9a86c;color:#1a1a2e}
+.info-card{background:linear-gradient(135deg,#2a3540,#1a2530);border:1px solid #4a6a7a;border-radius:10px;padding:14px;margin:10px 0}
+.info-card h4{color:#7ac;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.info-card ul{margin-left:20px;line-height:1.8}
+.warning-box{background:#4a3030;border:1px solid #8a5050;border-radius:8px;padding:12px;margin:10px 0}
+.warning-box h4{color:#f88;margin-bottom:6px}
+.tip-box{background:#304030;border:1px solid #508050;border-radius:8px;padding:12px;margin:10px 0}
+.tip-box h4{color:#8f8;margin-bottom:6px}
+.vaccine-card{background:#2a2540;border-radius:8px;padding:12px;margin:8px 0;display:flex;justify-content:space-between;align-items:center}
+.vaccine-status{padding:4px 10px;border-radius:4px;font-size:10px;font-weight:bold}
+.status-current{background:#3a5a3a;color:#8f8}
+.status-due{background:#5a5a3a;color:#ff8}
+.status-overdue{background:#5a3a3a;color:#f88}
+.weight-chart{height:150px;background:#1a1a2e;border-radius:8px;position:relative;margin:10px 0;overflow:hidden}
+.chart-bar{position:absolute;bottom:0;background:linear-gradient(to top,#c9a86c,#f4d58d);border-radius:4px 4px 0 0;transition:height .3s}
+.chart-label{position:absolute;bottom:-20px;font-size:9px;color:#888;transform:translateX(-50%)}
+.reminder{background:#3a3050;border-left:3px solid #a080c0;padding:10px;margin:8px 0;border-radius:0 6px 6px 0;display:flex;justify-content:space-between;align-items:center}
+.breed-info{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.age-calculator{background:#2a3540;border-radius:8px;padding:15px;text-align:center}
+.human-age{font-size:32px;color:#f4d58d;font-weight:bold}
+#search-box{margin-bottom:15px}
+.accordion{border:1px solid #5a5070;border-radius:8px;margin:8px 0;overflow:hidden}
+.accordion-header{background:#2a2540;padding:12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.accordion-header:hover{background:#3a3550}
+.accordion-content{padding:12px;display:none;background:#1a1a2e}
+.accordion.open .accordion-content{display:block}
+.accordion.open .accordion-icon{transform:rotate(180deg)}
+.emoji-big{font-size:24px}
+
+/* Mobile Responsive */
+@media(max-width:768px){
+  #c{height:150px}
+  .container{padding-top:140px}
+  .panel{margin:6px;padding:12px}
+  button{padding:12px 16px;min-height:44px}
+  input,select,textarea{padding:12px;min-height:44px}
+  .stat-card{min-width:70px;padding:10px}
+  .stat-value{font-size:20px}
+  .tabs{overflow-x:auto;flex-wrap:nowrap}
+  .tab{white-space:nowrap;padding:10px 14px}
+  .cat-avatar{width:60px;height:60px;font-size:30px}
+}
+@media(max-width:480px){
+  .panel{margin:4px;padding:10px}
+  .row{gap:4px}
+  .col{min-width:100%}
+  .stat-value{font-size:18px}
+}
+</style></head><body>
+<canvas id="c"></canvas>
+<div class="container">
+
+<!-- Cat Profile -->
+<div class="panel" id="profile-panel">
+<div class="panel-title">🐱 Cat Profile</div>
+<div id="cat-profile">
+<div class="cat-avatar" id="cat-emoji">🐱</div>
+<div class="row">
+<div class="col"><input type="text" id="cat-name" placeholder="Cat's Name" value="Whiskers"></div>
+<div class="col">
+<select id="cat-breed">
+<option value="domestic">Domestic Shorthair</option>
+<option value="persian">Persian</option>
+<option value="siamese">Siamese</option>
+<option value="maine">Maine Coon</option>
+<option value="ragdoll">Ragdoll</option>
+<option value="bengal">Bengal</option>
+<option value="british">British Shorthair</option>
+<option value="abyssinian">Abyssinian</option>
+<option value="sphynx">Sphynx</option>
+<option value="scottish">Scottish Fold</option>
+</select>
+</div>
+</div>
+<div class="row">
+<div class="col"><input type="number" id="cat-age" placeholder="Age (years)" value="3" min="0" max="30"></div>
+<div class="col"><input type="number" id="cat-weight" placeholder="Weight (lbs)" value="10" step="0.1"></div>
+</div>
+<div class="row" style="justify-content:center;margin-top:10px">
+<div class="stat-card">
+<div class="stat-value" id="human-age">28</div>
+<div class="stat-label">Human Years</div>
+</div>
+<div class="stat-card">
+<div class="stat-value" id="health-score">85</div>
+<div class="stat-label">Health Score</div>
+</div>
+<div class="stat-card">
+<div class="stat-value" id="next-vet">14d</div>
+<div class="stat-label">Next Checkup</div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- Main Tabs -->
+<div class="panel">
+<div class="tabs">
+<div class="tab active" onclick="C.showTab('health')">❤️ Health</div>
+<div class="tab" onclick="C.showTab('weight')">⚖️ Weight</div>
+<div class="tab" onclick="C.showTab('vaccines')">💉 Vaccines</div>
+<div class="tab" onclick="C.showTab('symptoms')">🩺 Symptoms</div>
+<div class="tab" onclick="C.showTab('learn')">📚 Learn</div>
+</div>
+
+<!-- Health Tab -->
+<div class="tab-content active" id="tab-health">
+<div class="row">
+<div class="col">
+<div style="margin-bottom:8px;color:#a89880">Overall Health</div>
+<div class="health-bar"><div class="health-fill" style="width:85%;background:linear-gradient(90deg,#4a8,#8f8)"></div></div>
+</div>
+<div class="col">
+<div style="margin-bottom:8px;color:#a89880">Energy Level</div>
+<div class="health-bar"><div class="health-fill" style="width:70%;background:linear-gradient(90deg,#48a,#8af)"></div></div>
+</div>
+</div>
+<div class="row">
+<div class="col">
+<div style="margin-bottom:8px;color:#a89880">Appetite</div>
+<div class="health-bar"><div class="health-fill" style="width:90%;background:linear-gradient(90deg,#a84,#fa8)"></div></div>
+</div>
+<div class="col">
+<div style="margin-bottom:8px;color:#a89880">Hydration</div>
+<div class="health-bar"><div class="health-fill" style="width:75%;background:linear-gradient(90deg,#4aa,#8ff)"></div></div>
+</div>
+</div>
+
+<div class="panel-title" style="margin-top:20px">📋 Recent Health Log</div>
+<div id="health-log">
+<div class="log-entry">
+<div class="log-date">Dec 20, 2024</div>
+<div class="log-content">✅ Normal appetite, active play session</div>
+</div>
+<div class="log-entry">
+<div class="log-date">Dec 18, 2024</div>
+<div class="log-content">💊 Administered monthly flea treatment</div>
+</div>
+</div>
+<div class="row" style="margin-top:10px">
+<input type="text" id="new-log" placeholder="Add health note...">
+<button onclick="C.addLog()">+ Add</button>
+</div>
+</div>
+
+<!-- Weight Tab -->
+<div class="tab-content" id="tab-weight">
+<div class="row">
+<div class="stat-card">
+<div class="stat-value" id="current-weight">10.2</div>
+<div class="stat-label">Current (lbs)</div>
+</div>
+<div class="stat-card">
+<div class="stat-value" id="ideal-weight">9-11</div>
+<div class="stat-label">Ideal Range</div>
+</div>
+<div class="stat-card">
+<div class="stat-value" id="weight-trend">→</div>
+<div class="stat-label">Trend</div>
+</div>
+</div>
+
+<div class="weight-chart" id="weight-chart"></div>
+
+<div class="row" style="margin-top:15px">
+<input type="number" id="new-weight" placeholder="Enter weight (lbs)" step="0.1">
+<button onclick="C.addWeight()">📊 Log Weight</button>
+</div>
+
+<div class="info-card">
+<h4>⚖️ Weight Guidelines</h4>
+<ul>
+<li><strong>Underweight:</strong> Ribs easily visible, minimal fat</li>
+<li><strong>Ideal:</strong> Ribs felt but not seen, waist visible from above</li>
+<li><strong>Overweight:</strong> Ribs hard to feel, no waist definition</li>
+<li><strong>Obese:</strong> Fat deposits visible, distended abdomen</li>
+</ul>
+</div>
+
+<div class="tip-box">
+<h4>💡 Healthy Weight Tips</h4>
+<p>• Feed measured portions, not free-feeding<br>
+• Use puzzle feeders for mental stimulation<br>
+• Aim for 15-20 min play sessions twice daily<br>
+• Consult vet before any diet changes</p>
+</div>
+</div>
+
+<!-- Vaccines Tab -->
+<div class="tab-content" id="tab-vaccines">
+<div class="vaccine-card">
+<div>
+<div style="font-weight:bold">🛡️ FVRCP (Core)</div>
+<div style="font-size:10px;color:#a89880">Feline Viral Rhinotracheitis, Calicivirus, Panleukopenia</div>
+</div>
+<div class="vaccine-status status-current">Current</div>
+</div>
+<div class="vaccine-card">
+<div>
+<div style="font-weight:bold">🦠 Rabies</div>
+<div style="font-size:10px;color:#a89880">Required by law in most areas</div>
+</div>
+<div class="vaccine-status status-current">Current</div>
+</div>
+<div class="vaccine-card">
+<div>
+<div style="font-weight:bold">😺 FeLV</div>
+<div style="font-size:10px;color:#a89880">Feline Leukemia Virus</div>
+</div>
+<div class="vaccine-status status-due">Due Soon</div>
+</div>
+
+<div class="row" style="margin-top:15px">
+<select id="vaccine-type">
+<option value="">Add vaccine record...</option>
+<option value="fvrcp">FVRCP</option>
+<option value="rabies">Rabies</option>
+<option value="felv">FeLV</option>
+<option value="fiv">FIV</option>
+<option value="bordetella">Bordetella</option>
+</select>
+<input type="date" id="vaccine-date">
+<button onclick="C.addVaccine()">💉 Add</button>
+</div>
+
+<div class="info-card">
+<h4>📅 Vaccination Schedule</h4>
+<ul>
+<li><strong>Kittens:</strong> Start at 6-8 weeks, boosters every 3-4 weeks until 16 weeks</li>
+<li><strong>Adult cats:</strong> Boosters every 1-3 years depending on vaccine</li>
+<li><strong>Indoor cats:</strong> Still need core vaccines (FVRCP, Rabies)</li>
+</ul>
+</div>
+</div>
+
+<!-- Symptoms Tab -->
+<div class="tab-content" id="tab-symptoms">
+<div style="margin-bottom:15px;color:#a89880">Select any symptoms you've noticed:</div>
+<div id="symptom-list">
+<span class="symptom-tag" onclick="C.toggleSymptom(this)">😿 Not eating</span>
+<span class="symptom-tag" onclick="C.toggleSymptom(this)">🤢 Vomiting</span>
+<span class="symptom-tag" onclick="C.toggleSymptom(this)">💩 Diarrhea</span>
+<span class="symptom-tag" onclick="C.toggleSymptom(this)">😴 Lethargy</span>
+<span class="symptom-tag" onclick="C.toggleSymptom(this)">💧 Drinking more</span>
+<span class="symptom-tag" onclick="C.toggleSymptom(this)">🚽 Urinating more</span>
+<span class="symptom-tag" onclick="C.toggleSymptom(this)">😾 Hiding</span>
+<span class="symptom-tag" onclick="C.toggleSymptom(this)">🗣️ Meowing more</span>
+<span class="symptom-tag" onclick="C.toggleSymptom(this)">🤧 Sneezing</span>
+<span class="symptom-tag" onclick="C.toggleSymptom(this)">👁️ Eye discharge</span>
+<span class="symptom-tag" onclick="C.toggleSymptom(this)">🟡 Yellow gums</span>
+<span class="symptom-tag" onclick="C.toggleSymptom(this)">⚖️ Weight loss</span>
+<span class="symptom-tag" onclick="C.toggleSymptom(this)">🦷 Bad breath</span>
+<span class="symptom-tag" onclick="C.toggleSymptom(this)">🐾 Limping</span>
+<span class="symptom-tag" onclick="C.toggleSymptom(this)">🔴 Blood in stool</span>
+</div>
+
+<div id="symptom-analysis" style="margin-top:15px"></div>
+
+<button onclick="C.analyzeSymptoms()" class="success" style="width:100%;margin-top:10px">🔍 Analyze Symptoms</button>
+
+<div class="warning-box">
+<h4>⚠️ Emergency Signs - See Vet Immediately</h4>
+<p>• Difficulty breathing • Collapse or unconsciousness<br>
+• Severe bleeding • Unable to urinate (esp. male cats)<br>
+• Ingested poison/toxin • Seizures<br>
+• Severe pain • Pale or blue gums</p>
+</div>
+</div>
+
+<!-- Learn Tab -->
+<div class="tab-content" id="tab-learn">
+<input type="text" id="search-box" placeholder="🔍 Search topics..." oninput="C.searchTopics()">
+
+<div id="learn-topics">
+<div class="accordion" onclick="C.toggleAccordion(this)">
+<div class="accordion-header">
+<span>🍽️ Nutrition & Diet</span>
+<span class="accordion-icon">▼</span>
+</div>
+<div class="accordion-content">
+<p><strong>Essential Nutrients:</strong></p>
+<ul>
+<li><strong>Protein:</strong> Cats are obligate carnivores - need meat-based protein</li>
+<li><strong>Taurine:</strong> Essential amino acid only found in animal tissue</li>
+<li><strong>Fatty Acids:</strong> Omega-3 and Omega-6 for coat and skin health</li>
+<li><strong>Water:</strong> Cats often don't drink enough - consider wet food</li>
+</ul>
+<div class="warning-box">
+<h4>🚫 Toxic Foods</h4>
+<p>Onions, garlic, chocolate, grapes, raisins, alcohol, caffeine, xylitol, raw eggs, raw fish</p>
+</div>
+</div>
+</div>
+
+<div class="accordion" onclick="C.toggleAccordion(this)">
+<div class="accordion-header">
+<span>🏥 Common Health Issues</span>
+<span class="accordion-icon">▼</span>
+</div>
+<div class="accordion-content">
+<p><strong>Dental Disease:</strong> Affects 70% of cats over 3 years. Signs: bad breath, drooling, difficulty eating.</p>
+<p><strong>Kidney Disease:</strong> Common in older cats. Signs: increased thirst/urination, weight loss, vomiting.</p>
+<p><strong>Hyperthyroidism:</strong> Overactive thyroid. Signs: weight loss despite good appetite, hyperactivity, vomiting.</p>
+<p><strong>Diabetes:</strong> Signs: increased thirst/urination, weight loss, weakness in hind legs.</p>
+<p><strong>Gallbladder Issues:</strong> Signs: jaundice (yellow skin/eyes), vomiting, lethargy, loss of appetite. Can be caused by infections, stones, or inflammation.</p>
+<p><strong>UTI/Bladder Issues:</strong> Signs: straining to urinate, blood in urine, crying in litter box. EMERGENCY in male cats if blocked.</p>
+</div>
+</div>
+
+<div class="accordion" onclick="C.toggleAccordion(this)">
+<div class="accordion-header">
+<span>😺 Behavior & Body Language</span>
+<span class="accordion-icon">▼</span>
+</div>
+<div class="accordion-content">
+<p><strong>Tail Position:</strong></p>
+<ul>
+<li>⬆️ <strong>Up:</strong> Happy, confident, friendly greeting</li>
+<li>❓ <strong>Question mark:</strong> Playful, curious</li>
+<li>⬇️ <strong>Down/tucked:</strong> Fearful, anxious</li>
+<li>🌀 <strong>Puffed up:</strong> Frightened, trying to look bigger</li>
+</ul>
+<p><strong>Ear Position:</strong></p>
+<ul>
+<li>Forward: Alert, interested</li>
+<li>Sideways/back: Irritated, anxious</li>
+<li>Flat back: Fearful or aggressive</li>
+</ul>
+<p><strong>Purring:</strong> Usually contentment, but can also indicate pain or stress (self-soothing)</p>
+</div>
+</div>
+
+<div class="accordion" onclick="C.toggleAccordion(this)">
+<div class="accordion-header">
+<span>🏠 Environmental Enrichment</span>
+<span class="accordion-icon">▼</span>
+</div>
+<div class="accordion-content">
+<p><strong>The 5 Pillars of Cat Welfare:</strong></p>
+<ol style="margin-left:20px;line-height:2">
+<li>Safe place to hide and rest</li>
+<li>Multiple separated resources (food, water, litter, scratching)</li>
+<li>Opportunity for play and predatory behavior</li>
+<li>Positive human interaction</li>
+<li>Environment that respects their sense of smell</li>
+</ol>
+<div class="tip-box">
+<h4>💡 Enrichment Ideas</h4>
+<p>• Vertical space (cat trees, shelves)<br>
+• Window perches for "cat TV"<br>
+• Puzzle feeders<br>
+• Rotating toys<br>
+• Catnip, silver vine, or valerian</p>
+</div>
+</div>
+</div>
+
+<div class="accordion" onclick="C.toggleAccordion(this)">
+<div class="accordion-header">
+<span>🧓 Senior Cat Care (7+ years)</span>
+<span class="accordion-icon">▼</span>
+</div>
+<div class="accordion-content">
+<p><strong>Age-Related Changes:</strong></p>
+<ul>
+<li>Decreased activity and mobility</li>
+<li>Changes in sleep patterns</li>
+<li>Weight changes (loss or gain)</li>
+<li>Cognitive changes (confusion, vocalization)</li>
+<li>Dental issues more common</li>
+</ul>
+<p><strong>Senior Cat Needs:</strong></p>
+<ul>
+<li>Twice-yearly vet checkups</li>
+<li>Easy-access litter boxes (low sides)</li>
+<li>Steps/ramps to favorite spots</li>
+<li>Warmer sleeping areas</li>
+<li>More gentle handling</li>
+</ul>
+</div>
+</div>
+
+<div class="accordion" onclick="C.toggleAccordion(this)">
+<div class="accordion-header">
+<span>🐱 Age in Human Years</span>
+<span class="accordion-icon">▼</span>
+</div>
+<div class="accordion-content">
+<table style="width:100%;border-collapse:collapse;margin:10px 0">
+<tr style="border-bottom:1px solid #5a5070"><th style="text-align:left;padding:8px">Cat Age</th><th style="text-align:left;padding:8px">Human Equivalent</th></tr>
+<tr><td style="padding:8px">1 year</td><td style="padding:8px">15 years</td></tr>
+<tr><td style="padding:8px">2 years</td><td style="padding:8px">24 years</td></tr>
+<tr><td style="padding:8px">3 years</td><td style="padding:8px">28 years</td></tr>
+<tr><td style="padding:8px">5 years</td><td style="padding:8px">36 years</td></tr>
+<tr><td style="padding:8px">10 years</td><td style="padding:8px">56 years</td></tr>
+<tr><td style="padding:8px">15 years</td><td style="padding:8px">76 years</td></tr>
+<tr><td style="padding:8px">20 years</td><td style="padding:8px">96 years</td></tr>
+</table>
+<p style="font-size:10px;color:#a89880">After age 2, each cat year ≈ 4 human years</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- Reminders Panel -->
+<div class="panel">
+<div class="panel-title">⏰ Reminders</div>
+<div id="reminders">
+<div class="reminder">
+<div>
+<div style="font-weight:bold">💊 Flea Treatment</div>
+<div style="font-size:10px;color:#a89880">Due in 5 days</div>
+</div>
+<button class="secondary" onclick="C.completeReminder(this)">✓ Done</button>
+</div>
+<div class="reminder">
+<div>
+<div style="font-weight:bold">🏥 Vet Checkup</div>
+<div style="font-size:10px;color:#a89880">Jan 7, 2025</div>
+</div>
+<button class="secondary" onclick="C.completeReminder(this)">✓ Done</button>
+</div>
+</div>
+<div class="row" style="margin-top:10px">
+<input type="text" id="reminder-text" placeholder="Add reminder...">
+<input type="date" id="reminder-date">
+<button onclick="C.addReminder()">+ Add</button>
+</div>
+</div>
+
+</div>
+
+<script>
+const C = {
+  weightHistory: [9.8, 10.0, 10.1, 10.0, 10.2, 10.2],
+  selectedSymptoms: new Set(),
+
+  init() {
+    this.setupScene();
+    this.updateHumanAge();
+    this.renderWeightChart();
+
+    document.getElementById('cat-age').addEventListener('change', () => this.updateHumanAge());
+    document.getElementById('cat-name').addEventListener('change', () => this.updateCatEmoji());
+  },
+
+  setupScene() {
+    const canvas = document.getElementById('c');
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(50, innerWidth / 200, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({canvas, antialias: true, alpha: true});
+    renderer.setSize(innerWidth, 200);
+    renderer.setClearColor(0x000000, 0);
+
+    // Ambient light
+    scene.add(new THREE.AmbientLight(0xc9a86c, 0.5));
+    const light = new THREE.DirectionalLight(0xffffff, 0.8);
+    light.position.set(5, 10, 5);
+    scene.add(light);
+
+    // Create cute cat shape
+    const catGroup = new THREE.Group();
+
+    // Body
+    const bodyGeo = new THREE.SphereGeometry(1, 16, 16);
+    const bodyMat = new THREE.MeshPhongMaterial({color: 0xf4a460});
+    const body = new THREE.Mesh(bodyGeo, bodyMat);
+    body.scale.set(1.2, 0.9, 1);
+    catGroup.add(body);
+
+    // Head
+    const headGeo = new THREE.SphereGeometry(0.7, 16, 16);
+    const head = new THREE.Mesh(headGeo, bodyMat);
+    head.position.set(0, 0.6, 0.8);
+    catGroup.add(head);
+
+    // Ears
+    const earGeo = new THREE.ConeGeometry(0.25, 0.5, 4);
+    const earMat = new THREE.MeshPhongMaterial({color: 0xf4a460});
+    [-0.35, 0.35].forEach(x => {
+      const ear = new THREE.Mesh(earGeo, earMat);
+      ear.position.set(x, 1.1, 0.8);
+      ear.rotation.z = x * 0.3;
+      catGroup.add(ear);
+    });
+
+    // Inner ears
+    const innerEarMat = new THREE.MeshPhongMaterial({color: 0xffb6c1});
+    [-0.35, 0.35].forEach(x => {
+      const innerEar = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.3, 4), innerEarMat);
+      innerEar.position.set(x, 1.05, 0.85);
+      innerEar.rotation.z = x * 0.3;
+      catGroup.add(innerEar);
+    });
+
+    // Eyes
+    const eyeWhite = new THREE.MeshBasicMaterial({color: 0xffffff});
+    const eyePupil = new THREE.MeshBasicMaterial({color: 0x228b22});
+    [-0.2, 0.2].forEach(x => {
+      const white = new THREE.Mesh(new THREE.SphereGeometry(0.15), eyeWhite);
+      white.position.set(x, 0.7, 1.4);
+      catGroup.add(white);
+      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.08), eyePupil);
+      pupil.position.set(x, 0.7, 1.5);
+      catGroup.add(pupil);
+    });
+
+    // Nose
+    const nose = new THREE.Mesh(
+      new THREE.SphereGeometry(0.08),
+      new THREE.MeshPhongMaterial({color: 0xffb6c1})
+    );
+    nose.position.set(0, 0.5, 1.45);
+    catGroup.add(nose);
+
+    // Tail
+    const tailGeo = new THREE.CylinderGeometry(0.1, 0.15, 1.5);
+    const tail = new THREE.Mesh(tailGeo, bodyMat);
+    tail.position.set(0, 0.3, -1.2);
+    tail.rotation.x = -0.5;
+    tail.userData.isTail = true;
+    catGroup.add(tail);
+
+    catGroup.position.y = -0.5;
+    scene.add(catGroup);
+
+    camera.position.set(0, 1, 5);
+    camera.lookAt(0, 0, 0);
+
+    // Floating hearts
+    const hearts = [];
+    for (let i = 0; i < 5; i++) {
+      const heart = new THREE.Mesh(
+        new THREE.SphereGeometry(0.1),
+        new THREE.MeshBasicMaterial({color: 0xff6b6b})
+      );
+      heart.position.set(
+        (Math.random() - 0.5) * 6,
+        (Math.random() - 0.5) * 2,
+        (Math.random() - 0.5) * 2
+      );
+      heart.userData.speed = 0.01 + Math.random() * 0.02;
+      heart.userData.offset = Math.random() * Math.PI * 2;
+      scene.add(heart);
+      hearts.push(heart);
+    }
+
+    const animate = () => {
+      requestAnimationFrame(animate);
+      const time = Date.now() * 0.001;
+
+      catGroup.rotation.y = Math.sin(time * 0.5) * 0.2;
+      catGroup.position.y = -0.5 + Math.sin(time) * 0.1;
+
+      // Tail wag
+      catGroup.children.forEach(c => {
+        if (c.userData.isTail) {
+          c.rotation.z = Math.sin(time * 3) * 0.3;
+        }
+      });
+
+      // Floating hearts
+      hearts.forEach(h => {
+        h.position.y += h.userData.speed;
+        h.position.x += Math.sin(time + h.userData.offset) * 0.01;
+        if (h.position.y > 2) h.position.y = -2;
+      });
+
+      renderer.render(scene, camera);
+    };
+    animate();
+
+    window.addEventListener('resize', () => {
+      renderer.setSize(innerWidth, 200);
+      camera.aspect = innerWidth / 200;
+      camera.updateProjectionMatrix();
+    });
+  },
+
+  showTab(tabId) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
+    document.getElementById('tab-' + tabId).classList.add('active');
+  },
+
+  updateHumanAge() {
+    const catAge = parseFloat(document.getElementById('cat-age').value) || 0;
+    let humanAge;
+    if (catAge <= 1) humanAge = catAge * 15;
+    else if (catAge <= 2) humanAge = 15 + (catAge - 1) * 9;
+    else humanAge = 24 + (catAge - 2) * 4;
+    document.getElementById('human-age').textContent = Math.round(humanAge);
+  },
+
+  updateCatEmoji() {
+    const breed = document.getElementById('cat-breed').value;
+    const emojis = {
+      domestic: '🐱', persian: '😺', siamese: '😸', maine: '🦁',
+      ragdoll: '😻', bengal: '🐆', british: '🐱', abyssinian: '😼',
+      sphynx: '🙀', scottish: '😺'
+    };
+    document.getElementById('cat-emoji').textContent = emojis[breed] || '🐱';
+  },
+
+  addLog() {
+    const input = document.getElementById('new-log');
+    if (!input.value.trim()) return;
+
+    const log = document.createElement('div');
+    log.className = 'log-entry';
+    log.innerHTML = `
+      <div class="log-date">${new Date().toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'})}</div>
+      <div class="log-content">📝 ${input.value}</div>
+    `;
+    document.getElementById('health-log').prepend(log);
+    input.value = '';
+  },
+
+  addWeight() {
+    const weight = parseFloat(document.getElementById('new-weight').value);
+    if (!weight) return;
+
+    this.weightHistory.push(weight);
+    if (this.weightHistory.length > 12) this.weightHistory.shift();
+
+    document.getElementById('current-weight').textContent = weight.toFixed(1);
+    document.getElementById('new-weight').value = '';
+    this.renderWeightChart();
+
+    // Update trend
+    const len = this.weightHistory.length;
+    if (len >= 2) {
+      const diff = this.weightHistory[len-1] - this.weightHistory[len-2];
+      document.getElementById('weight-trend').textContent = diff > 0.2 ? '↗️' : diff < -0.2 ? '↘️' : '→';
+    }
+  },
+
+  renderWeightChart() {
+    const container = document.getElementById('weight-chart');
+    container.innerHTML = '';
+
+    const max = Math.max(...this.weightHistory) + 1;
+    const min = Math.min(...this.weightHistory) - 1;
+    const range = max - min;
+
+    this.weightHistory.forEach((w, i) => {
+      const bar = document.createElement('div');
+      bar.className = 'chart-bar';
+      const height = ((w - min) / range) * 120;
+      bar.style.height = height + 'px';
+      bar.style.left = (10 + i * (100 / this.weightHistory.length)) + '%';
+      bar.style.width = (80 / this.weightHistory.length) + '%';
+      bar.title = w.toFixed(1) + ' lbs';
+      container.appendChild(bar);
+    });
+  },
+
+  addVaccine() {
+    const type = document.getElementById('vaccine-type').value;
+    const date = document.getElementById('vaccine-date').value;
+    if (!type || !date) return alert('Please select vaccine type and date');
+
+    // Would save to storage in real app
+    alert(`Vaccine recorded: ${type} on ${date}`);
+    document.getElementById('vaccine-type').value = '';
+    document.getElementById('vaccine-date').value = '';
+  },
+
+  toggleSymptom(el) {
+    el.classList.toggle('selected');
+    const symptom = el.textContent.trim();
+    if (el.classList.contains('selected')) {
+      this.selectedSymptoms.add(symptom);
+    } else {
+      this.selectedSymptoms.delete(symptom);
+    }
+  },
+
+  analyzeSymptoms() {
+    const analysis = document.getElementById('symptom-analysis');
+
+    if (this.selectedSymptoms.size === 0) {
+      analysis.innerHTML = '<div class="tip-box"><h4>✅ No Symptoms Selected</h4><p>Your cat seems healthy! Keep monitoring and maintain regular vet checkups.</p></div>';
+      return;
+    }
+
+    let urgency = 'low';
+    let suggestions = [];
+
+    const symptoms = [...this.selectedSymptoms];
+
+    if (symptoms.some(s => s.includes('Yellow gums') || s.includes('Blood'))) {
+      urgency = 'high';
+      suggestions.push('⚠️ These symptoms require immediate veterinary attention');
+    }
+
+    if (symptoms.some(s => s.includes('Not eating')) && symptoms.some(s => s.includes('Lethargy'))) {
+      urgency = urgency === 'high' ? 'high' : 'medium';
+      suggestions.push('Loss of appetite combined with lethargy can indicate infection, pain, or organ issues');
+    }
+
+    if (symptoms.some(s => s.includes('Drinking more')) && symptoms.some(s => s.includes('Urinating more'))) {
+      suggestions.push('Increased thirst and urination can indicate diabetes, kidney disease, or hyperthyroidism');
+    }
+
+    if (symptoms.some(s => s.includes('Vomiting'))) {
+      suggestions.push('Occasional vomiting can be normal, but persistent vomiting needs vet evaluation');
+    }
+
+    if (symptoms.some(s => s.includes('Hiding'))) {
+      suggestions.push('Hiding can indicate pain, illness, or stress - monitor closely');
+    }
+
+    const urgencyColors = {low: '#4a8', medium: '#a84', high: '#a44'};
+    const urgencyText = {low: 'Monitor', medium: 'Vet Visit Recommended', high: 'Urgent - See Vet'};
+
+    analysis.innerHTML = `
+      <div class="warning-box" style="border-color:${urgencyColors[urgency]}">
+        <h4 style="color:${urgencyColors[urgency]}">🩺 Analysis: ${urgencyText[urgency]}</h4>
+        <p><strong>Selected symptoms:</strong> ${symptoms.join(', ')}</p>
+        <ul style="margin-top:10px">
+          ${suggestions.map(s => `<li>${s}</li>`).join('')}
+        </ul>
+        <p style="margin-top:10px;font-size:10px;color:#a89880">
+          ⚠️ This is not a diagnosis. Always consult a veterinarian for proper evaluation.
+        </p>
+      </div>
+    `;
+  },
+
+  toggleAccordion(el) {
+    el.classList.toggle('open');
+  },
+
+  searchTopics() {
+    const query = document.getElementById('search-box').value.toLowerCase();
+    document.querySelectorAll('.accordion').forEach(acc => {
+      const text = acc.textContent.toLowerCase();
+      acc.style.display = text.includes(query) ? 'block' : 'none';
+    });
+  },
+
+  addReminder() {
+    const text = document.getElementById('reminder-text').value;
+    const date = document.getElementById('reminder-date').value;
+    if (!text) return;
+
+    const reminder = document.createElement('div');
+    reminder.className = 'reminder';
+    reminder.innerHTML = `
+      <div>
+        <div style="font-weight:bold">📌 ${text}</div>
+        <div style="font-size:10px;color:#a89880">${date ? new Date(date).toLocaleDateString() : 'No date set'}</div>
+      </div>
+      <button class="secondary" onclick="C.completeReminder(this)">✓ Done</button>
+    `;
+    document.getElementById('reminders').appendChild(reminder);
+    document.getElementById('reminder-text').value = '';
+    document.getElementById('reminder-date').value = '';
+  },
+
+  completeReminder(btn) {
+    btn.parentElement.style.opacity = '0.5';
+    btn.textContent = '✓';
+    btn.disabled = true;
+  }
+};
+
+window.onload = () => C.init();
+</script>
+</body></html>
