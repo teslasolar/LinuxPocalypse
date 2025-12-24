@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UDT Tag Studio v3 - Orthopedic Sole Designer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a1520;overflow:hidden;font:11px 'Segoe UI',sans-serif;color:#4af}
+#c{position:fixed;inset:0}
+.panel{position:absolute;background:rgba(5,20,35,.97);border:2px solid #2a8;border-radius:8px;padding:10px;z-index:10}
+.panel-title{color:#4cf;font-size:13px;font-weight:bold;text-align:center;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #2a84}
+button{background:linear-gradient(135deg,#286,#164);color:#aff;border:1px solid #4a8;padding:5px 10px;margin:2px;border-radius:6px;cursor:pointer;font-size:10px;transition:all .2s}
+button:hover{background:#4a8;color:#000}
+button.active{background:#0f0;color:#000;border-color:#0f0}
+button.medical{background:linear-gradient(135deg,#48a,#268);border-color:#6af}
+button.warn{background:linear-gradient(135deg,#a64,#642);border-color:#fa8;color:#fea}
+button.rx{background:linear-gradient(135deg,#a48,#624);border-color:#f8a;color:#fea}
+.row{display:flex;gap:4px;margin:4px 0;flex-wrap:wrap;align-items:center}
+input,select,textarea{background:#081828;border:1px solid #2a64;color:#aff;padding:5px 8px;border-radius:4px;font-size:10px}
+input:focus,select:focus{border-color:#4af;outline:none}
+input[type="range"]{width:100%;accent-color:#4a8}
+.condition-card{background:#0a1828;border:2px solid #2a64;padding:8px;margin:4px 0;border-radius:6px;cursor:pointer;transition:all .2s}
+.condition-card:hover{border-color:#4a8}
+.condition-card.active{border-color:#0f0;background:#0a2828}
+.condition-icon{font-size:20px;margin-right:8px}
+.zone{position:absolute;border-radius:50%;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;font-size:10px}
+.zone:hover{transform:scale(1.1);z-index:5}
+#pressure-map{position:relative;width:140px;height:280px;background:#081020;border:2px solid #2a8;border-radius:60px 60px 40px 40px;margin:0 auto}
+#pressure-canvas{position:absolute;inset:0;border-radius:60px 60px 40px 40px}
+.pressure-legend{display:flex;justify-content:space-between;font-size:8px;margin-top:4px}
+.rx-item{background:#102030;border:1px solid #4a64;padding:6px;margin:3px 0;border-radius:4px}
+.rx-label{font-size:9px;color:#68a;margin-bottom:2px}
+.slider-row{display:flex;align-items:center;gap:6px}
+.slider-val{min-width:30px;text-align:right;font-weight:bold}
+#gait-canvas{width:100%;height:80px;background:#081020;border:1px solid #2a8;border-radius:4px}
+.metric{background:#081828;border:1px solid #2a64;border-radius:4px;padding:6px;text-align:center;flex:1}
+.metric-val{font-size:16px;font-weight:bold;color:#0f0}
+.metric-lbl{font-size:8px;color:#68a}
+.material-option{display:flex;align-items:center;gap:8px;padding:6px;background:#0a1828;border:1px solid #2a64;border-radius:4px;margin:3px 0;cursor:pointer}
+.material-option:hover{border-color:#4a8}
+.material-option.selected{border-color:#0f0;background:#0a2020}
+.severity{display:inline-block;padding:2px 6px;border-radius:3px;font-size:9px}
+.sev-mild{background:#0842;color:#4f8}.sev-moderate{background:#4820;color:#fa4}.sev-severe{background:#4208;color:#f44}
+#foot-profile{display:flex;gap:10px;justify-content:center;margin:10px 0}
+.foot-stat{text-align:center}
+.foot-val{font-size:18px;font-weight:bold}
+.arch-visual{width:60px;height:30px;border-bottom:3px solid #4a8;position:relative}
+.arch-curve{position:absolute;bottom:0;left:0;right:0;border:2px solid #0f0;border-top:none;border-radius:0 0 30px 30px}
+#correction-preview{height:60px;background:#081020;border:1px solid #2a8;border-radius:4px;position:relative;overflow:hidden}
+.correction-layer{position:absolute;bottom:0;left:10%;right:10%;border-radius:4px 4px 0 0}
+</style></head><body>
+<canvas id="c"></canvas>
+
+<!-- Header -->
+<div class="panel" style="top:6px;left:50%;transform:translateX(-50%);padding:8px 24px">
+<span style="font-size:16px">🦶</span>
+<span style="color:#4cf;font-size:14px;margin-left:8px">ORTHOPEDIC SOLE DESIGNER</span>
+<span style="color:#486;margin-left:10px">v3</span>
+<span style="color:#f84;margin-left:15px">Medical Grade</span>
+</div>
+
+<!-- Conditions Panel -->
+<div class="panel" style="top:50px;left:8px;width:200px;max-height:50vh;overflow-y:auto">
+<div class="panel-title">🏥 CONDITIONS</div>
+<div id="conditions-list"></div>
+</div>
+
+<!-- Pressure Mapping -->
+<div class="panel" style="top:50px;right:8px;width:180px">
+<div class="panel-title">📊 PRESSURE MAP</div>
+<div id="pressure-map">
+<canvas id="pressure-canvas" width="140" height="280"></canvas>
+</div>
+<div class="pressure-legend">
+<span style="color:#00f">Low</span>
+<span style="color:#0f0">Normal</span>
+<span style="color:#ff0">High</span>
+<span style="color:#f00">Critical</span>
+</div>
+<div class="row" style="margin-top:8px">
+<button onclick="O.simulateStep()">👣 Simulate</button>
+<button onclick="O.clearPressure()">🔄 Clear</button>
+</div>
+</div>
+
+<!-- Foot Profile -->
+<div class="panel" style="top:320px;right:8px;width:180px">
+<div class="panel-title">👤 FOOT PROFILE</div>
+<div id="foot-profile">
+<div class="foot-stat">
+<div class="foot-val" id="arch-height">Med</div>
+<div style="font-size:8px;color:#68a">Arch</div>
+</div>
+<div class="foot-stat">
+<div class="foot-val" id="pronation">Neutral</div>
+<div style="font-size:8px;color:#68a">Gait</div>
+</div>
+<div class="foot-stat">
+<div class="foot-val" id="foot-width">D</div>
+<div style="font-size:8px;color:#68a">Width</div>
+</div>
+</div>
+<div class="row">
+<select id="arch-select" onchange="O.updateProfile()" style="flex:1">
+<option value="flat">Flat (Pes Planus)</option>
+<option value="low">Low Arch</option>
+<option value="medium" selected>Medium Arch</option>
+<option value="high">High Arch</option>
+<option value="cavus">Cavus (Very High)</option>
+</select>
+</div>
+<div class="row">
+<select id="gait-select" onchange="O.updateProfile()" style="flex:1">
+<option value="supinate">Supination (Under)</option>
+<option value="neutral" selected>Neutral</option>
+<option value="overpronate">Overpronation</option>
+<option value="severe">Severe Overpronate</option>
+</select>
+</div>
+</div>
+
+<!-- Prescription Builder -->
+<div class="panel" style="bottom:8px;left:8px;width:200px">
+<div class="panel-title">💊 RX BUILDER</div>
+<div id="rx-controls">
+<div class="rx-item">
+<div class="rx-label">Heel Lift (mm)</div>
+<div class="slider-row">
+<input type="range" id="heel-lift" min="0" max="25" value="0" oninput="O.updateRx()">
+<span class="slider-val" id="heel-lift-val">0</span>
+</div>
+</div>
+<div class="rx-item">
+<div class="rx-label">Arch Height (mm)</div>
+<div class="slider-row">
+<input type="range" id="arch-support" min="0" max="30" value="10" oninput="O.updateRx()">
+<span class="slider-val" id="arch-support-val">10</span>
+</div>
+</div>
+<div class="rx-item">
+<div class="rx-label">Met Pad Position</div>
+<div class="slider-row">
+<input type="range" id="met-pos" min="0" max="100" value="50" oninput="O.updateRx()">
+<span class="slider-val" id="met-pos-val">50%</span>
+</div>
+</div>
+<div class="rx-item">
+<div class="rx-label">Heel Cup Depth (mm)</div>
+<div class="slider-row">
+<input type="range" id="heel-cup" min="5" max="25" value="12" oninput="O.updateRx()">
+<span class="slider-val" id="heel-cup-val">12</span>
+</div>
+</div>
+<div class="rx-item">
+<div class="rx-label">Forefoot Posting (°)</div>
+<div class="slider-row">
+<input type="range" id="forefoot-post" min="-10" max="10" value="0" oninput="O.updateRx()">
+<span class="slider-val" id="forefoot-post-val">0°</span>
+</div>
+</div>
+<div class="rx-item">
+<div class="rx-label">Rearfoot Posting (°)</div>
+<div class="slider-row">
+<input type="range" id="rearfoot-post" min="-10" max="10" value="0" oninput="O.updateRx()">
+<span class="slider-val" id="rearfoot-post-val">0°</span>
+</div>
+</div>
+</div>
+</div>
+
+<!-- Correction Preview -->
+<div class="panel" style="bottom:8px;left:220px;width:180px">
+<div class="panel-title">🔧 CORRECTION PREVIEW</div>
+<div id="correction-preview">
+<div class="correction-layer" id="layer-base" style="height:8px;background:#444"></div>
+<div class="correction-layer" id="layer-arch" style="height:15px;background:#2a8;bottom:8px"></div>
+<div class="correction-layer" id="layer-heel" style="height:0px;background:#48a;bottom:23px;left:60%;right:10%"></div>
+<div class="correction-layer" id="layer-met" style="height:0px;background:#84a;bottom:23px;left:10%;width:30%"></div>
+</div>
+<div style="margin-top:8px;font-size:9px" id="correction-notes"></div>
+</div>
+
+<!-- Materials -->
+<div class="panel" style="bottom:160px;left:220px;width:180px">
+<div class="panel-title">🧱 MATERIALS</div>
+<div id="materials-list"></div>
+</div>
+
+<!-- Gait Analysis -->
+<div class="panel" style="bottom:180px;right:8px;width:180px">
+<div class="panel-title">📈 GAIT ANALYSIS</div>
+<canvas id="gait-canvas"></canvas>
+<div class="row" style="margin-top:6px">
+<div class="metric"><div class="metric-val" id="stance-time">60%</div><div class="metric-lbl">Stance</div></div>
+<div class="metric"><div class="metric-val" id="swing-time">40%</div><div class="metric-lbl">Swing</div></div>
+</div>
+<div class="row">
+<div class="metric"><div class="metric-val" id="cadence">110</div><div class="metric-lbl">Cadence</div></div>
+<div class="metric"><div class="metric-val" id="symmetry">94%</div><div class="metric-lbl">Symmetry</div></div>
+</div>
+</div>
+
+<!-- Size & Export -->
+<div class="panel" style="top:50px;left:220px;width:160px">
+<div class="panel-title">📏 SIZING</div>
+<div class="row">
+<select id="size-us" style="flex:1" onchange="O.updateSize()">
+${Array.from({length:25}, (_,i) => `<option value="${4+i*0.5}" ${i===10?'selected':''}>${4+i*0.5} US</option>`).join('')}
+</select>
+</div>
+<div class="row">
+<select id="foot-side" style="flex:1">
+<option value="left">Left Foot</option>
+<option value="right">Right Foot</option>
+<option value="pair">Pair (Bilateral)</option>
+</select>
+</div>
+<div style="margin-top:8px;font-size:9px" id="size-info">
+<div>Length: <span id="size-length">27.0 cm</span></div>
+<div>Width: <span id="size-width">10.2 cm</span></div>
+</div>
+<div class="row" style="margin-top:8px">
+<button onclick="O.exportRx()" class="rx">📋 Export Rx</button>
+</div>
+<div class="row">
+<button onclick="O.saveProfile()">💾 Save</button>
+<button onclick="O.loadProfile()">📂 Load</button>
+</div>
+</div>
+
+<!-- AI Recommendations -->
+<div class="panel" style="top:220px;left:220px;width:160px">
+<div class="panel-title">🤖 AI RECOMMEND</div>
+<div id="ai-recommendations" style="font-size:9px;max-height:120px;overflow-y:auto"></div>
+</div>
+
+<script>
+const T={v3:(x,y,z)=>new THREE.Vector3(x,y,z)};
+
+// Medical Conditions
+const CONDITIONS = [
+  {id:'plantar',name:'Plantar Fasciitis',icon:'🦶',severity:'moderate',
+   desc:'Heel pain from inflamed fascia',
+   rx:{archSupport:20,heelCup:18,heelLift:6,metPad:0}},
+  {id:'flatfoot',name:'Flat Feet (Pes Planus)',icon:'🦿',severity:'mild',
+   desc:'Collapsed arch, overpronation',
+   rx:{archSupport:25,heelCup:15,rearfootPost:4,forefootPost:0}},
+  {id:'bunion',name:'Bunions (Hallux Valgus)',icon:'👣',severity:'moderate',
+   desc:'Big toe joint deformity',
+   rx:{archSupport:12,metPad:60,wideToebox:true}},
+  {id:'metatarsalgia',name:'Metatarsalgia',icon:'🔴',severity:'moderate',
+   desc:'Ball of foot pain',
+   rx:{archSupport:15,metPad:70,metHeight:8}},
+  {id:'morton',name:"Morton's Neuroma",icon:'⚡',severity:'severe',
+   desc:'Nerve pain between toes',
+   rx:{metPad:65,metHeight:10,wideToebox:true}},
+  {id:'heelspur',name:'Heel Spur',icon:'📍',severity:'moderate',
+   desc:'Calcium deposit on heel bone',
+   rx:{heelCup:20,heelLift:8,heelCutout:true}},
+  {id:'achilles',name:'Achilles Tendinitis',icon:'🔧',severity:'moderate',
+   desc:'Achilles tendon inflammation',
+   rx:{heelLift:12,heelCup:15,archSupport:10}},
+  {id:'supination',name:'Supination (Underpronation)',icon:'↗️',severity:'mild',
+   desc:'Foot rolls outward',
+   rx:{lateralWedge:true,rearfootPost:-4,cushioning:'max'}},
+  {id:'overpronation',name:'Overpronation',icon:'↙️',severity:'mild',
+   desc:'Foot rolls inward excessively',
+   rx:{archSupport:22,rearfootPost:6,motionControl:true}},
+  {id:'diabetic',name:'Diabetic Foot',icon:'💉',severity:'severe',
+   desc:'Reduced sensation, ulcer risk',
+   rx:{totalContact:true,pressure:'distribute',cushioning:'max',seamless:true}},
+  {id:'arthritis',name:'Arthritis',icon:'🦴',severity:'moderate',
+   desc:'Joint inflammation and stiffness',
+   rx:{cushioning:'max',rocker:true,stiffSole:true}},
+  {id:'higharches',name:'High Arches (Pes Cavus)',icon:'⛰️',severity:'mild',
+   desc:'Excessive arch height',
+   rx:{archSupport:8,cushioning:'max',heelCup:12,lateralSupport:true}}
+];
+
+// Orthotic Materials
+const MATERIALS = [
+  {id:'eva',name:'EVA Foam',density:'soft',durability:60,desc:'Lightweight cushioning',icon:'☁️'},
+  {id:'poron',name:'Poron',density:'medium',durability:80,desc:'Medical-grade cushioning',icon:'💧'},
+  {id:'plastazote',name:'Plastazote',density:'soft',durability:50,desc:'Diabetic-safe, moldable',icon:'🔷'},
+  {id:'cork',name:'Cork Composite',density:'firm',durability:85,desc:'Natural arch support',icon:'🍾'},
+  {id:'carbon',name:'Carbon Fiber',density:'rigid',durability:95,desc:'Lightweight, rigid control',icon:'⬛'},
+  {id:'polypro',name:'Polypropylene',density:'rigid',durability:90,desc:'Standard rigid orthotic',icon:'🔲'},
+  {id:'leather',name:'Leather Top',density:'medium',durability:75,desc:'Moisture-wicking cover',icon:'🐄'},
+  {id:'gel',name:'Silicone Gel',density:'soft',durability:70,desc:'Shock absorption zones',icon:'💎'}
+];
+
+const O = {
+  conditions: new Set(),
+  rx: {
+    heelLift: 0,
+    archSupport: 10,
+    metPos: 50,
+    heelCup: 12,
+    forefootPost: 0,
+    rearfootPost: 0
+  },
+  profile: {
+    arch: 'medium',
+    gait: 'neutral',
+    width: 'D'
+  },
+  material: 'poron',
+  size: 9,
+  pressureData: [],
+
+  init() {
+    this.setupScene();
+    this.renderConditions();
+    this.renderMaterials();
+    this.setupPressureMap();
+    this.setupGaitCanvas();
+    this.updateRx();
+    this.updateProfile();
+    this.animate();
+    setInterval(() => this.animateGait(), 50);
+  },
+
+  setupScene() {
+    this.scene = new THREE.Scene();
+    this.camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 1000);
+    this.renderer = new THREE.WebGLRenderer({canvas: document.getElementById('c'), antialias: true});
+    this.renderer.setSize(innerWidth, innerHeight);
+    this.renderer.setClearColor(0x0a1520);
+    this.camera.position.set(0, 30, 50);
+    this.camera.lookAt(0, 0, 0);
+
+    this.scene.add(new THREE.AmbientLight(0x406080, 0.5));
+    const light = new THREE.DirectionalLight(0xffffff, 0.7);
+    light.position.set(20, 40, 30);
+    this.scene.add(light);
+
+    this.scene.add(new THREE.GridHelper(60, 20, 0x2a82, 0x1541));
+
+    this.buildOrthotic();
+
+    // Mouse controls
+    let dragging = false, lastX = 0;
+    document.getElementById('c').addEventListener('mousedown', e => { dragging = true; lastX = e.clientX; });
+    document.getElementById('c').addEventListener('mousemove', e => {
+      if (!dragging) return;
+      this.orthoticGroup.rotation.y += (e.clientX - lastX) * 0.01;
+      lastX = e.clientX;
+    });
+    document.getElementById('c').addEventListener('mouseup', () => dragging = false);
+  },
+
+  buildOrthotic() {
+    if (this.orthoticGroup) this.scene.remove(this.orthoticGroup);
+    this.orthoticGroup = new THREE.Group();
+
+    // Base layer
+    const baseShape = new THREE.Shape();
+    baseShape.moveTo(-5, -14);
+    baseShape.quadraticCurveTo(-6, -7, -5, 0);
+    baseShape.quadraticCurveTo(-4.5, 7, -3, 12);
+    baseShape.quadraticCurveTo(0, 15, 3, 12);
+    baseShape.quadraticCurveTo(4.5, 7, 5, 0);
+    baseShape.quadraticCurveTo(6, -7, 5, -14);
+    baseShape.quadraticCurveTo(0, -16, -5, -14);
+
+    const baseGeo = new THREE.ExtrudeGeometry(baseShape, {depth: 0.5, bevelEnabled: false});
+    const baseMat = new THREE.MeshPhongMaterial({color: 0x2a4a6a});
+    const base = new THREE.Mesh(baseGeo, baseMat);
+    base.rotation.x = -Math.PI / 2;
+    this.orthoticGroup.add(base);
+
+    // Arch support
+    const archHeight = this.rx.archSupport / 10;
+    const archGeo = new THREE.SphereGeometry(4, 16, 8, 0, Math.PI, 0, Math.PI / 2);
+    const archMat = new THREE.MeshPhongMaterial({color: 0x4a8a6a, transparent: true, opacity: 0.8});
+    const arch = new THREE.Mesh(archGeo, archMat);
+    arch.scale.set(1.2, archHeight * 0.3, 2);
+    arch.position.set(-2, 0.5, -2);
+    arch.rotation.z = -0.3;
+    this.orthoticGroup.add(arch);
+    this.archMesh = arch;
+
+    // Heel cup
+    const heelCupDepth = this.rx.heelCup / 10;
+    const heelGeo = new THREE.CylinderGeometry(4, 4.5, heelCupDepth, 16, 1, true, 0, Math.PI);
+    const heelMat = new THREE.MeshPhongMaterial({color: 0x4a6a8a, side: THREE.DoubleSide});
+    const heelCup = new THREE.Mesh(heelGeo, heelMat);
+    heelCup.position.set(0, heelCupDepth / 2, -12);
+    heelCup.rotation.y = Math.PI;
+    this.orthoticGroup.add(heelCup);
+    this.heelMesh = heelCup;
+
+    // Heel lift
+    if (this.rx.heelLift > 0) {
+      const liftGeo = new THREE.CylinderGeometry(3.5, 4, this.rx.heelLift / 10, 16);
+      const liftMat = new THREE.MeshPhongMaterial({color: 0x6a4a8a});
+      const lift = new THREE.Mesh(liftGeo, liftMat);
+      lift.position.set(0, this.rx.heelLift / 20, -12);
+      this.orthoticGroup.add(lift);
+    }
+
+    // Metatarsal pad
+    if (this.rx.metPos > 0) {
+      const metGeo = new THREE.SphereGeometry(2, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+      const metMat = new THREE.MeshPhongMaterial({color: 0x8a6a4a});
+      const metPad = new THREE.Mesh(metGeo, metMat);
+      metPad.scale.set(1.5, 0.4, 1);
+      metPad.position.set(0, 0.5, 5 + (this.rx.metPos - 50) / 20);
+      this.orthoticGroup.add(metPad);
+      this.metMesh = metPad;
+    }
+
+    // Posting indicators
+    if (this.rx.rearfootPost !== 0) {
+      const postGeo = new THREE.BoxGeometry(8, 0.3, 4);
+      const postMat = new THREE.MeshPhongMaterial({color: this.rx.rearfootPost > 0 ? 0x4a8a4a : 0x8a4a4a});
+      const post = new THREE.Mesh(postGeo, postMat);
+      post.position.set(0, 0.2, -10);
+      post.rotation.z = this.rx.rearfootPost * Math.PI / 180;
+      this.orthoticGroup.add(post);
+    }
+
+    // Pressure zones visualization
+    this.addPressureZones();
+
+    this.scene.add(this.orthoticGroup);
+  },
+
+  addPressureZones() {
+    const zones = [
+      {x: 0, z: -12, r: 3, name: 'Heel', pressure: 0.7},
+      {x: -2.5, z: -2, r: 2, name: 'Arch', pressure: 0.3},
+      {x: 0, z: 6, r: 2.5, name: 'Met Heads', pressure: 0.8},
+      {x: -2, z: 10, r: 1.5, name: 'Met 1', pressure: 0.6},
+      {x: 2, z: 10, r: 1.5, name: 'Met 5', pressure: 0.5},
+      {x: 0, z: 13, r: 2, name: 'Toes', pressure: 0.4}
+    ];
+
+    zones.forEach(z => {
+      const geo = new THREE.CircleGeometry(z.r, 16);
+      const color = this.pressureColor(z.pressure);
+      const mat = new THREE.MeshBasicMaterial({color, transparent: true, opacity: 0.5});
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.set(z.x, 0.6, z.z);
+      mesh.userData = {zone: z.name, basePressure: z.pressure};
+      this.orthoticGroup.add(mesh);
+    });
+  },
+
+  pressureColor(p) {
+    if (p < 0.3) return 0x0000ff;
+    if (p < 0.5) return 0x00ff00;
+    if (p < 0.7) return 0xffff00;
+    return 0xff0000;
+  },
+
+  renderConditions() {
+    document.getElementById('conditions-list').innerHTML = CONDITIONS.map(c => `
+      <div class="condition-card ${this.conditions.has(c.id) ? 'active' : ''}" onclick="O.toggleCondition('${c.id}')">
+        <div style="display:flex;align-items:center">
+          <span class="condition-icon">${c.icon}</span>
+          <div>
+            <div style="font-weight:bold">${c.name}</div>
+            <span class="severity sev-${c.severity}">${c.severity}</span>
+          </div>
+        </div>
+        <div style="font-size:9px;color:#68a;margin-top:4px">${c.desc}</div>
+      </div>
+    `).join('');
+  },
+
+  toggleCondition(id) {
+    if (this.conditions.has(id)) {
+      this.conditions.delete(id);
+    } else {
+      this.conditions.add(id);
+      // Apply Rx recommendations
+      const cond = CONDITIONS.find(c => c.id === id);
+      if (cond?.rx) {
+        if (cond.rx.archSupport) document.getElementById('arch-support').value = cond.rx.archSupport;
+        if (cond.rx.heelCup) document.getElementById('heel-cup').value = cond.rx.heelCup;
+        if (cond.rx.heelLift) document.getElementById('heel-lift').value = cond.rx.heelLift;
+        if (cond.rx.rearfootPost) document.getElementById('rearfoot-post').value = cond.rx.rearfootPost;
+        if (cond.rx.metPad) document.getElementById('met-pos').value = cond.rx.metPad;
+      }
+    }
+    this.renderConditions();
+    this.updateRx();
+    this.generateRecommendations();
+  },
+
+  renderMaterials() {
+    document.getElementById('materials-list').innerHTML = MATERIALS.map(m => `
+      <div class="material-option ${this.material === m.id ? 'selected' : ''}" onclick="O.selectMaterial('${m.id}')">
+        <span style="font-size:16px">${m.icon}</span>
+        <div>
+          <div style="font-weight:bold">${m.name}</div>
+          <div style="font-size:8px;color:#68a">${m.density} • ${m.desc}</div>
+        </div>
+      </div>
+    `).join('');
+  },
+
+  selectMaterial(id) {
+    this.material = id;
+    this.renderMaterials();
+    this.generateRecommendations();
+  },
+
+  setupPressureMap() {
+    this.pressureCtx = document.getElementById('pressure-canvas').getContext('2d');
+    this.clearPressure();
+  },
+
+  clearPressure() {
+    const ctx = this.pressureCtx;
+    ctx.fillStyle = '#081020';
+    ctx.fillRect(0, 0, 140, 280);
+
+    // Draw foot outline
+    ctx.strokeStyle = '#2a8';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(70, 240, 35, 30, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(70, 140, 30, 80, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(70, 50, 40, 35, 0, 0, Math.PI);
+    ctx.stroke();
+
+    this.pressureData = [];
+  },
+
+  simulateStep() {
+    const ctx = this.pressureCtx;
+
+    // Simulate pressure based on conditions and gait
+    const points = [
+      {x: 70, y: 240, r: 25, p: 0.8}, // Heel
+      {x: 50, y: 150, r: 15, p: this.profile.arch === 'flat' ? 0.6 : 0.2}, // Medial arch
+      {x: 70, y: 80, r: 20, p: 0.7}, // Metatarsals
+      {x: 50, y: 50, r: 12, p: 0.5}, // Big toe
+      {x: 90, y: 55, r: 10, p: 0.4}, // Small toes
+    ];
+
+    // Adjust for pronation
+    if (this.profile.gait === 'overpronate') {
+      points[1].p += 0.3;
+      points[0].x -= 5;
+    } else if (this.profile.gait === 'supinate') {
+      points[1].p -= 0.1;
+      points[0].x += 5;
+    }
+
+    points.forEach(pt => {
+      const gradient = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, pt.r);
+      const color = this.pressureColorCSS(pt.p);
+      gradient.addColorStop(0, color);
+      gradient.addColorStop(1, 'transparent');
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, pt.r, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  },
+
+  pressureColorCSS(p) {
+    if (p < 0.3) return 'rgba(0,100,255,0.7)';
+    if (p < 0.5) return 'rgba(0,255,100,0.7)';
+    if (p < 0.7) return 'rgba(255,255,0,0.7)';
+    return 'rgba(255,50,0,0.8)';
+  },
+
+  setupGaitCanvas() {
+    this.gaitCtx = document.getElementById('gait-canvas').getContext('2d');
+    this.gaitPhase = 0;
+  },
+
+  animateGait() {
+    const ctx = this.gaitCtx;
+    const w = ctx.canvas.width, h = ctx.canvas.height;
+    ctx.fillStyle = '#081020';
+    ctx.fillRect(0, 0, w, h);
+
+    this.gaitPhase += 0.05;
+
+    // Draw gait cycle wave
+    ctx.strokeStyle = '#4a8';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let x = 0; x < w; x++) {
+      const y = h/2 + Math.sin((x + this.gaitPhase * 50) * 0.05) * 25;
+      if (x === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Stance/Swing markers
+    const phase = (this.gaitPhase % (Math.PI * 2)) / (Math.PI * 2);
+    ctx.fillStyle = phase < 0.6 ? '#0f0' : '#08f';
+    ctx.fillRect(phase * w - 2, 5, 4, 10);
+    ctx.fillStyle = '#fff';
+    ctx.font = '8px sans-serif';
+    ctx.fillText(phase < 0.6 ? 'STANCE' : 'SWING', phase * w - 15, 25);
+  },
+
+  updateRx() {
+    this.rx.heelLift = parseInt(document.getElementById('heel-lift').value);
+    this.rx.archSupport = parseInt(document.getElementById('arch-support').value);
+    this.rx.metPos = parseInt(document.getElementById('met-pos').value);
+    this.rx.heelCup = parseInt(document.getElementById('heel-cup').value);
+    this.rx.forefootPost = parseInt(document.getElementById('forefoot-post').value);
+    this.rx.rearfootPost = parseInt(document.getElementById('rearfoot-post').value);
+
+    document.getElementById('heel-lift-val').textContent = this.rx.heelLift;
+    document.getElementById('arch-support-val').textContent = this.rx.archSupport;
+    document.getElementById('met-pos-val').textContent = this.rx.metPos + '%';
+    document.getElementById('heel-cup-val').textContent = this.rx.heelCup;
+    document.getElementById('forefoot-post-val').textContent = this.rx.forefootPost + '°';
+    document.getElementById('rearfoot-post-val').textContent = this.rx.rearfootPost + '°';
+
+    this.updateCorrectionPreview();
+    this.buildOrthotic();
+    this.generateRecommendations();
+  },
+
+  updateCorrectionPreview() {
+    document.getElementById('layer-arch').style.height = (this.rx.archSupport / 2) + 'px';
+    document.getElementById('layer-heel').style.height = this.rx.heelLift + 'px';
+    document.getElementById('layer-met').style.height = (this.rx.metPos > 30 ? 6 : 0) + 'px';
+
+    let notes = [];
+    if (this.rx.heelLift > 10) notes.push('⚠️ High heel lift');
+    if (this.rx.archSupport > 20) notes.push('💪 Strong arch support');
+    if (Math.abs(this.rx.rearfootPost) > 5) notes.push('🔧 Significant posting');
+    document.getElementById('correction-notes').innerHTML = notes.join('<br>') || '✓ Standard correction';
+  },
+
+  updateProfile() {
+    this.profile.arch = document.getElementById('arch-select').value;
+    this.profile.gait = document.getElementById('gait-select').value;
+
+    const archLabels = {flat:'Flat',low:'Low',medium:'Med',high:'High',cavus:'Cavus'};
+    const gaitLabels = {supinate:'Supinate',neutral:'Neutral',overpronate:'Over',severe:'Severe'};
+
+    document.getElementById('arch-height').textContent = archLabels[this.profile.arch];
+    document.getElementById('pronation').textContent = gaitLabels[this.profile.gait];
+
+    this.generateRecommendations();
+    this.simulateStep();
+  },
+
+  updateSize() {
+    this.size = parseFloat(document.getElementById('size-us').value);
+    const cm = (this.size * 0.847 + 19.5).toFixed(1);
+    document.getElementById('size-length').textContent = cm + ' cm';
+    document.getElementById('size-width').textContent = (parseFloat(cm) * 0.38).toFixed(1) + ' cm';
+  },
+
+  generateRecommendations() {
+    const recs = [];
+
+    // Based on conditions
+    if (this.conditions.has('plantar')) {
+      recs.push({icon:'🎯',text:'Increase arch support to 18-22mm for plantar fasciitis'});
+      recs.push({icon:'🦶',text:'Deep heel cup (18mm+) provides calcaneal stability'});
+    }
+    if (this.conditions.has('diabetic')) {
+      recs.push({icon:'⚠️',text:'Use Plastazote for pressure distribution',priority:'high'});
+      recs.push({icon:'🔍',text:'Check for hot spots - reduce peak pressures'});
+    }
+    if (this.conditions.has('morton')) {
+      recs.push({icon:'📍',text:'Position met pad just proximal to met heads'});
+    }
+
+    // Based on profile
+    if (this.profile.arch === 'flat') {
+      recs.push({icon:'📐',text:'Consider rigid polypropylene for arch control'});
+    }
+    if (this.profile.gait === 'overpronate') {
+      recs.push({icon:'↙️',text:'Add 4-6° medial rearfoot post'});
+    }
+    if (this.profile.gait === 'supinate') {
+      recs.push({icon:'↗️',text:'Lateral wedge or posting may help'});
+    }
+
+    // Material suggestions
+    const mat = MATERIALS.find(m => m.id === this.material);
+    if (mat?.density === 'soft' && this.conditions.has('overpronation')) {
+      recs.push({icon:'⚠️',text:'Soft material may not provide enough motion control'});
+    }
+
+    document.getElementById('ai-recommendations').innerHTML = recs.length ?
+      recs.map(r => `<div style="margin:4px 0;${r.priority==='high'?'color:#f84':''}">${r.icon} ${r.text}</div>`).join('') :
+      '<div style="color:#68a">Select conditions for recommendations</div>';
+  },
+
+  exportRx() {
+    const conditionNames = [...this.conditions].map(id => CONDITIONS.find(c => c.id === id)?.name).join(', ');
+    const matName = MATERIALS.find(m => m.id === this.material)?.name;
+
+    const rx = `
+ORTHOTIC PRESCRIPTION
+${'='.repeat(40)}
+
+PATIENT PROFILE
+--------------
+Size: ${this.size} US
+Foot: ${document.getElementById('foot-side').value}
+Arch Type: ${this.profile.arch}
+Gait Pattern: ${this.profile.gait}
+
+CONDITIONS
+----------
+${conditionNames || 'None specified'}
+
+PRESCRIPTION
+------------
+Arch Height: ${this.rx.archSupport}mm
+Heel Cup Depth: ${this.rx.heelCup}mm
+Heel Lift: ${this.rx.heelLift}mm
+Met Pad Position: ${this.rx.metPos}%
+Forefoot Posting: ${this.rx.forefootPost}°
+Rearfoot Posting: ${this.rx.rearfootPost}°
+
+MATERIALS
+---------
+Primary: ${matName}
+
+NOTES
+-----
+Generated by Orthopedic Sole Designer v3
+Date: ${new Date().toLocaleDateString()}
+    `.trim();
+
+    navigator.clipboard?.writeText(rx);
+    alert('Prescription copied to clipboard!\n\n' + rx);
+  },
+
+  saveProfile() {
+    const data = {
+      conditions: [...this.conditions],
+      rx: this.rx,
+      profile: this.profile,
+      material: this.material,
+      size: this.size
+    };
+    localStorage.setItem('orthoProfile', JSON.stringify(data));
+    alert('Profile saved!');
+  },
+
+  loadProfile() {
+    const data = localStorage.getItem('orthoProfile');
+    if (!data) return alert('No saved profile found');
+    const parsed = JSON.parse(data);
+    this.conditions = new Set(parsed.conditions);
+    this.rx = parsed.rx;
+    this.profile = parsed.profile;
+    this.material = parsed.material;
+    this.size = parsed.size;
+
+    // Update UI
+    document.getElementById('arch-support').value = this.rx.archSupport;
+    document.getElementById('heel-cup').value = this.rx.heelCup;
+    document.getElementById('heel-lift').value = this.rx.heelLift;
+    document.getElementById('met-pos').value = this.rx.metPos;
+    document.getElementById('forefoot-post').value = this.rx.forefootPost;
+    document.getElementById('rearfoot-post').value = this.rx.rearfootPost;
+    document.getElementById('arch-select').value = this.profile.arch;
+    document.getElementById('gait-select').value = this.profile.gait;
+    document.getElementById('size-us').value = this.size;
+
+    this.renderConditions();
+    this.renderMaterials();
+    this.updateRx();
+    this.updateProfile();
+    this.updateSize();
+  },
+
+  animate() {
+    requestAnimationFrame(() => this.animate());
+    this.orthoticGroup.rotation.y += 0.003;
+    this.camera.lookAt(0, 0, 0);
+    this.renderer.render(this.scene, this.camera);
+  }
+};
+
+onload = () => O.init();
+onresize = () => {
+  O.renderer.setSize(innerWidth, innerHeight);
+  O.camera.aspect = innerWidth / innerHeight;
+  O.camera.updateProjectionMatrix();
+};
+</script></body></html>
